@@ -1,0 +1,21 @@
+# Upstream Android reference clone — not part of this repo
+vivi-music/
+
+# Build
+.gradle/
+build/
+**/build/
+out/
+dist/
+.kotlin/
+.idea/
+*.iml
+.DS_Store
+local.properties
+*.keystore
+*.jks
+.env
+.env.*
+!.env.example
+**/persistent-debug.keystore
+**/keystore/
