@@ -16,9 +16,9 @@ class DesktopShell(
 
     init {
         stage.title = "VIVI Desktop"
-        stage.scene = Scene(root, 960.0, 720.0)
-        stage.minWidth = 640.0
-        stage.minHeight = 480.0
+        stage.scene = Scene(root, 560.0, 280.0)
+        stage.minWidth = 480.0
+        stage.minHeight = 220.0
     }
 
     fun showLogin() {

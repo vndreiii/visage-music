@@ -11,7 +11,7 @@ kotlin {
 
 javafx {
     version = "21.0.6"
-    modules("javafx.controls", "javafx.web")
+    modules("javafx.controls")
 }
 
 dependencies {
@@ -20,6 +20,11 @@ dependencies {
     implementation(libs.kotlinx.coroutines.javafx)
     implementation(libs.java.keyring)
     implementation(libs.kotlinx.serialization.json)
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.json)
+    implementation(libs.ktor.client.websockets)
 }
 
 application {

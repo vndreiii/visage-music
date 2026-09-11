@@ -3,7 +3,6 @@ package com.music.vivi.desktop.login
 import com.music.innertube.auth.YtMusicSession
 import com.music.vivi.desktop.session.SessionSecretStore
 import javafx.application.Platform
-import javafx.concurrent.Worker
 import javafx.geometry.Insets
 import javafx.geometry.Pos
 import javafx.scene.control.Button
@@ -13,7 +12,6 @@ import javafx.scene.layout.BorderPane
 import javafx.scene.layout.HBox
 import javafx.scene.layout.Priority
 import javafx.scene.layout.VBox
-import javafx.scene.web.WebView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,17 +29,27 @@ private const val LOGIN_URL =
 private const val MUSIC_HOST_PREFIX = "https://music.youtube.com"
 
 /**
- * Mirrors upstream [LoginScreen]: Google sign-in in a WebView, check button
- * after landing on YT Music, then cookie + visitor/dataSync capture.
+ * Control pane for YT Music login. Google blocks JavaFX WebKit, so sign-in
+ * happens in a real Chromium app window; we scrape cookies/JS via CDP.
  */
 class LoginPane(
     private val onLoggedIn: (accountName: String) -> Unit,
 ) : BorderPane() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.JavaFx)
     private var pollJob: Job? = null
+    private var browserProcess: Process? = null
+    private var cdp: CdpClient? = null
+    private var debugPort: Int = -1
 
-    private val webView = WebView()
-    private val statusLabel = Label("Sign in with Google, then confirm once YouTube Music loads.")
+    private val statusLabel = Label("Opening Chromium for Google sign-in…")
+    private val detailLabel = Label(
+        "Google blocks embedded WebViews. A real Chromium window will open; " +
+            "sign in there, wait until YouTube Music loads, then confirm here.",
+    ).apply {
+        isWrapText = true
+        maxWidth = 520.0
+    }
+    private val openButton = Button("Open sign-in window")
     private val confirmButton = Button("Confirm login").apply {
         isDisable = true
         isDefaultButton = true
@@ -52,27 +60,11 @@ class LoginPane(
         isVisible = false
     }
 
-    private var visitorData: String = ""
-    private var dataSyncId: String = ""
-    private var liveDelegatedSessionId: String = ""
     private var readyToConfirm = false
     private var isConfirming = false
 
     init {
-        WebCookieStore.install()
-
-        val engine = webView.engine
-        // Prefer a desktop Chrome UA so Google is less likely to block the embed.
-        engine.userAgent =
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) " +
-                "Chrome/122.0.0.0 Safari/537.36"
-
-        engine.loadWorker.stateProperty().addListener { _, _, newState ->
-            if (newState == Worker.State.SUCCEEDED) {
-                onPageFinished(engine.location)
-            }
-        }
-
+        openButton.setOnAction { launchBrowser() }
         confirmButton.setOnAction { confirmLogin() }
 
         val topBar = HBox(12.0).apply {
@@ -84,65 +76,80 @@ class LoginPane(
             val spacer = HBox().also { HBox.setHgrow(it, Priority.ALWAYS) }
             children += spacer
             children += progress
+            children += openButton
             children += confirmButton
         }
 
-        val hint = VBox(4.0, statusLabel).apply {
-            padding = Insets(0.0, 12.0, 8.0, 12.0)
+        val body = VBox(10.0, statusLabel, detailLabel).apply {
+            padding = Insets(16.0, 16.0, 16.0, 16.0)
+            alignment = Pos.TOP_LEFT
         }
 
-        top = VBox(topBar, hint)
-        center = webView
+        top = topBar
+        center = body
 
-        engine.load(LOGIN_URL)
+        // Auto-launch once the scene is up.
+        Platform.runLater { launchBrowser() }
     }
 
-    private fun onPageFinished(url: String?) {
-        val engine = webView.engine
-        runCatching {
-            engine.executeScript(
-                "(function(){try{return window.yt&&window.yt.config_&&window.yt.config_.VISITOR_DATA||'';}catch(e){return '';}})()",
-            )?.toString()?.takeIf { it.isNotBlank() && it != "null" }?.let { visitorData = it }
+    private fun launchBrowser() {
+        val browser = ChromiumLauncher.findBrowser()
+        if (browser == null) {
+            statusLabel.text = "No Chromium/Chrome found. Install chromium and retry."
+            return
         }
-        runCatching {
-            engine.executeScript(
-                "(function(){try{return window.yt&&window.yt.config_&&window.yt.config_.DATASYNC_ID||'';}catch(e){return '';}})()",
-            )?.toString()?.takeIf { it.isNotBlank() && it != "null" }?.let {
-                dataSyncId = normalizeDataSyncId(it)
+
+        runCatching { browserProcess?.destroy() }
+        runCatching { cdp?.close() }
+        cdp = null
+        pollJob?.cancel()
+
+        debugPort = ChromiumLauncher.pickFreePort()
+        val profile = ChromiumLauncher.profileDir()
+        statusLabel.text = "Launching $browser (CDP :$debugPort)…"
+        browserProcess = ChromiumLauncher.launch(browser, LOGIN_URL, debugPort, profile)
+        openButton.text = "Reopen sign-in window"
+        confirmButton.isDisable = true
+        readyToConfirm = false
+
+        scope.launch {
+            val client = CdpClient(debugPort)
+            try {
+                withContext(Dispatchers.IO) {
+                    client.waitUntilReady()
+                    client.reconnectLoop()
+                }
+                cdp = client
+                statusLabel.text = "Sign in inside the Chromium window…"
+                startReadyPoll(client)
+            } catch (t: Throwable) {
+                client.close()
+                statusLabel.text = "Could not attach to Chromium: ${t.message}"
             }
         }
-
-        if (url?.startsWith(MUSIC_HOST_PREFIX) == true) {
-            setReadyToConfirm(true)
-        }
     }
 
-    private fun setReadyToConfirm(ready: Boolean) {
-        if (readyToConfirm == ready) return
-        readyToConfirm = ready
-        confirmButton.isDisable = !ready || isConfirming
-        if (ready) {
-            statusLabel.text =
-                "YouTube Music loaded — use a brand account if prompted, then press Confirm login."
-            startDelegatedSessionPoll()
-        } else {
-            pollJob?.cancel()
-            pollJob = null
-        }
-    }
-
-    private fun startDelegatedSessionPoll() {
+    private fun startReadyPoll(client: CdpClient) {
         pollJob?.cancel()
         pollJob = scope.launch {
-            while (isActive && readyToConfirm && !isConfirming) {
-                val id = runCatching {
-                    webView.engine.executeScript(
-                        "(function(){try{return (window.ytcfg&&window.ytcfg.get)?" +
-                            "(window.ytcfg.get('DELEGATED_SESSION_ID')||''):'';}catch(e){return '';}})()",
-                    )?.toString()?.trim('"')?.takeUnless { it == "null" }.orEmpty()
-                }.getOrDefault("")
-                if (id.isNotBlank() && id != liveDelegatedSessionId) {
-                    liveDelegatedSessionId = id
+            while (isActive && !isConfirming) {
+                try {
+                    val url = withContext(Dispatchers.IO) { client.currentUrl() }
+                    if (url.startsWith(MUSIC_HOST_PREFIX)) {
+                        if (!readyToConfirm) {
+                            readyToConfirm = true
+                            confirmButton.isDisable = false
+                            statusLabel.text =
+                                "YouTube Music detected — press Confirm login to save to your keyring."
+                        }
+                    } else {
+                        statusLabel.text = "Browsing: ${url.take(80)}…"
+                    }
+                } catch (_: Throwable) {
+                    // Tab may navigate / WS drop — try reconnect
+                    runCatching {
+                        withContext(Dispatchers.IO) { client.reconnectLoop(3) }
+                    }
                 }
                 delay(1.seconds)
             }
@@ -151,70 +158,84 @@ class LoginPane(
 
     private fun confirmLogin() {
         if (!readyToConfirm || isConfirming) return
+        val client = cdp ?: run {
+            failConfirm("Not connected to Chromium.")
+            return
+        }
+
         isConfirming = true
         confirmButton.isDisable = true
         progress.isVisible = true
-        statusLabel.text = "Validating session…"
-
-        val currentUrl = webView.engine.location ?: MUSIC_HOST_PREFIX
-        val cookie = WebCookieStore.cookieHeaderFor(currentUrl)
-        val syncId = when {
-            liveDelegatedSessionId.isNotBlank() -> liveDelegatedSessionId
-            else -> dataSyncId
-        }.let { normalizeDataSyncId(it) }
-
-        if (cookie.isBlank()) {
-            failConfirm("No cookies captured — finish signing in, then try again.")
-            return
-        }
-        if (visitorData.isBlank()) {
-            // Best-effort refresh from page
-            runCatching {
-                webView.engine.executeScript(
-                    "(function(){try{return window.yt&&window.yt.config_&&window.yt.config_.VISITOR_DATA||'';}catch(e){return '';}})()",
-                )?.toString()?.takeIf { it.isNotBlank() && it != "null" }?.let { visitorData = it }
-            }
-        }
-        if (visitorData.isBlank()) {
-            failConfirm("Missing VISITOR_DATA — wait for YouTube Music to finish loading, then retry.")
-            return
-        }
-
-        val session = YtMusicSession(
-            cookie = cookie,
-            visitorData = visitorData,
-            dataSyncId = syncId,
-        )
+        statusLabel.text = "Reading cookies and validating…"
 
         scope.launch {
-            val result = withTimeoutOrNull(20.seconds) {
-                withContext(Dispatchers.IO) {
-                    var attempt = session.validate()
-                    if (attempt.isFailure) {
-                        delay(750)
-                        attempt = session.validate()
+            try {
+                val snapshot = withContext(Dispatchers.IO) {
+                    client.reconnectLoop()
+                    val cookie = client.cookieHeader()
+                    val visitor = client.evaluateString(
+                        "(function(){try{return (window.yt&&window.yt.config_&&window.yt.config_.VISITOR_DATA)||" +
+                            "(window.ytcfg&&window.ytcfg.get&&window.ytcfg.get('VISITOR_DATA'))||'';}catch(e){return '';}})()",
+                    )
+                    val dataSyncRaw = client.evaluateString(
+                        "(function(){try{" +
+                            "var a=(window.yt&&window.yt.config_&&window.yt.config_.DATASYNC_ID)||'';" +
+                            "var b=(window.ytcfg&&window.ytcfg.get&&window.ytcfg.get('DELEGATED_SESSION_ID'))||'';" +
+                            "var c=(window.ytcfg&&window.ytcfg.get&&window.ytcfg.get('DATASYNC_ID'))||'';" +
+                            "return b||a||c||'';}catch(e){return '';}})()",
+                    )
+                    Triple(cookie, visitor, normalizeDataSyncId(dataSyncRaw))
+                }
+
+                val (cookie, visitorData, dataSyncId) = snapshot
+                if (cookie.isBlank() || !cookie.contains("SAPISID")) {
+                    failConfirm("Cookies incomplete (missing SAPISID). Finish sign-in on YouTube Music, then retry.")
+                    return@launch
+                }
+                if (visitorData.isBlank()) {
+                    failConfirm("Missing VISITOR_DATA — wait for YouTube Music to finish loading, then retry.")
+                    return@launch
+                }
+
+                val session = YtMusicSession(
+                    cookie = cookie,
+                    visitorData = visitorData,
+                    dataSyncId = dataSyncId,
+                )
+
+                val result = withTimeoutOrNull(20.seconds) {
+                    withContext(Dispatchers.IO) {
+                        var attempt = session.validate()
+                        if (attempt.isFailure) {
+                            delay(750)
+                            attempt = session.validate()
+                        }
+                        attempt
                     }
-                    attempt
                 }
-            }
 
-            if (result == null) {
-                failConfirm("Login timed out.")
-                return@launch
-            }
-
-            result.onSuccess { account ->
-                withContext(Dispatchers.IO) {
-                    SessionSecretStore.save(session, account)
+                if (result == null) {
+                    failConfirm("Login timed out.")
+                    return@launch
                 }
-                progress.isVisible = false
-                statusLabel.text = "Signed in as ${account.name}. Saved to system keyring."
-                confirmButton.text = "Done"
-                confirmButton.isDisable = true
-                pollJob?.cancel()
-                onLoggedIn(account.name)
-            }.onFailure { error ->
-                failConfirm("Login failed: ${error.message ?: error::class.simpleName}")
+
+                result.onSuccess { account ->
+                    withContext(Dispatchers.IO) {
+                        SessionSecretStore.save(session, account)
+                    }
+                    progress.isVisible = false
+                    statusLabel.text = "Signed in as ${account.name}. Saved to system keyring."
+                    confirmButton.text = "Done"
+                    confirmButton.isDisable = true
+                    openButton.isDisable = true
+                    pollJob?.cancel()
+                    runCatching { browserProcess?.destroy() }
+                    onLoggedIn(account.name)
+                }.onFailure { error ->
+                    failConfirm("Login failed: ${error.message ?: error::class.simpleName}")
+                }
+            } catch (t: Throwable) {
+                failConfirm("Confirm failed: ${t.message}")
             }
         }
     }

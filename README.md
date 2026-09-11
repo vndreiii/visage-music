@@ -16,7 +16,7 @@ Upstream Android clone may live in `vivi-music/` locally (gitignored).
 ./gradlew :desktop:run
 ```
 
-Sign in with Google in the WebView. When YouTube Music loads, press **Confirm login**. Credentials are saved in your system keyring under service `vivi-desktop` (`yt-music-session`, `yt-music-account`).
+A small control window opens and launches **Chromium** (Google blocks JavaFX WebView). Sign in there; when YouTube Music loads, press **Confirm login**. Session + account are saved in your system keyring (`vivi-desktop`).
 
 ## Tests
 
