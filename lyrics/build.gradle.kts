@@ -16,5 +16,19 @@ kotlin {
             implementation(libs.ktor.client.encoding)
             implementation(libs.kotlinx.serialization.json)
         }
+        jvmTest.dependencies {
+            implementation(libs.kotlin.test)
+            implementation(libs.junit.jupiter)
+            implementation(libs.kotlinx.coroutines.test)
+        }
+    }
+}
+
+tasks.named<Test>("jvmTest") {
+    useJUnitPlatform {
+        // Optional live-network validate stays opt-in: -PincludeNetworkTests
+        if (!project.hasProperty("includeNetworkTests")) {
+            excludeTags("network")
+        }
     }
 }

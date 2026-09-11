@@ -1,0 +1,25 @@
+{
+  "cases": [
+    { "id": "g01", "kind": "lyrics_ok", "artist": "Rick Astley", "title": "Never Gonna Give You Up", "expect": "success" },
+    { "id": "g02", "kind": "lyrics_ok", "artist": "Queen", "title": "Bohemian Rhapsody", "expect": "success" },
+    { "id": "g03", "kind": "lyrics_ok", "artist": "Michael Jackson", "title": "Billie Jean", "expect": "success" },
+    { "id": "g04", "kind": "lyrics_ok", "artist": "Eagles", "title": "Hotel California", "expect": "success" },
+    { "id": "g05", "kind": "lyrics_ok", "artist": "Ed Sheeran", "title": "Shape of You", "expect": "success" },
+    { "id": "g06", "kind": "lyrics_ok", "artist": "The Weeknd", "title": "Blinding Lights", "expect": "success" },
+    { "id": "g07", "kind": "lyrics_ok", "artist": "Nirvana", "title": "Smells Like Teen Spirit", "expect": "success" },
+    { "id": "g08", "kind": "lyrics_ok", "artist": "Led Zeppelin", "title": "Stairway to Heaven", "expect": "success" },
+    { "id": "g09", "kind": "lyrics_ok", "artist": "Adele", "title": "Hello", "expect": "success" },
+    { "id": "g10", "kind": "lyrics_ok", "artist": "Billie Eilish", "title": "bad guy", "expect": "success" },
+    { "id": "g11", "kind": "lyrics_ok", "artist": "Taylor Swift", "title": "Blank Space", "expect": "success" },
+    { "id": "g12", "kind": "lyrics_ok", "artist": "Bruno Mars", "title": "Uptown Funk", "expect": "success" },
+
+    { "id": "b01", "kind": "lyrics_miss", "artist": "", "title": "", "expect": "failure", "reason": "empty artist and title" },
+    { "id": "b02", "kind": "lyrics_miss", "artist": " ", "title": " ", "expect": "failure", "reason": "whitespace only" },
+    { "id": "b03", "kind": "lyrics_miss", "artist": "!!!", "title": "@@@", "expect": "failure", "reason": "punctuation junk" },
+    { "id": "b04", "kind": "lyrics_miss", "artist": "zzzzfakeartist999", "title": "zzzznonexistenttrack999xyz", "expect": "failure", "reason": "invented artist/title" },
+    { "id": "b05", "kind": "lyrics_miss", "artist": "Nobody", "title": "This Track Definitely Does Not Exist On LrcLib 99999", "expect": "failure", "reason": "known miss phrase" },
+    { "id": "b06", "kind": "lyrics_miss", "artist": "\t", "title": "\n", "expect": "failure", "reason": "tab/newline only" },
+    { "id": "b07", "kind": "lyrics_miss", "artist": "{}", "title": "[]", "expect": "failure", "reason": "brace/bracket junk" },
+    { "id": "b08", "kind": "lyrics_miss", "artist": "...", "title": "***", "expect": "failure", "reason": "ellipsis/asterisk junk" }
+  ]
+}
