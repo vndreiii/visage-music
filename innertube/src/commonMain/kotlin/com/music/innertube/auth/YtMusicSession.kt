@@ -21,11 +21,27 @@ data class YtMusicSession(
     }
 
     /**
-     * Applies this session to [YouTube] and validates via [YouTube.accountInfo],
+     * Applies this session to [YouTube] and validates via [accountInfo],
      * mirroring the upstream login confirm path.
+     *
+     * On failure, restores the prior [YouTube] cookie / visitorData / dataSyncId
+     * so a bad session does not leave the singleton corrupted.
+     *
+     * @param accountInfo injectable for offline tests; defaults to [YouTube.accountInfo].
      */
-    suspend fun validate(): Result<AccountInfo> {
+    suspend fun validate(
+        accountInfo: suspend () -> Result<AccountInfo> = { YouTube.accountInfo() },
+    ): Result<AccountInfo> {
+        val previousCookie = YouTube.cookie
+        val previousVisitorData = YouTube.visitorData
+        val previousDataSyncId = YouTube.dataSyncId
         applyToYouTube()
-        return YouTube.accountInfo()
+        val result = accountInfo()
+        if (result.isFailure) {
+            YouTube.cookie = previousCookie
+            YouTube.visitorData = previousVisitorData
+            YouTube.dataSyncId = previousDataSyncId
+        }
+        return result
     }
 }

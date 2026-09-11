@@ -1,6 +1,7 @@
 package com.music.innertube.auth
 
 import com.music.innertube.YouTube
+import com.music.innertube.models.AccountInfo
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Tag
 import org.junit.jupiter.api.Test
@@ -21,6 +22,55 @@ class YtMusicSessionTest {
         assertEquals(session.cookie, YouTube.cookie)
         assertEquals(session.visitorData, YouTube.visitorData)
         assertEquals(session.dataSyncId, YouTube.dataSyncId)
+    }
+
+    @Test
+    fun validate_onFailure_restoresPriorYouTubeSession() = runTest {
+        YouTube.cookie = "good-cookie"
+        YouTube.visitorData = "good-visitor"
+        YouTube.dataSyncId = "good-sync"
+
+        val bad = YtMusicSession(
+            cookie = "bad-cookie",
+            visitorData = "bad-visitor",
+            dataSyncId = "bad-sync",
+        )
+        val result = bad.validate {
+            Result.failure(IllegalStateException("stub accountInfo failure"))
+        }
+
+        assertTrue(result.isFailure)
+        assertEquals("good-cookie", YouTube.cookie)
+        assertEquals("good-visitor", YouTube.visitorData)
+        assertEquals("good-sync", YouTube.dataSyncId)
+    }
+
+    @Test
+    fun validate_onSuccess_keepsAppliedSession() = runTest {
+        YouTube.cookie = "old-cookie"
+        YouTube.visitorData = "old-visitor"
+        YouTube.dataSyncId = "old-sync"
+
+        val session = YtMusicSession(
+            cookie = "new-cookie",
+            visitorData = "new-visitor",
+            dataSyncId = "new-sync",
+        )
+        val account = AccountInfo(
+            name = "Test",
+            email = "t@example.com",
+            channelHandle = null,
+            thumbnailUrl = null,
+        )
+        val result = session.validate {
+            Result.success(account)
+        }
+
+        assertTrue(result.isSuccess)
+        assertEquals(account, result.getOrNull())
+        assertEquals("new-cookie", YouTube.cookie)
+        assertEquals("new-visitor", YouTube.visitorData)
+        assertEquals("new-sync", YouTube.dataSyncId)
     }
 
     @Test
