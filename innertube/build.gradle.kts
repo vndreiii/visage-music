@@ -12,6 +12,7 @@ kotlin {
             implementation(libs.ktor.client.content.negotiation)
             implementation(libs.ktor.serialization.json)
             implementation(libs.ktor.client.encoding)
+            implementation(libs.kotlinx.serialization.json)
             implementation(libs.brotli)
             implementation(libs.newpipeextractor)
         }
@@ -22,6 +23,15 @@ kotlin {
             implementation(libs.kotlin.test)
             implementation(libs.junit.jupiter)
             implementation(libs.kotlinx.coroutines.test)
+        }
+    }
+}
+
+tasks.named<Test>("jvmTest") {
+    useJUnitPlatform {
+        // Optional live-network validate stays opt-in: -PincludeNetworkTests
+        if (!project.hasProperty("includeNetworkTests")) {
+            excludeTags("network")
         }
     }
 }

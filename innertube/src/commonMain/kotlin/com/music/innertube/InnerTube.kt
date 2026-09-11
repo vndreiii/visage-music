@@ -34,8 +34,6 @@ import kotlin.io.encoding.Base64
  */
 @OptIn(ExperimentalEncodingApi::class)
 class InnerTube {
-    private var httpClient = createClient()
-
     var locale = YouTubeLocale(
         gl = Locale.getDefault().country,
         hl = Locale.getDefault().toLanguageTag()
@@ -55,7 +53,7 @@ class InnerTube {
             httpClient.close()
             httpClient = createClient()
         }
-    
+
     var proxyAuth: String? = null
 
     var ipVersion: IpVersion = IpVersion.AUTO
@@ -66,6 +64,10 @@ class InnerTube {
         }
 
     var useLoginForBrowse: Boolean = false
+
+    // Must be initialized after proxy/proxyAuth/ipVersion — createClient reads them eagerly
+    // (unlike upstream OkHttp engine lambdas that capture fields lazily).
+    private var httpClient = createClient()
 
     @OptIn(ExperimentalSerializationApi::class)
     private fun createClient() = createHttpClient {
