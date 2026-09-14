@@ -1,0 +1,167 @@
+package com.music.vivi.player.mpv
+
+import com.sun.jna.Pointer
+import com.sun.jna.StringArray
+import com.sun.jna.ptr.DoubleByReference
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
+
+/**
+ * Thin audio-only libmpv wrapper. Position/duration polled from a dedicated thread.
+ */
+class MpvPlayer(
+    private val onState: (State) -> Unit,
+    private val onPosition: (positionSec: Double, durationSec: Double) -> Unit,
+    private val onError: (String) -> Unit = {},
+) : AutoCloseable {
+    enum class State { Idle, Playing, Paused, Ended, Error }
+
+    private val lib = MpvLib.INSTANCE
+    private val handle: Pointer = lib.mpv_create()
+        ?: error("mpv_create failed — is libmpv.so installed?")
+    private val running = AtomicBoolean(true)
+    private val lastEndError = AtomicReference<String?>(null)
+    private val eventThread: Thread
+
+    init {
+        check(lib.mpv_set_option_string(handle, "vid", "no") == 0) { "set vid=no failed" }
+        check(lib.mpv_set_option_string(handle, "terminal", "no") == 0)
+        check(lib.mpv_set_option_string(handle, "msg-level", "ffmpeg=error,ao=error,cplayer=error") == 0)
+        // Direct CDN URLs — don't let mpv's ytdl hook re-fetch and 403.
+        runCatching { lib.mpv_set_option_string(handle, "ytdl", "no") }
+        runCatching { lib.mpv_set_option_string(handle, "demuxer-max-bytes", "64MiB") }
+        runCatching { lib.mpv_set_option_string(handle, "cache", "yes") }
+        check(lib.mpv_initialize(handle) == 0) {
+            "mpv_initialize failed: ${lib.mpv_error_string(-1)}"
+        }
+        lib.mpv_observe_property(handle, 0, "pause", MpvLib.MPV_FORMAT_FLAG)
+        lib.mpv_observe_property(handle, 0, "time-pos", MpvLib.MPV_FORMAT_DOUBLE)
+        lib.mpv_observe_property(handle, 0, "duration", MpvLib.MPV_FORMAT_DOUBLE)
+
+        eventThread = thread(name = "mpv-events", isDaemon = true) {
+            while (running.get()) {
+                try {
+                    val ptr = lib.mpv_wait_event(handle, 0.2) ?: continue
+                    val event = MpvEvent(ptr).also { it.read() }
+                    when (event.event_id) {
+                        MpvLib.MPV_EVENT_SHUTDOWN -> break
+                        MpvLib.MPV_EVENT_END_FILE -> {
+                            // loadfile replace emits END_FILE with reason=STOP — that must not
+                            // look like a finished track or next/prev will double-fire.
+                            val end = event.data?.let { MpvEventEndFile(it).also { e -> e.read() } }
+                            val reason = end?.reason ?: MpvLib.MPV_END_FILE_REASON_EOF
+                            val endErr = end?.error ?: event.error
+                            when (reason) {
+                                MpvLib.MPV_END_FILE_REASON_EOF -> onState(State.Ended)
+                                MpvLib.MPV_END_FILE_REASON_ERROR -> {
+                                    val msg = lib.mpv_error_string(endErr) ?: "endfile error $endErr"
+                                    lastEndError.set(msg)
+                                    onError(msg)
+                                    onState(State.Error)
+                                }
+                                else -> {
+                                    // STOP / QUIT / REDIRECT — intentional unload; ignore for queue
+                                }
+                            }
+                        }
+                        MpvLib.MPV_EVENT_FILE_LOADED, MpvLib.MPV_EVENT_PLAYBACK_RESTART -> {
+                            lastEndError.set(null)
+                            onState(State.Playing)
+                        }
+                    }
+                    pollTime()
+                } catch (t: Throwable) {
+                    // Never let a callback crash kill the event loop — that freezes
+                    // auto-advance and leaves Next/EOF dead for the rest of the session.
+                    System.err.println(
+                        "mpv-events handler error: ${t.javaClass.simpleName}: ${t.message}",
+                    )
+                    t.printStackTrace(System.err)
+                }
+            }
+        }
+    }
+
+    fun load(url: String, httpHeaders: Map<String, String> = emptyMap()) {
+        lastEndError.set(null)
+        if (httpHeaders.isNotEmpty()) {
+            // mpv accepts newline- or comma-separated headers; prefer newlines (cookies may contain commas).
+            val headerField = httpHeaders.entries.joinToString("\n") { (k, v) -> "$k: $v" }
+            val code = lib.mpv_set_property_string(handle, "http-header-fields", headerField)
+            if (code < 0) {
+                onError("http-header-fields: ${lib.mpv_error_string(code)}")
+            }
+        } else {
+            lib.mpv_set_property_string(handle, "http-header-fields", "")
+        }
+        command("loadfile", url, "replace")
+        // Always start unmuted/unpaused after a skip — FILE_LOADED also fires Playing,
+        // but some CDNs delay that event and left the UI stuck needing a manual Play.
+        command("set", "pause", "no")
+        onState(State.Playing)
+    }
+
+    fun play() {
+        command("set", "pause", "no")
+        onState(State.Playing)
+    }
+
+    fun pause() {
+        command("set", "pause", "yes")
+        onState(State.Paused)
+    }
+
+    fun stop() {
+        command("stop")
+        onState(State.Idle)
+    }
+
+    /** Hard-cut audio for an immediate track change (search/playlist pick / skip). */
+    fun halt() {
+        runCatching { lib.mpv_command(handle, StringArray(arrayOf("stop"))) }
+        runCatching { lib.mpv_set_property_string(handle, "pause", "yes") }
+        // Keep user volume — do not reset
+    }
+
+    /** mpv volume is 0–100 (can go higher; we clamp in the controller). */
+    fun setVolume(percent: Int) {
+        val v = percent.coerceIn(0, 150)
+        runCatching { lib.mpv_set_property_string(handle, "volume", v.toString()) }
+    }
+
+    fun seek(positionSec: Double) {
+        command("seek", positionSec.toString(), "absolute")
+    }
+
+    fun lastErrorMessage(): String? = lastEndError.get()
+
+    private fun pollTime() {
+        val pos = DoubleByReference()
+        val dur = DoubleByReference()
+        val posOk = lib.mpv_get_property(handle, "time-pos", MpvLib.MPV_FORMAT_DOUBLE, pos) == 0
+        val durOk = lib.mpv_get_property(handle, "duration", MpvLib.MPV_FORMAT_DOUBLE, dur) == 0
+        if (posOk || durOk) {
+            onPosition(
+                if (posOk) pos.value else 0.0,
+                if (durOk) dur.value else 0.0,
+            )
+        }
+    }
+
+    private fun command(vararg args: String) {
+        val code = lib.mpv_command(handle, StringArray(args))
+        if (code < 0) {
+            val msg = "mpv_command ${args.firstOrNull()} failed: ${lib.mpv_error_string(code)}"
+            onError(msg)
+            onState(State.Error)
+            error(msg)
+        }
+    }
+
+    override fun close() {
+        running.set(false)
+        runCatching { lib.mpv_terminate_destroy(handle) }
+        runCatching { eventThread.join(2000) }
+    }
+}

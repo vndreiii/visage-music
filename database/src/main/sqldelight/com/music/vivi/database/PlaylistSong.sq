@@ -1,0 +1,16 @@
+clearForPlaylist:
+DELETE FROM playlist_song WHERE playlist_id = ?;
+
+upsert:
+INSERT OR REPLACE INTO playlist_song(playlist_id, song_id, position)
+VALUES (?, ?, ?);
+
+songsForPlaylist:
+SELECT song.*
+FROM playlist_song
+JOIN song ON song.id = playlist_song.song_id
+WHERE playlist_song.playlist_id = ?
+ORDER BY playlist_song.position ASC;
+
+countForPlaylist:
+SELECT COUNT(*) AS cnt FROM playlist_song WHERE playlist_id = ?;

@@ -1,0 +1,33 @@
+insert:
+INSERT INTO play_event(song_id, title, artists, thumbnail, duration_sec, played_at_ms)
+VALUES (?, ?, ?, ?, ?, ?);
+
+selectRecent:
+SELECT *
+FROM play_event
+ORDER BY played_at_ms DESC
+LIMIT ?;
+
+selectRecentDistinct:
+SELECT pe.*
+FROM play_event pe
+INNER JOIN (
+  SELECT song_id, MAX(played_at_ms) AS max_played
+  FROM play_event
+  GROUP BY song_id
+) latest ON pe.song_id = latest.song_id AND pe.played_at_ms = latest.max_played
+ORDER BY pe.played_at_ms DESC
+LIMIT ?;
+
+clearAll:
+DELETE FROM play_event;
+
+deleteById:
+DELETE FROM play_event WHERE id = ?;
+
+lastForSong:
+SELECT *
+FROM play_event
+WHERE song_id = ?
+ORDER BY played_at_ms DESC
+LIMIT 1;

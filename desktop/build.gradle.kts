@@ -16,6 +16,7 @@ javafx {
 
 dependencies {
     implementation(project(":innertube"))
+    implementation(project(":player"))
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.javafx)
     implementation(libs.java.keyring)
@@ -34,4 +35,5 @@ application {
 tasks.named<JavaExec>("run") {
     // Prefer a real display; fail clearly if headless.
     environment("DISPLAY", System.getenv("DISPLAY") ?: ":0")
+    environment("LC_NUMERIC", "C")
 }

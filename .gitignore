@@ -22,3 +22,10 @@ local.properties
 **/keystore/
 .worktrees/
 .superpowers/
+
+# Local agent / junk (not product)
+.cursor-loops/
+META-INF/
+skill-observations/
+review.diff
+*.bak

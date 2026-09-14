@@ -1,0 +1,14 @@
+upsert:
+INSERT OR REPLACE INTO playlist(
+  id, title, author, thumbnail, description,
+  song_count, total_duration_sec, source, browse_id, updated_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectById:
+SELECT * FROM playlist WHERE id = ?;
+
+selectAll:
+SELECT * FROM playlist ORDER BY updated_ms DESC;
+
+selectBySource:
+SELECT * FROM playlist WHERE source = ? ORDER BY updated_ms DESC;

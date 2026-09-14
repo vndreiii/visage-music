@@ -1,7 +1,7 @@
 package com.music.vivi.desktop.login
 
 import com.music.innertube.auth.YtMusicSession
-import com.music.vivi.desktop.session.SessionSecretStore
+import com.music.vivi.player.session.SessionSecretStore
 import javafx.application.Platform
 import javafx.geometry.Insets
 import javafx.geometry.Pos

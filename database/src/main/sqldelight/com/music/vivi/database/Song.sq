@@ -1,0 +1,14 @@
+upsert:
+INSERT OR REPLACE INTO song(
+  id, title, artists, album, duration_sec, thumbnail,
+  liked, in_library, source, local_path, last_seen_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectById:
+SELECT * FROM song WHERE id = ?;
+
+selectLiked:
+SELECT * FROM song WHERE liked = 1 ORDER BY last_seen_ms DESC;
+
+selectAll:
+SELECT * FROM song ORDER BY last_seen_ms DESC;

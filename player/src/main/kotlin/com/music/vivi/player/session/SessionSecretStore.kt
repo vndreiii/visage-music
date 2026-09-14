@@ -1,4 +1,4 @@
-package com.music.vivi.desktop.session
+package com.music.vivi.player.session
 
 import com.github.javakeyring.Keyring
 import com.github.javakeyring.PasswordAccessException

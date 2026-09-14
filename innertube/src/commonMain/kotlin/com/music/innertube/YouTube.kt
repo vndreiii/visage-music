@@ -1203,8 +1203,9 @@ object YouTube {
         return ""
     }
 
-    suspend fun addToPlaylist(playlistId: String, videoId: String) = runCatching {
+    suspend fun addToPlaylist(playlistId: String, videoId: String): Result<Unit> = runCatching {
         innerTube.addToPlaylist(WEB_REMIX, playlistId, videoId)
+        Unit
     }
 
     suspend fun addPlaylistToPlaylist(playlistId: String, addPlaylistId: String) = runCatching {
