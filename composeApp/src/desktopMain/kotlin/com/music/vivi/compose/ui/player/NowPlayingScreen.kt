@@ -258,8 +258,8 @@ fun NowPlayingScreen(
                 val bottomChromeH = 60.dp
                 val underQueue = showUnderPlaybar && !showLyrics
                 val mainH = (maxHeight - bottomChromeH).coerceAtLeast(200.dp)
-                val idleStackW = (maxWidth * 0.40f).coerceIn(300.dp, 440.dp)
-                val idleArtSize = minOf(mainH * 0.98f, maxWidth - paneGap - idleStackW)
+                val idleStackW = (maxWidth * 0.48f).coerceIn(360.dp, 560.dp)
+                val idleArtSize = minOf(mainH * 0.92f, maxWidth - paneGap - idleStackW)
                 val idleContentW = (idleArtSize + paneGap + idleStackW).coerceAtMost(maxWidth)
                 val lyricsStackW = (maxWidth * 0.38f).coerceIn(280.dp, 440.dp)
                 val lyricsContentW = maxWidth
@@ -386,6 +386,10 @@ fun NowPlayingScreen(
                             verticalArrangement = Arrangement.Top,
                             horizontalAlignment = Alignment.Start,
                         ) {
+                            // Center title/seek/transport when not filling with under-playbar queue.
+                            if (!underQueue && !showLyrics) {
+                                Spacer(Modifier.weight(1f))
+                            }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                                 PlainAnimatedVisibility(
                                     visible = showLyrics && !hideThumbnail,

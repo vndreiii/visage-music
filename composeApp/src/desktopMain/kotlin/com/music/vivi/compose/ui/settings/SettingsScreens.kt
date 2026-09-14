@@ -484,6 +484,13 @@ fun AppearanceSettingsScreen(navController: NavController) {
         }
 
         SettingsSection("Top bar style") {
+            val topNav = runCatching {
+                TopNavStyle.valueOf(
+                    prefs.getString(PrefKeys.TopNavStyle, TopNavStyle.ICON_ONLY.name),
+                )
+            }.getOrDefault(TopNavStyle.ICON_ONLY)
+            LiveTopNavHeroPreview(style = topNav)
+            SettingsDivider()
             TopNavStyle.entries.forEachIndexed { index, style ->
                 if (index > 0) SettingsDivider()
                 val label = when (style) {
@@ -493,9 +500,8 @@ fun AppearanceSettingsScreen(navController: NavController) {
                 }
                 EnumRadioItem(
                     label = label,
-                    selected = prefs.getString(PrefKeys.TopNavStyle, TopNavStyle.ICON_ONLY.name) == style.name,
+                    selected = topNav == style,
                     onSelect = { prefs.setString(PrefKeys.TopNavStyle, style.name) },
-                    trailing = { TopNavStyleMockup(style) },
                 )
             }
         }
@@ -639,27 +645,13 @@ fun AppearanceSettingsScreen(navController: NavController) {
                 onChecked = { prefs.setBoolean(PrefKeys.EnableCanvas, it) },
             )
             SettingsDivider()
-            val squiggly = prefs.getBoolean(PrefKeys.SquigglySlider, false)
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(end = 16.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Box(Modifier.weight(1f)) {
-                    SwitchItem(
-                        icon = Icons.Outlined.Palette,
-                        title = "Squiggly slider",
-                        subtitle = "Animate the seek bar as a wave",
-                        checked = squiggly,
-                        onChecked = { prefs.setBoolean(PrefKeys.SquigglySlider, it) },
-                    )
-                }
-                SliderStyleMockup(
-                    style = SliderStyle.DEFAULT,
-                    squiggly = squiggly,
-                )
-            }
+            SwitchItem(
+                icon = Icons.Outlined.Palette,
+                title = "Squiggly slider",
+                subtitle = "Animate the seek bar as a wave",
+                checked = prefs.getBoolean(PrefKeys.SquigglySlider, false),
+                onChecked = { prefs.setBoolean(PrefKeys.SquigglySlider, it) },
+            )
         }
 
         SettingsSection("Queue") {
@@ -696,6 +688,13 @@ fun AppearanceSettingsScreen(navController: NavController) {
         }
 
         SettingsSection("Player background") {
+            val playerBg = runCatching {
+                PlayerBackgroundStyle.valueOf(
+                    prefs.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name),
+                )
+            }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
+            LivePlayerBackgroundHeroPreview(style = playerBg)
+            SettingsDivider()
             PlayerBackgroundStyle.entries.forEachIndexed { index, style ->
                 if (index > 0) SettingsDivider()
                 EnumRadioItem(
@@ -703,40 +702,45 @@ fun AppearanceSettingsScreen(navController: NavController) {
                         PlayerBackgroundStyle.LEGACY -> "Legacy"
                         else -> style.name.lowercase().replace('_', ' ')
                     },
-                    selected = prefs.getString(
-                        PrefKeys.PlayerBackgroundStyle,
-                        PlayerBackgroundStyle.GRADIENT.name,
-                    ) == style.name,
+                    selected = playerBg == style,
                     onSelect = { prefs.setString(PrefKeys.PlayerBackgroundStyle, style.name) },
-                    trailing = { PlayerBackgroundMockup(style) },
                 )
             }
         }
 
         SettingsSection("Slider style") {
             val squiggly = prefs.getBoolean(PrefKeys.SquigglySlider, false)
+            val sliderStyle = runCatching {
+                SliderStyle.valueOf(
+                    prefs.getString(PrefKeys.SliderStyle, SliderStyle.DEFAULT.name),
+                )
+            }.getOrDefault(SliderStyle.DEFAULT)
+            LiveSliderStyleHeroPreview(style = sliderStyle, squiggly = squiggly && sliderStyle == SliderStyle.WAVY)
+            SettingsDivider()
             SliderStyle.entries.forEachIndexed { index, style ->
                 if (index > 0) SettingsDivider()
                 EnumRadioItem(
                     label = style.name.lowercase().replaceFirstChar { it.titlecase() },
-                    selected = prefs.getString(PrefKeys.SliderStyle, SliderStyle.DEFAULT.name) == style.name,
+                    selected = sliderStyle == style,
                     onSelect = { prefs.setString(PrefKeys.SliderStyle, style.name) },
-                    trailing = { SliderStyleMockup(style = style, squiggly = squiggly && style == SliderStyle.WAVY) },
                 )
             }
         }
 
         SettingsSection("Buttons") {
+            val buttonsStyle = runCatching {
+                PlayerButtonsStyle.valueOf(
+                    prefs.getString(PrefKeys.PlayerButtonsStyle, PlayerButtonsStyle.DEFAULT.name),
+                )
+            }.getOrDefault(PlayerButtonsStyle.DEFAULT)
+            LivePlayerButtonsHeroPreview(style = buttonsStyle)
+            SettingsDivider()
             PlayerButtonsStyle.entries.forEachIndexed { index, style ->
                 if (index > 0) SettingsDivider()
                 EnumRadioItem(
                     label = style.name.lowercase().replaceFirstChar { it.titlecase() },
-                    selected = prefs.getString(
-                        PrefKeys.PlayerButtonsStyle,
-                        PlayerButtonsStyle.DEFAULT.name,
-                    ) == style.name,
+                    selected = buttonsStyle == style,
                     onSelect = { prefs.setString(PrefKeys.PlayerButtonsStyle, style.name) },
-                    trailing = { PlayerButtonsMockup(style) },
                 )
             }
         }
