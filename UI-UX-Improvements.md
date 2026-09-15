@@ -108,3 +108,16 @@ Add a new dedicated section in the app's settings to manage local files.
 *   **Auto-scan on Startup:** A toggle (`Checkbox` or `Switch`) to quietly look for new files in the background when the app launches.
 *   **Prefer Local Metadata:** Toggle to choose whether local ID3 tags override metadata fetched from the internet (if your app matches local files with online services like Last.fm).
 *   **Clear Local Cache:** A button to wipe the local database and cached covers, useful for debugging or fresh starts.
+
+---
+
+## 5. Playback Transitions: Crossfade & Fade Play/Pause
+The current audio transition logic suffers from implementation flaws that break the expected user experience both audibly and visually.
+
+### A. True Crossfade vs. Sequential Fading
+*   **The Issue:** The current "crossfade" implementation acts as a sequential fade. It fades the volume of Track A down to zero, loads Track B, and then fades Track B's volume up.
+*   **The Fix:** A true crossfade requires **concurrent playback**. Track A and Track B must overlap and play simultaneously for the specified crossfade duration. As Track A's volume ramps down over $X$ seconds at the end of the track, Track B starts playing and its volume ramps up over those same $X$ seconds. This requires the audio engine to maintain two separate player instances (or an audio mixer) so they can overlap.
+
+### B. Fade to Play/Pause UI Sync
+*   **The Issue:** When a user clicks the Play/Pause button, the visual icon doesn't update until the audio volume fade finishes. This creates immediate visual latency, making the app feel unresponsive, laggy, or broken.
+*   **The Fix:** The UI state must be completely decoupled from the audio engine's fade completion. The Play/Pause icon (and the play state in the UI) must toggle **instantly** upon the user's click. The audio engine handles the graceful 500ms volume ramp in the background, but the user immediately sees that their click registered.

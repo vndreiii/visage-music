@@ -208,6 +208,11 @@ fun TrackActionsMenu(
                                             title = t.title,
                                             artist = t.artist,
                                             artworkUrl = t.artworkUrl,
+                                            localPath = t.localPath,
+                                            durationMs = t.durationMs,
+                                            album = t.album,
+                                            lyricsPath = t.lyricsPath,
+                                            embeddedLyrics = t.embeddedLyrics,
                                         ),
                                     )
                                     toastMessage = "Playing next"
@@ -221,6 +226,11 @@ fun TrackActionsMenu(
                                             title = t.title,
                                             artist = t.artist,
                                             artworkUrl = t.artworkUrl,
+                                            localPath = t.localPath,
+                                            durationMs = t.durationMs,
+                                            album = t.album,
+                                            lyricsPath = t.lyricsPath,
+                                            embeddedLyrics = t.embeddedLyrics,
                                         ),
                                     )
                                     toastMessage = "Added to queue"
@@ -361,7 +371,7 @@ private fun TrackActionsPane(
                 label = "Shuffle",
                 onClick = onShuffle,
             )
-            PillAction(
+            if (track?.localPath == null) PillAction(
                 modifier = Modifier.weight(1f),
                 icon = Icons.Outlined.Radio,
                 label = "Start radio",
@@ -382,23 +392,12 @@ private fun TrackActionsPane(
             "Add to the bottom of your queue",
             onAddToQueue,
         )
-        ActionRow(
-            Icons.AutoMirrored.Outlined.PlaylistAdd,
-            "Add to playlist",
-            "Add to one of your playlists",
-            onOpenPlaylists,
-        )
-        ActionRow(Icons.Outlined.Add, "Pin to Speed dial", null) {
-            onToast("Coming soon")
-            onDismiss()
+        if (track?.localPath == null) {
+            ActionRow(Icons.AutoMirrored.Outlined.PlaylistAdd, "Add to playlist", "Add to one of your playlists", onOpenPlaylists)
+            ActionRow(Icons.Outlined.Download, "Make available offline", "Save for offline playback", onDownload)
+            ActionRow(Icons.Outlined.Share, "Share", "Share a link to this item", onShare)
         }
-        ActionRow(
-            Icons.Outlined.Download,
-            "Make available offline",
-            "Save for offline playback",
-            onDownload,
-        )
-        ActionRow(Icons.Outlined.Share, "Share", "Share a link to this item", onShare)
+
     }
 }
 

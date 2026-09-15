@@ -12,13 +12,13 @@ import java.util.concurrent.TimeUnit
 object YtDlpStreamResolver {
     fun available(): Boolean = YtDlpBinary.available()
 
-    suspend fun resolve(videoId: String): ResolvedStream? {
+    suspend fun resolve(videoId: String, quality: StreamQuality = StreamQuality.AUTO): ResolvedStream? {
         val bin = YtDlpBinary.resolve() ?: return null
         val page = "https://music.youtube.com/watch?v=$videoId"
         return runCatching {
             val proc = ProcessBuilder(
                 bin,
-                "-f", "bestaudio/best",
+                "-f", if (quality == StreamQuality.LOW) "worstaudio/bestaudio/best" else "bestaudio/best",
                 "-g",
                 "--no-playlist",
                 "--",

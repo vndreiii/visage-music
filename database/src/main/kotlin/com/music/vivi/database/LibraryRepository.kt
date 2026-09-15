@@ -31,6 +31,11 @@ class LibraryRepository(
             local_path = localPath,
             last_seen_ms = nowMs,
         )
+        db.songQueries.updateMetadata(
+            song.title, song.artists.joinToString { it.name }, song.album?.name,
+            song.duration?.toLong(), song.thumbnail, if (liked) 1L else 0L,
+            if (inLibrary) 1L else 0L, source, localPath, nowMs, song.id,
+        )
     }
 
     /**
@@ -60,6 +65,10 @@ class LibraryRepository(
                 browse_id = playlist.id,
                 updated_ms = nowMs,
             )
+            db.playlistQueries.updateMetadata(
+                playlist.title, playlist.author?.name, playlist.thumbnail, playlist.description,
+                songCount?.toLong(), totalDuration.takeIf { it > 0 }, source, playlist.id, nowMs, playlist.id,
+            )
             db.playlistSongQueries.clearForPlaylist(playlist.id)
             songs.forEachIndexed { index, song ->
                 upsertSong(song, liked = playlist.id == "LM", inLibrary = true, source = source, nowMs = nowMs)
@@ -84,26 +93,14 @@ class LibraryRepository(
 
     fun isLiked(id: String): Boolean {
         val song = db.songQueries.selectById(id).executeAsOneOrNull()
-        if (song?.liked == 1L) return true
-        return db.playlistSongQueries.songsForPlaylist("LM").executeAsList().any { it.id == id }
+        return song?.liked == 1L
     }
 
     fun setLiked(id: String, liked: Boolean) {
+        if (!liked) db.playlistSongQueries.removeSong("LM", id)
         val song = db.songQueries.selectById(id).executeAsOneOrNull()
         if (song != null) {
-            db.songQueries.upsert(
-                id = song.id,
-                title = song.title,
-                artists = song.artists,
-                album = song.album,
-                duration_sec = song.duration_sec,
-                thumbnail = song.thumbnail,
-                liked = if (liked) 1L else 0L,
-                in_library = song.in_library,
-                source = song.source,
-                local_path = song.local_path,
-                last_seen_ms = System.currentTimeMillis(),
-            )
+            db.songQueries.setLiked(if (liked) 1L else 0L, id)
             return
         }
         if (liked) {

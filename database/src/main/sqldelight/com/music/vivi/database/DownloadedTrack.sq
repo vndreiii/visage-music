@@ -1,0 +1,19 @@
+upsert:
+INSERT OR REPLACE INTO downloaded_track(
+  video_id, title, artist, album, duration_sec, file_path, cover_path, downloaded_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+selectAll:
+SELECT * FROM downloaded_track ORDER BY downloaded_at_ms DESC;
+
+selectByVideoId:
+SELECT * FROM downloaded_track WHERE video_id = ?;
+
+deleteByVideoId:
+DELETE FROM downloaded_track WHERE video_id = ?;
+
+deleteAll:
+DELETE FROM downloaded_track;
+
+count:
+SELECT COUNT(*) FROM downloaded_track;

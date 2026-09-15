@@ -1,0 +1,18 @@
+upsert:
+INSERT OR IGNORE INTO local_artist(id, name) VALUES (?, ?);
+
+selectAll:
+SELECT * FROM local_artist ORDER BY name COLLATE NOCASE;
+
+selectById:
+SELECT * FROM local_artist WHERE id = ?;
+
+deleteAll:
+DELETE FROM local_artist;
+
+updateName:
+UPDATE local_artist SET name = ? WHERE id = ?;
+
+deleteEmpty:
+DELETE FROM local_artist WHERE NOT EXISTS (SELECT 1 FROM local_track WHERE local_track.artist_id = local_artist.id)
+AND NOT EXISTS (SELECT 1 FROM local_album WHERE local_album.artist_id = local_artist.id);

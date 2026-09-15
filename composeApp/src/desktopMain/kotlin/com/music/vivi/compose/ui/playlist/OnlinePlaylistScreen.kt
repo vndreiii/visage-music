@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import com.music.vivi.compose.ui.component.PageLoadingState
 import com.music.vivi.compose.ui.component.ViviLoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -128,9 +129,7 @@ fun OnlinePlaylistScreen(
 
     when {
         vm.isLoading && vm.playlist == null -> {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                ViviLoadingIndicator()
-            }
+            PageLoadingState("Loading playlist", detail = true)
         }
         vm.error != null && vm.playlist == null -> {
             Column(

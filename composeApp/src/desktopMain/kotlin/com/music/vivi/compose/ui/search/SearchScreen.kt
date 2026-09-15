@@ -76,6 +76,7 @@ import com.music.vivi.compose.navigation.Routes
 import com.music.vivi.compose.ui.component.ChipsRow
 import com.music.vivi.compose.ui.component.GridThumbnailHeight
 import com.music.vivi.compose.ui.component.NavigationTitle
+import com.music.vivi.compose.ui.component.PageLoadingState
 import com.music.vivi.compose.ui.component.ViviLoadingIndicator
 import com.music.vivi.compose.ui.component.YouTubeGridItem
 import com.music.vivi.compose.ui.component.YouTubeListItem
@@ -84,6 +85,10 @@ import com.music.vivi.core.charts.ChartSuggestion
 import com.music.vivi.core.youtube.YouTubeMusicService
 import com.music.vivi.player.toQueueTrack
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
@@ -109,6 +114,8 @@ fun SearchScreen(navController: NavController) {
     val (playingId, isPlaying) = rememberNowPlayingIds()
     val focusRequester = remember { FocusRequester() }
 
+    var searchJob by remember { mutableStateOf<Job?>(null) }
+    var searchGeneration by remember { mutableStateOf(0) }
     var query by remember { mutableStateOf("") }
     var submittedQuery by remember { mutableStateOf<String?>(null) }
     var suggestions by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -153,24 +160,36 @@ fun SearchScreen(navController: NavController) {
     fun runSearch(target: String) {
         val q = target.trim()
         if (q.isEmpty()) return
+        searchJob?.cancel()
+        val generation = ++searchGeneration
         query = q
         submittedQuery = q
         suggestions = emptyList()
         recommended = emptyList()
         songsPage = null
         filter = SearchFilterType.ALL
-        scope.launch {
+        searchJob = scope.launch {
             loading = true
             error = null
             summaryPage = null
-            yt.searchSummary(q)
-                .onSuccess { summaryPage = it }
-                .onFailure { error = it.message ?: it.toString() }
-            loading = false
+            try {
+                val result = withContext(Dispatchers.IO) { yt.searchSummary(q).getOrThrow() }
+                ensureActive()
+                if (generation == searchGeneration) summaryPage = result
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (generation == searchGeneration) error = e.message ?: "Search failed"
+            } finally {
+                if (generation == searchGeneration) loading = false
+            }
         }
     }
 
     fun autocomplete(suggestion: String) {
+        searchJob?.cancel()
+        searchGeneration++
+        loading = false
         query = suggestion
         submittedQuery = null
         summaryPage = null
@@ -180,10 +199,13 @@ fun SearchScreen(navController: NavController) {
     fun loadMoreSongs() {
         val continuation = songsPage?.continuation ?: return
         if (loadingMore) return
+        val generation = searchGeneration
         scope.launch {
             loadingMore = true
             yt.searchContinuation(continuation)
                 .onSuccess { next ->
+                    ensureActive()
+                    if (generation != searchGeneration) return@onSuccess
                     songsPage = songsPage?.let {
                         it.copy(
                             items = (it.items + next.items).distinctBy { item -> item.id },
@@ -232,6 +254,7 @@ fun SearchScreen(navController: NavController) {
         delay(280)
         yt.searchSuggestions(trimmed)
             .onSuccess {
+                ensureActive()
                 suggestions = it.queries
                 recommended = it.recommendedItems
             }
@@ -243,15 +266,18 @@ fun SearchScreen(navController: NavController) {
 
     LaunchedEffect(submittedQuery, filter) {
         val q = submittedQuery ?: return@LaunchedEffect
-        if (filter == SearchFilterType.SONGS && songsPage == null && !loadingSongs) {
-            scope.launch {
-                loadingSongs = true
-                error = null
-                yt.searchSongs(q)
-                    .onSuccess { songsPage = it }
-                    .onFailure { error = it.message ?: it.toString() }
-                loadingSongs = false
-            }
+        if (filter != SearchFilterType.SONGS || songsPage != null) return@LaunchedEffect
+        loadingSongs = true
+        try {
+            val result = withContext(Dispatchers.IO) { yt.searchSongs(q).getOrThrow() }
+            ensureActive()
+            songsPage = result
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            error = e.message ?: "Couldn't load songs"
+        } finally {
+            loadingSongs = false
         }
     }
 
@@ -293,6 +319,9 @@ fun SearchScreen(navController: NavController) {
             onQueryChange = { query = it },
             onSearch = { runSearch(query) },
             onClear = {
+                searchJob?.cancel()
+                searchGeneration++
+                loading = false
                 query = ""
                 submittedQuery = null
                 summaryPage = null
@@ -304,6 +333,9 @@ fun SearchScreen(navController: NavController) {
             focusRequester = focusRequester,
             showBack = submittedQuery != null,
             onBack = {
+                searchJob?.cancel()
+                searchGeneration++
+                loading = false
                 submittedQuery = null
                 summaryPage = null
                 songsPage = null
@@ -333,8 +365,8 @@ fun SearchScreen(navController: NavController) {
                 .padding(top = 12.dp),
         ) {
             when {
-                loading && summaryPage == null && !showingTypingHints -> Spinner()
-                loadingSongs && songsPage == null && filter == SearchFilterType.SONGS -> Spinner()
+                loading && summaryPage == null && !showingTypingHints -> PageLoadingState("Searching music")
+                loadingSongs && songsPage == null && filter == SearchFilterType.SONGS -> PageLoadingState("Finding songs", detail = true)
                 error != null && summaryPage == null && songsPage == null && !showingTypingHints -> {
                     Column(
                         modifier = Modifier.fillMaxSize().padding(24.dp),

@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowState
+import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -58,6 +59,7 @@ import com.music.vivi.compose.ui.search.SearchScreen
 import com.music.vivi.compose.ui.settings.AccountSettingsScreen
 import com.music.vivi.compose.ui.settings.AppearanceSettingsScreen
 import com.music.vivi.compose.ui.settings.DownloadsSettingsScreen
+import com.music.vivi.compose.ui.settings.LocalOfflineSettingsScreen
 import com.music.vivi.compose.ui.settings.PlayerSettingsScreen
 import com.music.vivi.compose.ui.settings.SettingsHubScreen
 import com.music.vivi.compose.ui.settings.ThemeSettingsScreen
@@ -70,20 +72,6 @@ fun FrameWindowScope.AppScaffold(
     onClose: () -> Unit,
 ) {
     val sessionManager = koinInject<SessionManager>()
-    if (!sessionManager.isLoggedIn()) {
-        Column(Modifier.fillMaxSize()) {
-            ViviTopBar(
-                destinations = emptyList(),
-                currentRoute = null,
-                onNavigate = {},
-                windowState = windowState,
-                onClose = onClose,
-            )
-            LoginGateScreen()
-        }
-        return
-    }
-
     val navController = rememberNavController()
     val prefs = koinInject<DesktopPrefs>()
     val backStack by navController.currentBackStackEntryAsState()
@@ -164,6 +152,7 @@ fun FrameWindowScope.AppScaffold(
                     Box(Modifier.weight(1f).fillMaxSize()) {
                         ViviNavHost(
                             navController = navController,
+                            startDestination = if (sessionManager.isLoggedIn()) Routes.HOME else Routes.LIBRARY,
                             onOpenPinnedQueue = { openPinnedQueue() },
                             onOpenFullscreenQueue = { openFullscreenQueue() },
                             modifier = Modifier.fillMaxSize(),
@@ -218,15 +207,11 @@ fun FrameWindowScope.AppScaffold(
 
 /** Main tab / logo navigation — Home always clears nested playlist/album stacks. */
 fun navigateMain(navController: NavHostController, route: String) {
-    if (route == Routes.HOME) {
-        navController.navigate(Routes.HOME) {
-            popUpTo(Routes.HOME) { inclusive = true }
-            launchSingleTop = true
-        }
-        return
-    }
+    if (navController.currentDestination?.route == route) return
     navController.navigate(route) {
-        popUpTo(Routes.HOME) { saveState = true }
+        // Keep one stable root. Removing Home left saved tab stacks pointing at a
+        // destroyed entry, so later Library clicks could restore the wrong page.
+        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
         launchSingleTop = true
         restoreState = true
     }
@@ -235,13 +220,14 @@ fun navigateMain(navController: NavHostController, route: String) {
 @Composable
 fun ViviNavHost(
     navController: NavHostController,
+    startDestination: String = Routes.HOME,
     modifier: Modifier = Modifier,
     onOpenPinnedQueue: (() -> Unit)? = null,
     onOpenFullscreenQueue: (() -> Unit)? = null,
 ) {
     NavHost(
         navController = navController,
-        startDestination = Routes.HOME,
+        startDestination = startDestination,
         modifier = modifier,
         enterTransition = viviEnterTransition,
         exitTransition = viviExitTransition,
@@ -257,6 +243,7 @@ fun ViviNavHost(
         composable(Routes.SETTINGS_THEME) { ThemeSettingsScreen(navController) }
         composable(Routes.SETTINGS_PLAYER) { PlayerSettingsScreen(navController) }
         composable(Routes.SETTINGS_DOWNLOADS) { DownloadsSettingsScreen(navController) }
+        composable(Routes.SETTINGS_LOCAL_OFFLINE) { LocalOfflineSettingsScreen(navController) }
         composable(Routes.SMOKE) { SmokePlaybackScreen() }
         composable(Routes.NOW_PLAYING) {
             NowPlayingScreen(

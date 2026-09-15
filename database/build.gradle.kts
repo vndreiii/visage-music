@@ -16,9 +16,15 @@ sqldelight {
 }
 
 dependencies {
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.12.2")
     implementation(libs.sqldelight.runtime)
     implementation(libs.sqldelight.sqlite.driver)
     implementation(libs.kotlinx.coroutines.core)
     // Innertube models for mapping helpers
     implementation(project(":innertube"))
+    implementation("net.jthink:jaudiotagger:3.0.1")
 }
+
+tasks.test { useJUnitPlatform() }

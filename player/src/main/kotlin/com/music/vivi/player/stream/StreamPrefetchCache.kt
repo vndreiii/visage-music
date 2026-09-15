@@ -24,9 +24,11 @@ import kotlin.coroutines.coroutineContext
  */
 class StreamPrefetchCache(
     private val scope: CoroutineScope,
+    private val settings: () -> StreamSettings = { StreamSettings() },
 ) {
     private val mutex = Mutex()
-    private val byId = ConcurrentHashMap<String, ResolvedStream>()
+    private data class Entry(val stream: ResolvedStream, val settings: StreamSettings, val createdMs: Long)
+    private val byId = ConcurrentHashMap<String, Entry>()
 
     @Volatile
     var previousId: String? = null
@@ -43,12 +45,20 @@ class StreamPrefetchCache(
     private var prefetchJob: Job? = null
     private var warmJob: Job? = null
 
-    fun get(videoId: String): ResolvedStream? = byId[videoId]
+    fun get(videoId: String): ResolvedStream? = byId[videoId]?.takeIf {
+        it.settings == settings() && System.currentTimeMillis() - it.createdMs < 10 * 60_000L
+    }?.stream
+
+    private fun put(videoId: String, resolved: ResolvedStream, config: StreamSettings) {
+        byId[videoId] = Entry(resolved, config, System.currentTimeMillis())
+        if (byId.size > 12) byId.entries.minByOrNull { it.value.createdMs }?.let { byId.remove(it.key) }
+    }
 
     suspend fun resolveOrGet(videoId: String): ResolvedStream {
-        byId[videoId]?.let { return it }
-        val resolved = withContext(Dispatchers.IO) { StreamResolver.resolve(videoId) }
-        byId[videoId] = resolved
+        get(videoId)?.let { return it }
+        val config = settings()
+        val resolved = withContext(Dispatchers.IO) { StreamResolver.resolve(videoId, settings = config) }
+        put(videoId, resolved, config)
         return resolved
     }
 
@@ -60,7 +70,7 @@ class StreamPrefetchCache(
                 previousId = oldCurrent
             }
             currentId = videoId
-            byId[videoId] = resolved
+            put(videoId, resolved, settings())
             if (nextId == videoId) nextId = null
         }
     }

@@ -31,6 +31,7 @@ import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import com.music.vivi.compose.ui.component.PageLoadingState
 import com.music.vivi.compose.ui.component.ViviLoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -252,9 +253,9 @@ fun HomeScreen(navController: NavController) {
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
 
-    LaunchedEffect(Unit) {
-        vm.loadInitial()
-        focusRequester.requestFocus()
+    LaunchedEffect(Unit) { vm.loadInitial() }
+    LaunchedEffect(vm.homePage != null) {
+        if (vm.homePage != null) focusRequester.requestFocus()
     }
 
     LaunchedEffect(listState, vm.homePage?.continuation) {
@@ -278,9 +279,7 @@ fun HomeScreen(navController: NavController) {
 
     when {
         vm.isLoading && vm.homePage == null -> {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                ViviLoadingIndicator()
-            }
+            PageLoadingState("Finding your next listen", detail = false)
         }
         vm.error != null && vm.homePage == null -> {
             Column(
@@ -359,7 +358,9 @@ fun HomeScreen(navController: NavController) {
                         }
                     }
 
-                    val sections = vm.homePage?.sections.orEmpty()
+                    val sections = remember(vm.homePage, vm.accountPlaylists) {
+                        prepareHomeSections(vm.homePage?.sections.orEmpty(), vm.accountPlaylists.map { it.id }.toSet())
+                    }
                     val (quickPicks, otherSections) = sections.partition { it.isQuickPicks() }
                     val showAccountPlaylists =
                         vm.selectedChip == null && vm.accountPlaylists.isNotEmpty()
@@ -422,16 +423,17 @@ fun HomeScreen(navController: NavController) {
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(328.dp)
+                                        .height(244.dp)
                                         .horizontalWheelScroll(rowState),
                                 ) {
                                     items(
                                         items = vm.accountPlaylists.distinctBy { it.id },
                                         key = { it.id },
                                     ) { item ->
-                                        PlaylistShelfCard(
+                                        YouTubeGridItem(
                                             item = item,
                                             onClick = { onYtItem(item) },
+                                            modifier = Modifier.width(180.dp),
                                         )
                                     }
                                 }
@@ -444,7 +446,7 @@ fun HomeScreen(navController: NavController) {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(top = 4.dp, bottom = 28.dp),
+                        contentPadding = PaddingValues(top = 4.dp, bottom = 128.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         item(key = "chips") {
@@ -632,7 +634,7 @@ private fun HomeSectionBlock(
         if (shuffleNonce == 0) distinct else distinct.shuffled()
     }
     // Quick picks: taller grid (6 rows) + denser columns so more tracks show at once.
-    val songGridRows = if (isQuickPicks) 6 else 4
+    val songGridRows = if (isQuickPicks) 6.coerceAtMost(displaySongs.size.coerceAtLeast(1)) else 4.coerceAtMost(displaySongs.size.coerceAtLeast(1))
     val songGridItemWidth =
         if (isQuickPicks) (horizontalLazyGridItemWidth * 0.88f).coerceAtLeast(240.dp)
         else horizontalLazyGridItemWidth
@@ -707,13 +709,13 @@ private fun HomeSectionBlock(
             hero -> {
                 val rowState = rememberLazyListState()
                 val playlistsOnly = sectionData.items.all { it is PlaylistItem }
-                val tall = playlistsOnly && !halfWidth
+                val tall = false
                 val cardH = when {
                     tall -> 320.dp
                     halfWidth -> 220.dp
-                    else -> HeroCardHeight
+                    else -> 260.dp
                 }
-                val cardW = if (halfWidth) 168.dp else HeroCardWidth
+                val cardW = if (halfWidth) 168.dp else 200.dp
                 LazyRow(
                     state = rowState,
                     contentPadding = PaddingValues(horizontal = if (halfWidth) 4.dp else 12.dp),
@@ -725,10 +727,11 @@ private fun HomeSectionBlock(
                 ) {
                     items(sectionData.items, key = { it.id }) { item ->
                         when {
-                            item is PlaylistItem && tall -> {
-                                PlaylistShelfCard(
+                            item is PlaylistItem -> {
+                                YouTubeGridItem(
                                     item = item,
                                     onClick = { onYtItem(item, emptyList()) },
+                                    modifier = Modifier.width(cardW),
                                 )
                             }
                             itemUsesLargeCard(item, sectionData) -> {

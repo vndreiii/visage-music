@@ -75,6 +75,7 @@ import com.materialkolor.dynamicColorScheme
 import com.music.innertube.models.AccountInfo
 import com.music.vivi.compose.download.XdgUserDirs
 import com.music.vivi.compose.navigation.Routes
+import com.music.vivi.database.DatabaseFactory
 import com.music.vivi.compose.prefs.AudioQuality
 import com.music.vivi.compose.prefs.DarkMode
 import com.music.vivi.compose.prefs.DefaultThemeColorArgb
@@ -103,7 +104,7 @@ import org.koin.compose.koinInject
 
 /** Forces recomposition of the *caller* when prefs change (not just a child). */
 @Composable
-private fun rememberPrefsVersion(prefs: DesktopPrefs): Int {
+internal fun rememberPrefsVersion(prefs: DesktopPrefs): Int {
     var version by remember { mutableIntStateOf(0) }
     DisposableEffect(prefs) {
         val listener = { version += 1 }
@@ -180,8 +181,15 @@ fun SettingsHubScreen(navController: NavController) {
                 SettingsNavItem(
                     icon = Icons.Outlined.Download,
                     title = "Downloads",
-                    subtitle = "Offline files folder, format, quality",
+                    subtitle = "Offline format and quality",
                     onClick = { navController.navigate(Routes.SETTINGS_DOWNLOADS) },
+                )
+                SettingsDivider()
+                SettingsNavItem(
+                    icon = Icons.Outlined.Folder,
+                    title = "Local / Offline",
+                    subtitle = "Folders, scan, managed offline library",
+                    onClick = { navController.navigate(Routes.SETTINGS_LOCAL_OFFLINE) },
                 )
                 SettingsDivider()
                 SettingsNavItem(
@@ -613,20 +621,13 @@ fun AppearanceSettingsScreen(navController: NavController) {
         }
 
         SettingsSection("Player") {
+            LivePlayerLayoutHeroPreview(framed = prefs.getBoolean(PrefKeys.UsePlayerV2, false))
             SwitchItem(
                 icon = Icons.Outlined.SmartDisplay,
-                title = "Player V2",
-                subtitle = "Alternate now-playing layout",
+                title = "Framed player controls",
+                subtitle = "A rounded translucent panel in Now Playing",
                 checked = prefs.getBoolean(PrefKeys.UsePlayerV2, false),
                 onChecked = { prefs.setBoolean(PrefKeys.UsePlayerV2, it) },
-            )
-            SettingsDivider()
-            SwitchItem(
-                icon = Icons.Outlined.DarkMode,
-                title = "New player design",
-                subtitle = null,
-                checked = prefs.getBoolean(PrefKeys.UseNewPlayerDesign, false),
-                onChecked = { prefs.setBoolean(PrefKeys.UseNewPlayerDesign, it) },
             )
             SettingsDivider()
             SwitchItem(
@@ -681,7 +682,7 @@ fun AppearanceSettingsScreen(navController: NavController) {
             SwitchItem(
                 icon = Icons.Outlined.SmartDisplay,
                 title = "Persistent queue",
-                subtitle = "Remember queue across launches (when wired)",
+                subtitle = "Restore your queue and position at startup; press Play to resume",
                 checked = prefs.getBoolean(PrefKeys.PersistentQueue, true),
                 onChecked = { prefs.setBoolean(PrefKeys.PersistentQueue, it) },
             )
@@ -715,7 +716,7 @@ fun AppearanceSettingsScreen(navController: NavController) {
                     prefs.getString(PrefKeys.SliderStyle, SliderStyle.DEFAULT.name),
                 )
             }.getOrDefault(SliderStyle.DEFAULT)
-            LiveSliderStyleHeroPreview(style = sliderStyle, squiggly = squiggly && sliderStyle == SliderStyle.WAVY)
+            LiveSliderStyleHeroPreview(style = sliderStyle, squiggly = squiggly)
             SettingsDivider()
             SliderStyle.entries.forEachIndexed { index, style ->
                 if (index > 0) SettingsDivider()
@@ -769,7 +770,7 @@ fun PlayerSettingsScreen(navController: NavController) {
             SwitchItem(
                 icon = Icons.AutoMirrored.Outlined.VolumeUp,
                 title = "Prefer JioSaavn when available",
-                subtitle = "Env VIVI_SAAVN=0 still disables at process start",
+                subtitle = "Use a matching JioSaavn stream for the next song",
                 checked = saavn,
                 onChecked = { prefs.setBoolean(PrefKeys.SaavnEnabled, it) },
             )
@@ -791,7 +792,7 @@ fun PlayerSettingsScreen(navController: NavController) {
             SwitchItem(
                 icon = Icons.Outlined.GraphicEq,
                 title = "Crossfade on skip / next",
-                subtitle = "Volume ramp out → load → ramp in (single player)",
+                subtitle = "Blend songs when skipping and near the end of a track",
                 checked = crossfade,
                 onChecked = { prefs.setBoolean(PrefKeys.CrossfadeEnabled, it) },
             )
@@ -854,10 +855,10 @@ fun DownloadsSettingsScreen(navController: NavController) {
     val prefsVersion = rememberPrefsVersion(prefs)
     @Suppress("UNUSED_VARIABLE")
     val observe = prefsVersion
-    val systemDownloads = remember { XdgUserDirs.downloads().absolutePath }
+    val managedOffline = remember { DatabaseFactory.offlineDir().absolutePath }
     val storedPath = prefs.getString(PrefKeys.DownloadPath, "")
-    var pathDraft by remember(storedPath, systemDownloads) {
-        mutableStateOf(storedPath.ifBlank { systemDownloads })
+    var pathDraft by remember(storedPath, managedOffline) {
+        mutableStateOf(storedPath.ifBlank { managedOffline })
     }
     val format = runCatching {
         DownloadAudioFormat.valueOf(
@@ -911,18 +912,18 @@ fun DownloadsSettingsScreen(navController: NavController) {
                 ) {
                     TextButton(
                         onClick = {
-                            pathDraft = systemDownloads
+                            pathDraft = managedOffline
                             prefs.setString(PrefKeys.DownloadPath, "")
                         },
                     ) {
-                        Text("Use system Downloads")
+                        Text("Use managed offline folder")
                     }
                     TextButton(
                         onClick = {
                             val trimmed = pathDraft.trim()
                             prefs.setString(
                                 PrefKeys.DownloadPath,
-                                if (trimmed.isEmpty() || trimmed == systemDownloads) "" else trimmed,
+                                if (trimmed.isEmpty() || trimmed == managedOffline) "" else trimmed,
                             )
                         },
                     ) {
@@ -930,7 +931,7 @@ fun DownloadsSettingsScreen(navController: NavController) {
                     }
                 }
                 Text(
-                    "Default: $systemDownloads",
+                    "Default: $managedOffline (app-managed offline library)",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1044,7 +1045,7 @@ private fun SettingsGroupCard(content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun SettingsSection(
+internal fun SettingsSection(
     title: String,
     initiallyExpanded: Boolean = true,
     content: @Composable () -> Unit,
@@ -1099,7 +1100,7 @@ private fun SettingsDivider() {
 }
 
 @Composable
-private fun SettingsBackHeader(title: String, onBack: () -> Unit) {
+internal fun SettingsBackHeader(title: String, onBack: () -> Unit) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
@@ -1210,7 +1211,7 @@ private fun PrefSecondsSlider(
 }
 
 @Composable
-private fun SwitchItem(
+internal fun SwitchItem(
     icon: ImageVector,
     title: String,
     subtitle: String?,

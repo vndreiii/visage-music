@@ -43,6 +43,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -75,6 +78,7 @@ import com.music.vivi.compose.theme.LocalArtworkPalette
 import com.music.vivi.compose.theme.rememberArtworkPalette
 import com.music.vivi.compose.ui.MiniPlayerBar
 import com.music.vivi.compose.ui.player.background.PlayerBackgroundLayer
+import com.music.vivi.compose.ui.player.playerControlsSurface
 import kotlin.math.PI
 import kotlin.math.sin
 
@@ -277,6 +281,7 @@ fun LiveSliderStyleHeroPreview(
     squiggly: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    var previewProgress by remember { mutableStateOf(0.42f) }
     Surface(
         modifier = modifier
             .fillMaxWidth()
@@ -301,10 +306,14 @@ fun LiveSliderStyleHeroPreview(
                 label = "sliderHero",
                 modifier = Modifier.fillMaxWidth(),
             ) { (previewStyle, previewSquiggly) ->
-                SliderStyleCanvas(
+                com.music.vivi.compose.ui.player.PlayerSeekBar(
                     style = previewStyle,
                     squiggly = previewSquiggly,
-                    progress = 0.42f,
+                    progress = previewProgress,
+                    onScrub = { previewProgress = it },
+                    onScrubFinished = {},
+                    activeColor = MaterialTheme.colorScheme.primary,
+                    inactiveColor = MaterialTheme.colorScheme.outlineVariant,
                     modifier = Modifier.fillMaxWidth().height(40.dp),
                 )
             }
@@ -535,34 +544,41 @@ private fun SliderStyleCanvas(
             else -> 4.5.dp.toPx()
         }
         val amp = when {
-            wavy && expressive -> 5.dp.toPx()
-            wavy -> 3.5.dp.toPx()
+            wavy && expressive -> 2.25.dp.toPx()
+            wavy -> 1.75.dp.toPx()
             else -> 0f
         }
 
-        fun yAt(x: Float): Float {
+        fun waveY(x: Float): Float {
             if (amp == 0f) return midY
             val t = x / size.width + phase
-            return midY + sin(t * 2f * PI.toFloat() * 3f) * amp
+            return midY + sin(t * 2f * PI.toFloat() * 4f) * amp
         }
 
         if (wavy) {
-            val inactive = Path()
-            val active = Path()
-            val steps = 48
-            for (i in 0..steps) {
-                val x = size.width * i / steps
-                val y = yAt(x)
-                if (i == 0) {
-                    inactive.moveTo(x, y)
-                    active.moveTo(x, y)
-                } else {
-                    inactive.lineTo(x, y)
-                    if (x <= size.width * p) active.lineTo(x, y)
-                }
+            val splitX = size.width * p
+            // Inactive (right): straight — no waviness.
+            if (splitX < size.width - 0.5f) {
+                drawLine(
+                    color = track,
+                    start = Offset(splitX, midY),
+                    end = Offset(size.width, midY),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round,
+                )
             }
-            drawPath(inactive, track, style = Stroke(width = stroke, cap = StrokeCap.Round))
-            drawPath(active, primary, style = Stroke(width = stroke, cap = StrokeCap.Round))
+            // Active (left): wavy only.
+            if (splitX > 0.5f) {
+                val active = Path()
+                val steps = ((splitX / 4f).toInt()).coerceIn(8, 80)
+                for (i in 0..steps) {
+                    val x = splitX * i / steps
+                    val y = waveY(x)
+                    if (i == 0) active.moveTo(x, y) else active.lineTo(x, y)
+                }
+                active.lineTo(splitX, midY)
+                drawPath(active, primary, style = Stroke(width = stroke, cap = StrokeCap.Round))
+            }
         } else {
             val trackH = stroke
             drawRoundRect(
@@ -585,13 +601,12 @@ private fun SliderStyleCanvas(
             else -> 6.5.dp.toPx()
         }
         val tx = size.width * p
-        val ty = yAt(tx)
-        drawCircle(color = primary, radius = thumbR, center = Offset(tx, ty))
+        drawCircle(color = primary, radius = thumbR, center = Offset(tx, midY))
         if (expressive) {
             drawCircle(
                 color = Color.White.copy(alpha = 0.9f),
                 radius = thumbR * 0.35f,
-                center = Offset(tx, ty),
+                center = Offset(tx, midY),
             )
         }
     }
@@ -755,6 +770,22 @@ fun ContrastMockup(
                     )
                 }
             }
+        }
+    }
+}
+
+
+@Composable
+fun LivePlayerLayoutHeroPreview(framed: Boolean) {
+    var playing by remember { mutableStateOf(false) }
+    Surface(Modifier.fillMaxWidth().padding(12.dp), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
+        Column(Modifier.padding(16.dp).playerControlsSurface(framed), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text("Your next favourite", style = MaterialTheme.typography.titleLarge)
+            Text("Now Playing preview", style = MaterialTheme.typography.bodySmall)
+            com.music.vivi.compose.ui.player.TransportRow(
+                playing = playing, canPrev = true, canNext = true, enabledPlay = true,
+                onPrev = { playing = false }, onPlayPause = { playing = !playing }, onNext = { playing = true },
+            )
         }
     }
 }

@@ -65,6 +65,8 @@ import com.music.vivi.compose.prefs.LyricsTextAlign
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.compose.ui.component.ViviLoadingIndicator
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 import kotlin.math.abs
 
@@ -120,7 +122,7 @@ fun LyricsPanel(
         )
     }.getOrDefault(LyricsProvider.LRCLIB)
 
-    LaunchedEffect(nowPlaying?.videoId, provider, durationMs) {
+    LaunchedEffect(nowPlaying?.videoId, nowPlaying?.title, provider, durationMs) {
         val track = nowPlaying
         if (track == null) {
             lines = emptyList()
@@ -128,7 +130,14 @@ fun LyricsPanel(
         }
         loading = true
         error = null
-        val result = fetchLyrics(
+        lines = emptyList()
+        val localLyrics = withContext(Dispatchers.IO) {
+            val file = track.lyricsPath?.let { java.io.File(it) }
+                ?: track.localPath?.let { java.io.File(it).let { audio -> java.io.File(audio.parentFile, audio.nameWithoutExtension + ".lrc") } }
+            runCatching { file?.takeIf { it.isFile }?.readText() }.getOrNull()?.takeIf { it.isNotBlank() }
+                ?: track.embeddedLyrics?.takeIf { it.isNotBlank() }
+        }
+        val result = if (localLyrics != null) Result.success(localLyrics) else fetchLyrics(
             provider = provider,
             title = track.title,
             artist = track.artist,

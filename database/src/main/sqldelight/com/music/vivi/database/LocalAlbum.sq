@@ -1,0 +1,29 @@
+upsert:
+INSERT OR IGNORE INTO local_album(
+  id, title, artist_id, artist_name, release_year, cover_path, added_at_ms
+) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+selectAll:
+SELECT * FROM local_album ORDER BY title COLLATE NOCASE;
+
+selectById:
+SELECT * FROM local_album WHERE id = ?;
+
+selectRecentlyAdded:
+SELECT * FROM local_album ORDER BY added_at_ms DESC LIMIT ?;
+
+selectRediscover:
+SELECT * FROM local_album
+WHERE added_at_ms < ?
+ORDER BY added_at_ms ASC
+LIMIT ?;
+
+deleteAll:
+DELETE FROM local_album;
+
+updateMetadata:
+UPDATE local_album SET title = ?, artist_id = ?, artist_name = ?,
+ release_year = ?, cover_path = COALESCE(?, cover_path) WHERE id = ?;
+
+deleteEmpty:
+DELETE FROM local_album WHERE NOT EXISTS (SELECT 1 FROM local_track WHERE local_track.album_id = local_album.id);

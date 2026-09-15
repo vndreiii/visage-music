@@ -11,6 +11,7 @@ import androidx.compose.ui.window.WindowExceptionHandlerFactory
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.music.vivi.compose.App
+import com.music.vivi.compose.local.toQueueTrack
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.core.di.coreModule
@@ -28,7 +29,9 @@ import org.koin.java.KoinJavaComponent.getKoin
 
 val desktopModule = module {
     single { DesktopPrefs() }
-    single { com.music.vivi.compose.download.TrackDownloadService(get()) }
+    single { com.music.vivi.compose.local.QueuePersistence(get(), get()) }
+    single { com.music.vivi.compose.download.TrackDownloadService(get(), get()) }
+    single { com.music.vivi.compose.local.LocalLibraryBootstrap(get(), get()) }
     single<PlaybackFadeSettingsProvider> {
         val prefs = get<DesktopPrefs>()
         PlaybackFadeSettingsProvider {
@@ -52,6 +55,22 @@ val desktopModule = module {
                 override fun setLiked(videoId: String, liked: Boolean) = library.setLiked(videoId, liked)
             },
             fadeSettings = { fades.current() },
+            fileTrackResolver = { id ->
+                when {
+                    id.startsWith("local:") -> get<com.music.vivi.database.LocalMusicRepository>().trackById(id.removePrefix("local:"))?.toQueueTrack()
+                    id.startsWith("offline:") -> get<com.music.vivi.database.DownloadedTrackRepository>().all().firstOrNull { it.video_id == id.removePrefix("offline:") }?.toQueueTrack()
+                    else -> null
+                }
+            },
+            streamSettings = {
+                val prefs = get<DesktopPrefs>()
+                com.music.vivi.player.stream.StreamSettings(
+                    saavnEnabled = prefs.getBoolean(PrefKeys.SaavnEnabled, com.music.vivi.player.stream.SaavnStreamResolver.defaultEnabled()),
+                    quality = runCatching {
+                        com.music.vivi.player.stream.StreamQuality.valueOf(prefs.getString(PrefKeys.AudioQuality, "AUTO"))
+                    }.getOrDefault(com.music.vivi.player.stream.StreamQuality.AUTO),
+                )
+            },
         )
     }
 }
@@ -94,12 +113,31 @@ class SilentAwtExceptionHandler {
 fun main() {
     // Prefer this as Wayland app_id / X11 WM_CLASS where the toolkit honors it
     System.setProperty("awt.appClassName", "com.music.vivi.alex")
+    // Before any Jaudiotagger class loads (local scan is very chatty otherwise).
+    System.setProperty("org.jaudiotagger.level", "OFF")
+    runCatching {
+        val off = java.util.logging.Level.OFF
+        listOf(
+            "org.jaudiotagger",
+            "org.jaudiotagger.audio",
+            "org.jaudiotagger.audio.flac",
+            "org.jaudiotagger.audio.wav",
+            "org.jaudiotagger.audio.mp3",
+            "org.jaudiotagger.tag",
+        ).forEach { name ->
+            java.util.logging.Logger.getLogger(name).apply {
+                level = off
+                useParentHandlers = false
+            }
+        }
+    }
     installSilentExceptionHandlers()
     application {
-        startKoin { modules(coreModule, desktopModule) }
+        remember { startKoin { modules(coreModule, desktopModule) } }
         val windowState = rememberWindowState()
         val closeApp = remember {
             {
+                runCatching { getKoin().get<com.music.vivi.compose.local.QueuePersistence>().close() }
                 runCatching { getKoin().get<PlaybackController>().release() }
                 stopKoin()
                 exitApplication()

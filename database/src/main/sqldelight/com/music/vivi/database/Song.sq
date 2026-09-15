@@ -1,5 +1,5 @@
 upsert:
-INSERT OR REPLACE INTO song(
+INSERT OR IGNORE INTO song(
   id, title, artists, album, duration_sec, thumbnail,
   liked, in_library, source, local_path, last_seen_ms
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
@@ -12,3 +12,11 @@ SELECT * FROM song WHERE liked = 1 ORDER BY last_seen_ms DESC;
 
 selectAll:
 SELECT * FROM song ORDER BY last_seen_ms DESC;
+
+updateMetadata:
+UPDATE song SET title = ?, artists = ?, album = ?, duration_sec = ?, thumbnail = ?,
+ liked = MAX(liked, ?), in_library = MAX(in_library, ?), source = ?,
+ local_path = COALESCE(?, local_path), last_seen_ms = ? WHERE id = ?;
+
+setLiked:
+UPDATE song SET liked = ? WHERE id = ?;

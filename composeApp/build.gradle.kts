@@ -8,6 +8,14 @@ kotlin {
     jvmToolchain(21)
     jvm("desktop")
     sourceSets {
+        val desktopTest by getting {
+            dependencies {
+                implementation(kotlin("test"))
+                implementation(libs.junit)
+                implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.6")
+                implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.9.6")
+            }
+        }
         val desktopMain by getting {
             dependencies {
                 implementation(project(":core"))
@@ -31,6 +39,8 @@ kotlin {
                 implementation(libs.coil.compose)
                 implementation(libs.coil.network.okhttp)
                 implementation(libs.material.kolor)
+                implementation(libs.dbus.java.core)
+                implementation(libs.dbus.java.transport.native.unixsocket)
             }
         }
     }

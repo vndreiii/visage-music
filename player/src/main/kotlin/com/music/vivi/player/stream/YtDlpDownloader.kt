@@ -4,6 +4,9 @@ import java.io.File
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.CancellationException
+import kotlin.coroutines.coroutineContext
 
 enum class YtDlpAudioFormat { OPUS, M4A, MP3, BEST }
 
@@ -41,11 +44,10 @@ object YtDlpDownloader {
                     error("Download folder is not writable: ${request.outputDir}")
                 }
 
-                val before = request.outputDir.listFiles()?.map { it.absolutePath }?.toSet().orEmpty()
                 val page = "https://music.youtube.com/watch?v=${request.videoId}"
                 val outTemplate = File(
                     request.outputDir,
-                    "%(artist)s - %(title)s.%(ext)s",
+                    "%(artist)s - %(title)s [%(id)s].%(ext)s",
                 ).absolutePath
 
                 val args = buildList {
@@ -53,6 +55,12 @@ object YtDlpDownloader {
                     add("-f")
                     add(formatSelector(request.quality))
                     add("--no-playlist")
+                    add("--no-progress")
+                    add("--print")
+                    add("after_move:filepath")
+                    add("--write-thumbnail")
+                    add("--convert-thumbnails")
+                    add("jpg")
                     add("--no-overwrites")
                     add("-o")
                     add(outTemplate)
@@ -74,28 +82,34 @@ object YtDlpDownloader {
                     add(page)
                 }
 
+                val logFile = File.createTempFile("vivi-download-", ".log")
                 val proc = ProcessBuilder(args)
                     .directory(request.outputDir)
                     .redirectErrorStream(true)
+                    .redirectOutput(logFile)
                     .start()
-                val finished = proc.waitFor(10, TimeUnit.MINUTES)
-                val log = proc.inputStream.bufferedReader().readText()
-                if (!finished) {
-                    proc.destroyForcibly()
-                    error("yt-dlp timed out")
+                try {
+                    val deadline = System.nanoTime() + TimeUnit.MINUTES.toNanos(10)
+                    while (!proc.waitFor(250, TimeUnit.MILLISECONDS)) {
+                        coroutineContext.ensureActive()
+                        check(System.nanoTime() < deadline) { "yt-dlp timed out" }
+                    }
+                    val log = logFile.readText()
+                    check(proc.exitValue() == 0) {
+                        log.lineSequence().lastOrNull { it.isNotBlank() } ?: "yt-dlp failed (${proc.exitValue()})"
+                    }
+                    val output = log.lineSequence().map { File(it.trim()) }
+                        .lastOrNull { it.isFile && it.extension.lowercase() in audioExts }
+                        ?: request.outputDir.listFiles()?.firstOrNull {
+                            it.isFile && it.nameWithoutExtension.endsWith("[${request.videoId}]") && it.extension.lowercase() in audioExts
+                        }
+                        ?: error("Download completed but the audio file could not be found")
+                    YtDlpDownloadResult(outputFile = output, log = log)
+                } finally {
+                    if (proc.isAlive) proc.destroyForcibly()
+                    logFile.delete()
                 }
-                if (proc.exitValue() != 0) {
-                    error(log.lineSequence().lastOrNull { it.isNotBlank() } ?: "yt-dlp failed (${proc.exitValue()})")
-                }
-
-                val after = request.outputDir.listFiles()?.toList().orEmpty()
-                val created = after
-                    .filter { it.absolutePath !in before }
-                    .filter { it.extension.lowercase() in audioExts }
-                    .maxByOrNull { it.lastModified() }
-
-                YtDlpDownloadResult(outputFile = created, log = log)
-            }
+            }.onFailure { if (it is CancellationException) throw it }
         }
 
     private fun formatSelector(quality: YtDlpAudioQuality): String = when (quality) {

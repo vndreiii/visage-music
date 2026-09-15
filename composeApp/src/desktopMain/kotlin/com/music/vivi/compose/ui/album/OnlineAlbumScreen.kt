@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import com.music.vivi.compose.ui.component.PageLoadingState
 import com.music.vivi.compose.ui.component.ViviLoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -113,9 +114,7 @@ fun OnlineAlbumScreen(
 
     when {
         vm.isLoading && vm.page == null -> {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                ViviLoadingIndicator()
-            }
+            PageLoadingState("Loading album", detail = true)
         }
         vm.error != null && vm.page == null -> {
             Column(

@@ -26,6 +26,9 @@ data class NowPlaying(
     val album: String? = null,
     val artworkUrl: String? = null,
     val durationMs: Long = 0L,
+    val localPath: String? = null,
+    val lyricsPath: String? = null,
+    val embeddedLyrics: String? = null,
 )
 
 /** One entry in the playback queue (ids alone are not enough for UI). */
@@ -34,6 +37,12 @@ data class QueueTrack(
     val title: String = videoId,
     val artist: String = "",
     val artworkUrl: String? = null,
+    /** Absolute path when this is a local/offline file (mpv loads it directly). */
+    val localPath: String? = null,
+    val durationMs: Long = 0L,
+    val album: String? = null,
+    val lyricsPath: String? = null,
+    val embeddedLyrics: String? = null,
 )
 
 /**
@@ -54,9 +63,15 @@ interface PlaybackController {
     val shuffleEnabled: StateFlow<Boolean>
     val repeatMode: StateFlow<RepeatMode>
 
+    /** Restore a saved queue without starting audio. */
+    suspend fun restoreQueue(tracks: List<QueueTrack>, startIndex: Int, positionMs: Long)
     suspend fun playVideo(videoId: String)
     /** Replace queue and start at [startIndex]. */
     suspend fun playQueue(tracks: List<QueueTrack>, startIndex: Int = 0)
+    /**
+     * Play a local/offline file in-app (no stream resolve / radio).
+     */
+    suspend fun playLocalQueue(tracks: List<QueueTrack>, startIndex: Int = 0)
     /**
      * Start a YouTube Music radio (RDAMVM) seeded from [videoId].
      * If that track is already playing, keeps playback and rebuilds upcoming; otherwise plays it first.
@@ -84,4 +99,6 @@ fun SongItem.toQueueTrack(): QueueTrack = QueueTrack(
     title = title,
     artist = artists.joinToString { it.name },
     artworkUrl = thumbnail,
+    durationMs = (duration?.toLong() ?: 0L) * 1000L,
+    album = album?.name,
 )

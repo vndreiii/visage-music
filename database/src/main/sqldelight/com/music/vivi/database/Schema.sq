@@ -48,3 +48,66 @@ CREATE TABLE play_event (
 
 CREATE INDEX play_event_by_time ON play_event(played_at_ms DESC);
 CREATE INDEX play_event_by_song ON play_event(song_id, played_at_ms DESC);
+
+-- App-managed offline downloads (not OS Downloads / Local folders).
+CREATE TABLE downloaded_track (
+  video_id TEXT NOT NULL PRIMARY KEY,
+  title TEXT NOT NULL,
+  artist TEXT NOT NULL DEFAULT '',
+  album TEXT,
+  duration_sec INTEGER,
+  file_path TEXT NOT NULL,
+  cover_path TEXT,
+  downloaded_at_ms INTEGER NOT NULL
+);
+
+CREATE INDEX downloaded_track_by_time ON downloaded_track(downloaded_at_ms DESC);
+
+-- Local library (user-chosen folders).
+CREATE TABLE local_artist (
+  id TEXT NOT NULL PRIMARY KEY,
+  name TEXT NOT NULL
+);
+
+CREATE TABLE local_album (
+  id TEXT NOT NULL PRIMARY KEY,
+  title TEXT NOT NULL,
+  artist_id TEXT,
+  artist_name TEXT NOT NULL DEFAULT '',
+  release_year INTEGER,
+  cover_path TEXT,
+  added_at_ms INTEGER NOT NULL,
+  FOREIGN KEY (artist_id) REFERENCES local_artist(id) ON DELETE SET NULL
+);
+
+CREATE INDEX local_album_by_added ON local_album(added_at_ms DESC);
+
+CREATE TABLE local_track (
+  id TEXT NOT NULL PRIMARY KEY,
+  title TEXT NOT NULL,
+  album_id TEXT,
+  artist_id TEXT,
+  artist_name TEXT NOT NULL DEFAULT '',
+  album_title TEXT,
+  duration_sec INTEGER,
+  file_path TEXT NOT NULL UNIQUE,
+  track_number INTEGER,
+  cover_path TEXT,
+  lyrics_path TEXT,
+  embedded_lyrics TEXT,
+  bitrate INTEGER,
+  sample_rate INTEGER,
+  bit_depth INTEGER,
+  is_lossless INTEGER NOT NULL DEFAULT 0,
+  added_at_ms INTEGER NOT NULL,
+  last_played_ms INTEGER,
+  play_count INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY (album_id) REFERENCES local_album(id) ON DELETE SET NULL,
+  FOREIGN KEY (artist_id) REFERENCES local_artist(id) ON DELETE SET NULL
+);
+
+CREATE INDEX local_track_by_added ON local_track(added_at_ms DESC);
+CREATE INDEX local_track_by_played ON local_track(last_played_ms DESC);
+CREATE INDEX local_track_by_count ON local_track(play_count DESC);
+CREATE INDEX local_track_by_album ON local_track(album_id, track_number);
+CREATE INDEX local_track_by_artist ON local_track(artist_id);

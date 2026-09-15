@@ -1,0 +1,61 @@
+upsert:
+INSERT OR IGNORE INTO local_track(
+  id, title, album_id, artist_id, artist_name, album_title,
+  duration_sec, file_path, track_number, cover_path, lyrics_path, embedded_lyrics,
+  bitrate, sample_rate, bit_depth, is_lossless, added_at_ms, last_played_ms, play_count
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+selectAll:
+SELECT * FROM local_track ORDER BY title COLLATE NOCASE;
+
+selectById:
+SELECT * FROM local_track WHERE id = ?;
+
+selectByPath:
+SELECT * FROM local_track WHERE file_path = ?;
+
+selectRecentlyAdded:
+SELECT * FROM local_track ORDER BY added_at_ms DESC LIMIT ?;
+
+selectHeavyRotation:
+SELECT * FROM local_track
+WHERE play_count > 0
+ORDER BY play_count DESC, last_played_ms DESC
+LIMIT ?;
+
+selectRediscover:
+SELECT * FROM local_track
+WHERE (last_played_ms IS NULL OR last_played_ms < ?)
+  AND added_at_ms < ?
+ORDER BY added_at_ms ASC
+LIMIT ?;
+
+selectByAlbum:
+SELECT * FROM local_track WHERE album_id = ? ORDER BY track_number ASC, title COLLATE NOCASE;
+
+selectByArtist:
+SELECT * FROM local_track WHERE artist_id = ? ORDER BY album_title COLLATE NOCASE, track_number ASC;
+
+recordPlay:
+UPDATE local_track
+SET play_count = play_count + 1,
+    last_played_ms = ?
+WHERE id = ?;
+
+deleteAll:
+DELETE FROM local_track;
+
+count:
+SELECT COUNT(*) FROM local_track;
+
+selectRecentlyPlayed:
+SELECT * FROM local_track WHERE COALESCE(last_played_ms, 0) > 0 ORDER BY last_played_ms DESC LIMIT ?;
+
+updateMetadata:
+UPDATE local_track SET title = ?, album_id = ?, artist_id = ?, artist_name = ?, album_title = ?,
+ duration_sec = ?, file_path = ?, track_number = ?, cover_path = COALESCE(?, cover_path),
+ lyrics_path = ?, embedded_lyrics = ?, bitrate = ?, sample_rate = ?, bit_depth = ?, is_lossless = ?
+ WHERE id = ?;
+
+deleteById:
+DELETE FROM local_track WHERE id = ?;

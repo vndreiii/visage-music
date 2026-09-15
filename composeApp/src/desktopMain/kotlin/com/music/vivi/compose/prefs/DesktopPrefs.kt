@@ -31,7 +31,9 @@ class DesktopPrefs(
     fun getString(key: String, default: String): String =
         props.getProperty(key) ?: default
 
+    @Synchronized
     fun setString(key: String, value: String) {
+        if (props.getProperty(key) == value) return
         props.setProperty(key, value)
         persist()
         listeners.forEach { it() }
@@ -52,7 +54,7 @@ class DesktopPrefs(
     }
 
     fun getFloat(key: String, default: Float): Float =
-        props.getProperty(key)?.toFloatOrNull() ?: default
+        props.getProperty(key)?.toFloatOrNull()?.takeIf { it.isFinite() } ?: default
 
     fun setFloat(key: String, value: Float) {
         setString(key, value.toString())
@@ -60,7 +62,18 @@ class DesktopPrefs(
 
     private fun persist() {
         file.parentFile?.mkdirs()
-        file.outputStream().use { props.store(it, "vivi-desktop settings") }
+        val target = file.absoluteFile
+        val temporary = File.createTempFile("settings-", ".tmp", target.parentFile)
+        try {
+            temporary.outputStream().use { props.store(it, "vivi-desktop settings") }
+            try {
+                java.nio.file.Files.move(temporary.toPath(), target.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                java.nio.file.Files.move(temporary.toPath(), target.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            temporary.delete()
+        }
     }
 
     companion object {
@@ -110,11 +123,15 @@ object PrefKeys {
     const val DownloadFormat = "downloadFormat"
     const val DownloadQuality = "downloadQuality"
     const val DownloadEmbedMetadata = "downloadEmbedMetadata"
-    /** Soft volume ramp when skipping tracks (single-player sequential fade). */
+    /** Concurrent crossfade between two decoded audio streams. */
     const val CrossfadeEnabled = "crossfadeEnabled"
     const val CrossfadeSeconds = "crossfadeSeconds"
     const val PlayPauseFadeEnabled = "playPauseFadeEnabled"
     const val PlayPauseFadeSeconds = "playPauseFadeSeconds"
+    /** Pipe-separated absolute paths of local music folders. */
+    const val LocalMusicFolders = "localMusicFolders"
+    const val LocalAutoScanOnStartup = "localAutoScanOnStartup"
+    const val PreferLocalMetadata = "preferLocalMetadata"
 }
 
 enum class DarkMode { ON, OFF, AUTO }

@@ -8,6 +8,9 @@ kotlin {
 }
 
 dependencies {
+    testImplementation(libs.kotlin.test)
+    testImplementation(libs.junit.jupiter)
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher:1.12.2")
     api(project(":innertube"))
     api(project(":jiosaavn"))
     implementation(libs.kotlinx.coroutines.core)

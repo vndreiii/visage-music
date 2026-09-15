@@ -14,3 +14,6 @@ ORDER BY playlist_song.position ASC;
 
 countForPlaylist:
 SELECT COUNT(*) AS cnt FROM playlist_song WHERE playlist_id = ?;
+
+removeSong:
+DELETE FROM playlist_song WHERE playlist_id = ? AND song_id = ?;

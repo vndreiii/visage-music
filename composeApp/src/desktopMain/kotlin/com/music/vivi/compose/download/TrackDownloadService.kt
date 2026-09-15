@@ -4,6 +4,8 @@ import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.DownloadAudioFormat
 import com.music.vivi.compose.prefs.DownloadAudioQuality
 import com.music.vivi.compose.prefs.PrefKeys
+import com.music.vivi.database.DatabaseFactory
+import com.music.vivi.database.DownloadedTrackRepository
 import com.music.vivi.player.stream.YtDlpAudioFormat
 import com.music.vivi.player.stream.YtDlpAudioQuality
 import com.music.vivi.player.stream.YtDlpBinary
@@ -28,10 +30,12 @@ sealed class DownloadStatus {
 }
 
 /**
- * Background yt-dlp downloads driven by [DesktopPrefs] (folder / format / quality / embed).
+ * Background yt-dlp downloads into the app-managed offline directory.
+ * Registered rows live in [DownloadedTrackRepository] — not a scan of ~/Downloads.
  */
 class TrackDownloadService(
     private val prefs: DesktopPrefs,
+    private val downloaded: DownloadedTrackRepository,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
@@ -39,27 +43,33 @@ class TrackDownloadService(
     private val _status = MutableStateFlow<DownloadStatus>(DownloadStatus.Idle)
     val status: StateFlow<DownloadStatus> = _status.asStateFlow()
 
+    /** Managed offline dir (or optional override via [PrefKeys.DownloadPath]). */
     fun resolveFolder(): File {
         val custom = prefs.getString(PrefKeys.DownloadPath, "").trim()
-        if (custom.isNotEmpty()) return File(custom).absoluteFile
-        return XdgUserDirs.downloads()
+        if (custom.isNotEmpty()) {
+            val dir = File(custom).absoluteFile
+            if (!dir.exists()) dir.mkdirs()
+            return dir
+        }
+        return DatabaseFactory.offlineDir()
     }
 
-    fun listDownloadedAudio(): List<File> {
-        val dir = resolveFolder()
-        if (!dir.isDirectory) return emptyList()
-        val exts = setOf("opus", "m4a", "mp3", "ogg", "webm", "flac", "wav", "aac")
-        return dir.listFiles()
-            ?.filter { it.isFile && it.extension.lowercase() in exts }
-            ?.sortedByDescending { it.lastModified() }
-            .orEmpty()
-    }
+    /** Offline library = DB rows whose files still exist. */
+    fun listOfflineTracks() = downloaded.all().filter { File(it.file_path).isFile }
+
+    @Deprecated("Use listOfflineTracks() — Offline is DB-backed, not a folder listing")
+    fun listDownloadedAudio(): List<File> =
+        listOfflineTracks().map { File(it.file_path) }
 
     fun enqueue(
         videoId: String,
         title: String,
         artist: String = "",
     ) {
+        if (videoId.startsWith("local:") || videoId.startsWith("offline:")) {
+            _status.value = DownloadStatus.Failed("This track is already on your device")
+            return
+        }
         if (videoId.isBlank()) {
             _status.value = DownloadStatus.Failed("Nothing to download")
             return
@@ -71,6 +81,7 @@ class TrackDownloadService(
         scope.launch {
             mutex.withLock {
                 _status.value = DownloadStatus.Running(videoId, title)
+                try {
                 val format = runCatching {
                     DownloadAudioFormat.valueOf(
                         prefs.getString(PrefKeys.DownloadFormat, DownloadAudioFormat.OPUS.name),
@@ -82,10 +93,11 @@ class TrackDownloadService(
                     )
                 }.getOrDefault(DownloadAudioQuality.BEST)
                 val embed = prefs.getBoolean(PrefKeys.DownloadEmbedMetadata, true)
+                val outDir = resolveFolder()
                 val result = YtDlpDownloader.download(
                     YtDlpDownloadRequest(
                         videoId = videoId,
-                        outputDir = resolveFolder(),
+                        outputDir = outDir,
                         format = format.toYtDlp(),
                         quality = quality.toYtDlp(),
                         embedMetadata = embed,
@@ -96,13 +108,41 @@ class TrackDownloadService(
                 _status.value = result.fold(
                     onSuccess = { r ->
                         val file = r.outputFile
-                        if (file != null) DownloadStatus.Succeeded(file, title)
-                        else DownloadStatus.Succeeded(resolveFolder(), title)
+                        if (file != null && file.isFile) {
+                            val cover = findSiblingCover(file)
+                            downloaded.upsert(
+                                videoId = videoId,
+                                title = title.ifBlank { file.nameWithoutExtension },
+                                artist = artist,
+                                filePath = file.absolutePath,
+                                coverPath = cover?.absolutePath,
+                            )
+                            DownloadStatus.Succeeded(file, title)
+                        } else {
+                            DownloadStatus.Failed("The downloaded audio file could not be found")
+                        }
                     },
                     onFailure = { DownloadStatus.Failed(it.message ?: "Download failed") },
                 )
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    _status.value = DownloadStatus.Failed(e.message ?: "Couldn't save the download")
+                }
             }
         }
+    }
+
+    private fun findSiblingCover(audio: File): File? {
+        val base = audio.nameWithoutExtension
+        val dir = audio.parentFile ?: return null
+        return listOf("jpg", "jpeg", "png", "webp")
+            .map { File(dir, "$base.$it") }
+            .firstOrNull { it.isFile }
+            ?: dir.listFiles()?.firstOrNull {
+                it.isFile && it.nameWithoutExtension.equals(base, ignoreCase = true) &&
+                    it.extension.lowercase() in setOf("jpg", "jpeg", "png", "webp")
+            }
     }
 
     private fun DownloadAudioFormat.toYtDlp(): YtDlpAudioFormat = when (this) {

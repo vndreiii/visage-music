@@ -1,5 +1,7 @@
 package com.music.vivi.player.mpv
 
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeout
 import com.sun.jna.Pointer
 import com.sun.jna.StringArray
 import com.sun.jna.ptr.DoubleByReference
@@ -14,7 +16,7 @@ class MpvPlayer(
     private val onState: (State) -> Unit,
     private val onPosition: (positionSec: Double, durationSec: Double) -> Unit,
     private val onError: (String) -> Unit = {},
-) : AutoCloseable {
+) : PlaybackEngine {
     enum class State { Idle, Playing, Paused, Ended, Error }
 
     private val lib = MpvLib.INSTANCE
@@ -22,6 +24,7 @@ class MpvPlayer(
         ?: error("mpv_create failed — is libmpv.so installed?")
     private val running = AtomicBoolean(true)
     private val lastEndError = AtomicReference<String?>(null)
+    @Volatile private var ready = CompletableDeferred<Unit>()
     private val eventThread: Thread
 
     init {
@@ -56,6 +59,7 @@ class MpvPlayer(
                                 MpvLib.MPV_END_FILE_REASON_EOF -> onState(State.Ended)
                                 MpvLib.MPV_END_FILE_REASON_ERROR -> {
                                     val msg = lib.mpv_error_string(endErr) ?: "endfile error $endErr"
+                                    ready.completeExceptionally(IllegalStateException(msg))
                                     lastEndError.set(msg)
                                     onError(msg)
                                     onState(State.Error)
@@ -66,6 +70,7 @@ class MpvPlayer(
                             }
                         }
                         MpvLib.MPV_EVENT_FILE_LOADED, MpvLib.MPV_EVENT_PLAYBACK_RESTART -> {
+                            ready.complete(Unit)
                             lastEndError.set(null)
                             onState(State.Playing)
                         }
@@ -83,7 +88,9 @@ class MpvPlayer(
         }
     }
 
-    fun load(url: String, httpHeaders: Map<String, String> = emptyMap()) {
+    override fun load(url: String, httpHeaders: Map<String, String>) {
+        ready.cancel()
+        ready = CompletableDeferred()
         lastEndError.set(null)
         if (httpHeaders.isNotEmpty()) {
             // mpv accepts newline- or comma-separated headers; prefer newlines (cookies may contain commas).
@@ -99,38 +106,42 @@ class MpvPlayer(
         // Always start unmuted/unpaused after a skip — FILE_LOADED also fires Playing,
         // but some CDNs delay that event and left the UI stuck needing a manual Play.
         command("set", "pause", "no")
-        onState(State.Playing)
     }
 
-    fun play() {
+    override suspend fun awaitReady() {
+        withTimeout(30_000) { ready.await() }
+    }
+
+    override fun play() {
         command("set", "pause", "no")
         onState(State.Playing)
     }
 
-    fun pause() {
+    override fun pause() {
         command("set", "pause", "yes")
         onState(State.Paused)
     }
 
-    fun stop() {
+    override fun stop() {
         command("stop")
         onState(State.Idle)
     }
 
     /** Hard-cut audio for an immediate track change (search/playlist pick / skip). */
-    fun halt() {
+    override fun halt() {
+        ready.cancel()
         runCatching { lib.mpv_command(handle, StringArray(arrayOf("stop"))) }
         runCatching { lib.mpv_set_property_string(handle, "pause", "yes") }
         // Keep user volume — do not reset
     }
 
     /** mpv volume is 0–100 (can go higher; we clamp in the controller). */
-    fun setVolume(percent: Int) {
+    override fun setVolume(percent: Int) {
         val v = percent.coerceIn(0, 150)
         runCatching { lib.mpv_set_property_string(handle, "volume", v.toString()) }
     }
 
-    fun seek(positionSec: Double) {
+    override fun seek(positionSec: Double) {
         command("seek", positionSec.toString(), "absolute")
     }
 
@@ -161,7 +172,9 @@ class MpvPlayer(
 
     override fun close() {
         running.set(false)
+        ready.cancel()
+        // The poller must finish using the native handle before it is destroyed.
+        if (Thread.currentThread() != eventThread) eventThread.join()
         runCatching { lib.mpv_terminate_destroy(handle) }
-        runCatching { eventThread.join(2000) }
     }
 }

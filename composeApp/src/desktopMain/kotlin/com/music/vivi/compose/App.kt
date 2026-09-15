@@ -17,15 +17,18 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowState
 import androidx.compose.ui.unit.dp
 import com.music.vivi.compose.navigation.AppScaffold
+import com.music.vivi.compose.local.LocalLibraryBootstrap
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.compose.theme.ViviTheme
 import com.music.vivi.compose.theme.rememberArtworkPalette
+import com.music.vivi.database.LocalMusicRepository
 import com.music.vivi.database.PlayHistoryRepository
 import com.music.vivi.player.PlaybackController
 import com.music.vivi.player.PlaybackState
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import org.koin.compose.koinInject
 
 @Composable
@@ -36,21 +39,34 @@ fun FrameWindowScope.App(
     val controller = koinInject<PlaybackController>()
     val prefs = koinInject<DesktopPrefs>()
     val history = koinInject<PlayHistoryRepository>()
+    val localMusic = koinInject<LocalMusicRepository>()
+    val queuePersistence = koinInject<com.music.vivi.compose.local.QueuePersistence>()
+    val localBootstrap = koinInject<LocalLibraryBootstrap>()
     val nowPlaying by controller.nowPlaying.collectAsState()
     val state by controller.state.collectAsState()
     val artworkPalette = rememberArtworkPalette(nowPlaying?.artworkUrl)
 
-    LaunchedEffect(nowPlaying?.videoId, state) {
-        val track = nowPlaying ?: return@LaunchedEffect
-        if (state != PlaybackState.Playing && state != PlaybackState.Loading) return@LaunchedEffect
+    LaunchedEffect(Unit) {
+        queuePersistence.start()
+        localBootstrap.maybeAutoScan()
+    }
+
+    LaunchedEffect(nowPlaying?.videoId) {
+        val id = nowPlaying?.videoId ?: return@LaunchedEffect
+        // Record once after audio is ready, never on optimistic loading or pause/resume.
+        controller.state.first { it == PlaybackState.Playing }
+        val track = controller.nowPlaying.value?.takeIf { it.videoId == id } ?: return@LaunchedEffect
         withContext(Dispatchers.IO) {
-            history.recordPlay(
-                songId = track.videoId,
-                title = track.title,
-                artists = track.artist,
-                thumbnail = track.artworkUrl,
-                durationSec = track.durationMs.takeIf { it > 0 }?.div(1000),
-            )
+            runCatching {
+                history.recordPlay(
+                    songId = track.videoId,
+                    title = track.title,
+                    artists = track.artist,
+                    thumbnail = track.artworkUrl,
+                    durationSec = controller.durationMs.value.takeIf { it > 0 }?.div(1000),
+                )
+                if (id.startsWith("local:")) localMusic.recordPlay(id.removePrefix("local:"))
+            }.onFailure { System.err.println("Could not record play: ${it.message}") }
         }
     }
 

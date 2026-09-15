@@ -27,14 +27,15 @@ object StreamResolver {
     suspend fun resolve(
         videoId: String,
         preferSaavn: Boolean = SaavnStreamResolver.defaultEnabled(),
+        settings: StreamSettings = StreamSettings(saavnEnabled = preferSaavn),
     ): ResolvedStream {
-        if (preferSaavn) {
-            SaavnStreamResolver.resolveForVideo(videoId)?.let { return it }
+        if (settings.saavnEnabled) {
+            SaavnStreamResolver.resolveForVideo(videoId, enabled = true, quality = if (settings.quality == StreamQuality.LOW) "96kbps" else "320kbps")?.let { return it }
         }
 
         // Prefer yt-dlp when available — Innertube googlevideo URLs currently 403 here.
         if (System.getenv("VIVI_PREFER_YTDLP") != "0") {
-            YtDlpStreamResolver.resolve(videoId)?.let { return it }
+            YtDlpStreamResolver.resolve(videoId, settings.quality)?.let { return it }
         }
 
         var metadata: PlayerResponse.VideoDetails? = null
@@ -52,7 +53,7 @@ object StreamResolver {
                 continue
             }
             metadata = response.videoDetails ?: metadata
-            val url = pickAudioUrl(response, videoId) ?: continue
+            val url = pickAudioUrl(response, videoId, settings.quality) ?: continue
             val details = response.videoDetails ?: metadata
             return ResolvedStream(
                 nowPlaying = toNowPlaying(videoId, details),
@@ -63,7 +64,7 @@ object StreamResolver {
         }
 
         val newPipe = NewPipeExtractor.newPipePlayer(videoId)
-        val best = newPipe.maxByOrNull { it.first }
+        val best = if (settings.quality == StreamQuality.LOW) newPipe.minByOrNull { it.first } else newPipe.maxByOrNull { it.first }
         if (best != null) {
             if (metadata == null) {
                 YouTube.player(videoId, client = YouTubeClient.WEB_REMIX).getOrNull()
@@ -78,12 +79,7 @@ object StreamResolver {
             )
         }
 
-        // Last resort: Saavn even if preferSaavn was false
-        if (!preferSaavn) {
-            SaavnStreamResolver.resolveForVideo(videoId, enabled = true)?.let { return it }
-        }
-
-        YtDlpStreamResolver.resolve(videoId)?.let { return it }
+        YtDlpStreamResolver.resolve(videoId, settings.quality)?.let { return it }
 
         throw lastError ?: IllegalStateException("No playable audio stream for $videoId")
     }
@@ -100,14 +96,14 @@ object StreamResolver {
         }
     }
 
-    private fun pickAudioUrl(response: PlayerResponse, videoId: String): String? {
+    private fun pickAudioUrl(response: PlayerResponse, videoId: String, quality: StreamQuality): String? {
         val formats = buildList {
             response.streamingData?.adaptiveFormats?.let { addAll(it) }
             response.streamingData?.formats?.let { addAll(it) }
         }.filter { it.isAudio || it.mimeType.startsWith("audio/") }
             .sortedByDescending { it.bitrate }
 
-        for (format in formats) {
+        for (format in if (quality == StreamQuality.LOW) formats.asReversed() else formats) {
             val direct = format.url
             if (!direct.isNullOrBlank()) return direct
             val deciphered = NewPipeExtractor.getStreamUrl(format, videoId)

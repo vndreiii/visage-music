@@ -220,18 +220,15 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                 }
 
                 Spacer(Modifier.height(32.dp))
-                Slider(
-                    value = progress,
-                    onValueChange = { scrubbing = true; scrubPos = it },
-                    onValueChangeFinished = {
+                PlayerSeekBar(
+                    progress = progress,
+                    onScrub = { scrubbing = true; scrubPos = it },
+                    onScrubFinished = {
                         scrubbing = false
                         controller.seekTo((scrubPos * duration).toLong().coerceAtLeast(0L))
                     },
-                    colors = SliderDefaults.colors(
-                        thumbColor = Color.White,
-                        activeTrackColor = Color.White,
-                        inactiveTrackColor = Color.White.copy(alpha = 0.28f),
-                    ),
+                    style = runCatching { com.music.vivi.compose.prefs.SliderStyle.valueOf(prefs.getString(PrefKeys.SliderStyle, "DEFAULT")) }.getOrDefault(com.music.vivi.compose.prefs.SliderStyle.DEFAULT),
+                    squiggly = prefs.getBoolean(PrefKeys.SquigglySlider, false),
                     modifier = Modifier.fillMaxWidth().height(28.dp),
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

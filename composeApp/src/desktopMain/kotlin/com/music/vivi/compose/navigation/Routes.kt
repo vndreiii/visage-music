@@ -15,6 +15,7 @@ object Routes {
     const val SETTINGS_THEME = "settings/appearance/theme"
     const val SETTINGS_PLAYER = "settings/player"
     const val SETTINGS_DOWNLOADS = "settings/downloads"
+    const val SETTINGS_LOCAL_OFFLINE = "settings/local_offline"
     const val SMOKE = "smoke"
     /** Full-page player (tablet Now Playing) — not a dialog. */
     const val NOW_PLAYING = "now_playing"

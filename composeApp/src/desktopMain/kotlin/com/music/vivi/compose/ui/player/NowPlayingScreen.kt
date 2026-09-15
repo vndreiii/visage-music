@@ -90,8 +90,10 @@ import com.music.vivi.compose.WindowFullscreen
 import com.music.vivi.compose.navigation.Routes
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.PlayerBackgroundStyle
+import com.music.vivi.compose.prefs.PlayerButtonsStyle
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.compose.prefs.QueuePanelMode
+import com.music.vivi.compose.prefs.SliderStyle
 import com.music.vivi.compose.ui.component.PlayPauseIcon
 import com.music.vivi.compose.ui.player.background.PlayerBackgroundLayer
 import com.music.vivi.compose.ui.player.canvas.CanvasResolver
@@ -203,6 +205,16 @@ fun NowPlayingScreen(
             prefs.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name),
         )
     }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
+    val sliderStyle = runCatching {
+        SliderStyle.valueOf(prefs.getString(PrefKeys.SliderStyle, SliderStyle.DEFAULT.name))
+    }.getOrDefault(SliderStyle.DEFAULT)
+    val squigglySlider = prefs.getBoolean(PrefKeys.SquigglySlider, false)
+    val framedControls = prefs.getBoolean(PrefKeys.UsePlayerV2, false)
+    val buttonsStyle = runCatching {
+        PlayerButtonsStyle.valueOf(
+            prefs.getString(PrefKeys.PlayerButtonsStyle, PlayerButtonsStyle.DEFAULT.name),
+        )
+    }.getOrDefault(PlayerButtonsStyle.DEFAULT)
     val enableCanvas = prefs.getBoolean(PrefKeys.EnableCanvas, true)
     val canvasSource = runCatching {
         CanvasSource.valueOf(prefs.getString(PrefKeys.CanvasSource, CanvasSource.AUTO.name))
@@ -258,12 +270,13 @@ fun NowPlayingScreen(
                 val bottomChromeH = 60.dp
                 val underQueue = showUnderPlaybar && !showLyrics
                 val mainH = (maxHeight - bottomChromeH).coerceAtLeast(200.dp)
-                val idleStackW = (maxWidth * 0.48f).coerceIn(360.dp, 560.dp)
-                val idleArtSize = minOf(mainH * 0.92f, maxWidth - paneGap - idleStackW)
+                // Cover from height, then stack takes the rest so the row is wide and stack isn't skinny.
+                val idleArtSize = minOf(mainH * 0.92f, maxWidth * 0.40f)
+                val idleStackW = (maxWidth - paneGap - idleArtSize).coerceAtLeast(0.dp)
                 val idleContentW = (idleArtSize + paneGap + idleStackW).coerceAtMost(maxWidth)
-                val lyricsStackW = (maxWidth * 0.38f).coerceIn(280.dp, 440.dp)
+                val lyricsStackW = (maxWidth * 0.44f).coerceAtMost(440.dp)
                 val lyricsContentW = maxWidth
-                val lyricsLeftW = (lyricsContentW - paneGap - lyricsStackW).coerceAtLeast(220.dp)
+                val lyricsLeftW = (lyricsContentW - paneGap - lyricsStackW).coerceAtLeast(0.dp)
 
                 val layoutSpring = spring<Dp>(
                     dampingRatio = 0.86f,
@@ -290,7 +303,7 @@ fun NowPlayingScreen(
                     label = "npStackW",
                 )
                 val stackH by animateDpAsState(
-                    if (showLyrics) mainH else idleArtSize,
+                    mainH,
                     layoutSpring,
                     label = "npStackH",
                 )
@@ -382,7 +395,8 @@ fun NowPlayingScreen(
                         Column(
                             Modifier
                                 .width(stackW)
-                                .height(stackH),
+                                .height(stackH)
+                                .playerControlsSurface(framedControls),
                             verticalArrangement = Arrangement.Top,
                             horizontalAlignment = Alignment.Start,
                         ) {
@@ -452,19 +466,16 @@ fun NowPlayingScreen(
                             }
 
                             Spacer(Modifier.height(stackGap))
-                            Slider(
-                                value = progress,
-                                onValueChange = { scrubbing = true; scrubPos = it },
-                                onValueChangeFinished = {
+                            PlayerSeekBar(
+                                progress = progress,
+                                onScrub = { scrubbing = true; scrubPos = it },
+                                onScrubFinished = {
                                     scrubbing = false
                                     controller.seekTo((scrubPos * duration).toLong().coerceAtLeast(0L))
                                 },
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color.White,
-                                    activeTrackColor = Color.White,
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.28f),
-                                ),
-                                modifier = Modifier.fillMaxWidth().height(28.dp),
+                                style = sliderStyle,
+                                squiggly = squigglySlider,
+                                modifier = Modifier.fillMaxWidth(),
                             )
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                                 Text(formatMs(displayPos), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
@@ -477,6 +488,7 @@ fun NowPlayingScreen(
                                 canPrev = canPrev || track != null,
                                 canNext = canNext,
                                 enabledPlay = track != null || state != PlaybackState.Idle,
+                                style = buttonsStyle,
                                 onPrev = { if (canPrev) controller.previous() },
                                 onPlayPause = { if (playing) controller.pause() else controller.play() },
                                 onNext = { controller.next() },
@@ -502,6 +514,7 @@ fun NowPlayingScreen(
                     }
 
                     Spacer(Modifier.height(16.dp))
+                    // Same width as cover + stack above — tools | volume (fills) | more.
                     Row(
                         Modifier.width(contentW),
                         verticalAlignment = Alignment.CenterVertically,
@@ -545,7 +558,9 @@ fun NowPlayingScreen(
                             }
                         }
                         Row(
-                            Modifier.weight(1f).padding(horizontal = 8.dp),
+                            Modifier
+                                .weight(1f)
+                                .padding(horizontal = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             Icon(
@@ -576,7 +591,7 @@ fun NowPlayingScreen(
                                 "${(displayVolume * 100).toInt()}%",
                                 style = MaterialTheme.typography.labelSmall,
                                 color = Color.White.copy(alpha = 0.7f),
-                                modifier = Modifier.widthIn(min = 32.dp),
+                                modifier = Modifier.widthIn(min = 36.dp),
                             )
                         }
                         Box {
@@ -597,15 +612,32 @@ fun NowPlayingScreen(
 }
 
 @Composable
-private fun TransportRow(
+internal fun TransportRow(
     playing: Boolean,
     canPrev: Boolean,
     canNext: Boolean,
     enabledPlay: Boolean,
+    style: PlayerButtonsStyle = PlayerButtonsStyle.DEFAULT,
     onPrev: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
 ) {
+    val scheme = MaterialTheme.colorScheme
+    val (pillBg, pillIcon) = when (style) {
+        PlayerButtonsStyle.DEFAULT -> Color.White.copy(alpha = 0.12f) to Color.White
+        PlayerButtonsStyle.PRIMARY -> scheme.primary.copy(alpha = 0.85f) to scheme.onPrimary
+        PlayerButtonsStyle.TERTIARY -> scheme.tertiary.copy(alpha = 0.85f) to scheme.onTertiary
+    }
+    val playBg = when (style) {
+        PlayerButtonsStyle.DEFAULT -> Color.White
+        PlayerButtonsStyle.PRIMARY -> scheme.primary
+        PlayerButtonsStyle.TERTIARY -> scheme.tertiary
+    }
+    val playFg = when (style) {
+        PlayerButtonsStyle.DEFAULT -> Color.Black
+        PlayerButtonsStyle.PRIMARY -> scheme.onPrimary
+        PlayerButtonsStyle.TERTIARY -> scheme.onTertiary
+    }
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
@@ -615,19 +647,21 @@ private fun TransportRow(
             enabled = canPrev,
             onClick = onPrev,
             width = 72.dp,
-        ) {
+            containerColor = pillBg,
+            content = {
             Icon(
                 Icons.Filled.SkipPrevious,
                 "Previous",
-                tint = Color.White,
+                tint = pillIcon,
                 modifier = Modifier.size(28.dp),
             )
-        }
+            },
+        )
         Surface(
             onClick = onPlayPause,
             enabled = enabledPlay,
             shape = RoundedCornerShape(50),
-            color = Color.White,
+            color = playBg,
             modifier = Modifier.weight(1f).height(56.dp),
         ) {
             Row(
@@ -635,11 +669,11 @@ private fun TransportRow(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
-                PlayPauseIcon(playing = playing, tint = Color.Black, iconSize = 28.dp)
+                PlayPauseIcon(playing = playing, tint = playFg, iconSize = 28.dp)
                 Spacer(Modifier.width(8.dp))
                 Text(
                     if (playing) "Pause" else "Play",
-                    color = Color.Black,
+                    color = playFg,
                     fontWeight = FontWeight.SemiBold,
                     style = MaterialTheme.typography.titleMedium,
                 )
@@ -649,14 +683,16 @@ private fun TransportRow(
             enabled = canNext,
             onClick = onNext,
             width = 72.dp,
-        ) {
+            containerColor = pillBg,
+            content = {
             Icon(
                 Icons.Filled.SkipNext,
                 "Next",
-                tint = Color.White,
+                tint = pillIcon,
                 modifier = Modifier.size(28.dp),
             )
-        }
+            },
+        )
     }
 }
 
@@ -754,13 +790,14 @@ internal fun TransportPill(
     enabled: Boolean,
     onClick: () -> Unit,
     width: androidx.compose.ui.unit.Dp,
+    containerColor: Color = Color.White.copy(alpha = 0.12f),
     content: @Composable () -> Unit,
 ) {
     Surface(
         onClick = onClick,
         enabled = enabled,
         shape = RoundedCornerShape(50),
-        color = Color.White.copy(alpha = 0.12f),
+        color = containerColor,
         modifier = Modifier.size(width = width, height = 56.dp),
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center, content = { content() })

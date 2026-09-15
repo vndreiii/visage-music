@@ -22,14 +22,16 @@ class PlayHistoryRepository(
         if (songId == lastSongId && nowMs - lastRecordedAt < debounceMs) return
         lastSongId = songId
         lastRecordedAt = nowMs
-        db.playEventQueries.insert(
-            song_id = songId,
-            title = title,
-            artists = artists,
-            thumbnail = thumbnail,
-            duration_sec = durationSec,
-            played_at_ms = nowMs,
-        )
+        withSqliteBusyRetry {
+            db.playEventQueries.insert(
+                song_id = songId,
+                title = title,
+                artists = artists,
+                thumbnail = thumbnail,
+                duration_sec = durationSec,
+                played_at_ms = nowMs,
+            )
+        }
     }
 
     fun recentPlays(limit: Long = 50) =
