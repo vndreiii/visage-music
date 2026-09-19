@@ -10,6 +10,7 @@ kotlin {
     sourceSets {
         val desktopTest by getting {
             dependencies {
+    implementation("club.minnced:java-discord-rpc:2.0.2")
                 implementation(kotlin("test"))
                 implementation(libs.junit)
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.6")
@@ -18,6 +19,7 @@ kotlin {
         }
         val desktopMain by getting {
             dependencies {
+    implementation("club.minnced:java-discord-rpc:2.0.2")
                 implementation(project(":core"))
                 implementation(project(":lyrics"))
                 implementation(project(":canvas"))

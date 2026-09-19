@@ -10,6 +10,7 @@ dependencyResolutionManagement {
         mavenCentral()
         google()
         maven("https://jitpack.io")
+        maven("https://jcenter.bintray.com/")
     }
 }
 rootProject.name = "vivi-desktop"

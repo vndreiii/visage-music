@@ -134,6 +134,7 @@ fun main() {
     installSilentExceptionHandlers()
     application {
         remember { startKoin { modules(coreModule, desktopModule) } }
+        val rpcManager = remember { com.music.vivi.compose.ui.player.DiscordRpcManager(kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default)).apply { start() } }
         val windowState = rememberWindowState()
         val closeApp = remember {
             {
