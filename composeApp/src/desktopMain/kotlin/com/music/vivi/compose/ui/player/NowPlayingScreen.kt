@@ -434,7 +434,7 @@ fun NowPlayingScreen(
                             Modifier
                                 .width(stackW)
                                 .height(stackH),
-                            verticalArrangement = Arrangement.Top,
+                            verticalArrangement = Arrangement.Bottom,
                             horizontalAlignment = Alignment.Start,
                         ) {
                             val showCanvasOnRight = showLyrics && canvasVideoUrl?.let { it.isNotBlank() } == true && enableCanvas && bgStyle == PlayerBackgroundStyle.APPLE_MUSIC
@@ -462,7 +462,7 @@ fun NowPlayingScreen(
                                             )
                                         }
                                 )
-                            } else if (!underQueue && !showLyrics) {
+                            } else if (!underQueue) {
                                 Spacer(Modifier.weight(1f))
                             }
                             
@@ -491,7 +491,6 @@ fun NowPlayingScreen(
                                                     Alignment.Center,
                                                 ),
                                             )
-                                            .shadow(12.dp, RoundedCornerShape(14.dp), clip = false)
                                             .clip(RoundedCornerShape(14.dp)),
                                     )
                                 }
