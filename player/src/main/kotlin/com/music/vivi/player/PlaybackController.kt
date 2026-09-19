@@ -94,11 +94,19 @@ interface PlaybackController {
     fun release()
 }
 
-fun SongItem.toQueueTrack(): QueueTrack = QueueTrack(
-    videoId = id,
-    title = title,
-    artist = artists.joinToString { it.name },
-    artworkUrl = thumbnail,
-    durationMs = (duration?.toLong() ?: 0L) * 1000L,
-    album = album?.name,
-)
+fun com.music.innertube.models.YTItem.toQueueTrack(): QueueTrack = when (this) {
+    is com.music.innertube.models.SongItem -> QueueTrack(
+        videoId = id,
+        title = title,
+        artist = artists.joinToString { it.name },
+        artworkUrl = thumbnail,
+        durationMs = (duration?.toLong() ?: 0L) * 1000L,
+        album = album?.name,
+    )
+    else -> QueueTrack(
+        videoId = id,
+        title = title,
+        artist = "",
+        artworkUrl = thumbnail,
+    )
+}

@@ -829,7 +829,7 @@ class DefaultPlaybackController(
             }
             incoming.awaitReady()
             if (generation != loadGeneration.get()) return
-            if (pauseRequested.get()) incoming.pause()
+            if (pauseRequested.get()) incoming.pause() else incoming.play()
             _state.value = if (pauseRequested.get()) PlaybackState.Paused else PlaybackState.Playing
             mpris?.updatePlaybackState(_state.value)
             _positionMs.value = 0L
@@ -865,7 +865,7 @@ class DefaultPlaybackController(
                 if (_nowPlaying.value?.videoId == id) activeMpv().seek(position / 1000.0)
                 restoredPosition = null
             }
-            if (pauseRequested.get()) activeMpv().pause()
+            if (pauseRequested.get()) activeMpv().pause() else activeMpv().play()
             _state.value = if (pauseRequested.get()) PlaybackState.Paused else PlaybackState.Playing
             mpris?.updatePlaybackState(_state.value)
         }

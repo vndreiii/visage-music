@@ -78,7 +78,7 @@ class YouTubeMusicService(
     suspend fun resolveChartSuggestion(
         title: String,
         artist: String,
-    ): Result<com.music.innertube.models.SongItem> {
+    ): Result<com.music.innertube.models.YTItem> {
         requireSession()
         return YouTube.search("$title $artist", YouTube.SearchFilter.FILTER_SONG).mapCatching { page ->
             val songs = page.items.filterIsInstance<com.music.innertube.models.SongItem>()
@@ -93,6 +93,8 @@ class YouTubeMusicService(
             } ?: songs.firstOrNull { s ->
                 s.title.contains(title, ignoreCase = true) &&
                     s.artists.any { artistMatches(it.name, artist) }
+            } ?: songs.firstOrNull { s ->
+                s.artists.any { artistMatches(it.name, artist) }
             } ?: songs.firstOrNull { s ->
                 s.title.equals(title, ignoreCase = true)
             } ?: songs.firstOrNull()
