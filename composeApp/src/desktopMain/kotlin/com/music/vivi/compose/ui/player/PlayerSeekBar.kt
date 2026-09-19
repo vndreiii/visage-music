@@ -19,6 +19,7 @@ import androidx.compose.ui.input.key.*
 import androidx.compose.ui.semantics.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -43,6 +44,7 @@ fun PlayerSeekBar(
     onScrubFinished: () -> Unit,
     style: SliderStyle,
     squiggly: Boolean,
+    compact: Boolean = false,
     modifier: Modifier = Modifier,
     height: Dp = 28.dp,
     activeColor: Color = Color.White,
@@ -106,6 +108,65 @@ fun PlayerSeekBar(
             },
     ) {
         val midY = size.height / 2f
+        val m3Expressive = style == SliderStyle.M3_EXPRESSIVE
+        if (m3Expressive) {
+            val trackH = 16.dp.toPx()
+            val thumbW = 4.dp.toPx()
+            val thumbH = if (compact) 34.dp.toPx() else 48.dp.toPx()
+            val gap = 6.dp.toPx()
+            
+            val tx = size.width * p
+            
+            // Active track
+            val activeEnd = (tx - gap - thumbW/2f).coerceAtLeast(0f)
+            if (activeEnd > 0f) {
+                val activePath = Path().apply {
+                    addRoundRect(RoundRect(
+                        left = 0f, top = midY - trackH/2f,
+                        right = activeEnd, bottom = midY + trackH/2f,
+                        topLeftCornerRadius = CornerRadius(trackH/2f),
+                        bottomLeftCornerRadius = CornerRadius(trackH/2f),
+                        topRightCornerRadius = CornerRadius.Zero,
+                        bottomRightCornerRadius = CornerRadius.Zero,
+                    ))
+                }
+                drawPath(activePath, activeColor)
+            }
+            
+            // Thumb
+            val thumbLeft = (tx - thumbW/2f).coerceIn(0f, size.width - thumbW)
+            drawRoundRect(
+                color = activeColor,
+                topLeft = Offset(thumbLeft, midY - thumbH/2f),
+                size = Size(thumbW, thumbH),
+                cornerRadius = CornerRadius(thumbW/2f)
+            )
+            
+            // Inactive track
+            val inactiveStart = (tx + gap + thumbW/2f).coerceAtMost(size.width)
+            if (inactiveStart < size.width) {
+                val inactivePath = Path().apply {
+                    addRoundRect(RoundRect(
+                        left = inactiveStart, top = midY - trackH/2f,
+                        right = size.width, bottom = midY + trackH/2f,
+                        topLeftCornerRadius = CornerRadius.Zero,
+                        bottomLeftCornerRadius = CornerRadius.Zero,
+                        topRightCornerRadius = CornerRadius(trackH/2f),
+                        bottomRightCornerRadius = CornerRadius(trackH/2f),
+                    ))
+                }
+                drawPath(inactivePath, inactiveColor)
+                
+                // Dot
+                drawCircle(
+                    color = activeColor,
+                    radius = 2.dp.toPx(),
+                    center = Offset((size.width - trackH/2f).coerceAtLeast(inactiveStart), midY)
+                )
+            }
+            return@Canvas
+        }
+
         val slim = style == SliderStyle.SLIM
         val expressive = style == SliderStyle.EXPRESSIVE
         val stroke = when {

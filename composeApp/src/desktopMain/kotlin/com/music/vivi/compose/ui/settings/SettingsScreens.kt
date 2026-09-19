@@ -91,6 +91,7 @@ import com.music.vivi.compose.prefs.PlayerButtonsStyle
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.compose.prefs.QueuePanelMode
 import com.music.vivi.compose.prefs.SliderStyle
+import com.music.vivi.compose.prefs.VolumeControlStyle
 import com.music.vivi.compose.prefs.TopNavStyle
 import com.music.vivi.compose.ui.component.InteractionCornerRadius
 import com.music.vivi.compose.ui.resolveMiniPlayerStyle
@@ -645,14 +646,6 @@ fun AppearanceSettingsScreen(navController: NavController) {
                 checked = prefs.getBoolean(PrefKeys.EnableCanvas, true),
                 onChecked = { prefs.setBoolean(PrefKeys.EnableCanvas, it) },
             )
-            SettingsDivider()
-            SwitchItem(
-                icon = Icons.Outlined.Palette,
-                title = "Squiggly slider",
-                subtitle = "Animate the seek bar as a wave",
-                checked = prefs.getBoolean(PrefKeys.SquigglySlider, false),
-                onChecked = { prefs.setBoolean(PrefKeys.SquigglySlider, it) },
-            )
         }
 
         SettingsSection("Queue") {
@@ -709,6 +702,24 @@ fun AppearanceSettingsScreen(navController: NavController) {
             }
         }
 
+        
+        SettingsSection("Volume control style") {
+            val volumeStyle = runCatching {
+                VolumeControlStyle.valueOf(
+                    prefs.getString(PrefKeys.VolumeControlStyle, VolumeControlStyle.SLIDER.name),
+                )
+            }.getOrDefault(VolumeControlStyle.SLIDER)
+            
+            VolumeControlStyle.entries.forEachIndexed { index, style ->
+                if (index > 0) SettingsDivider()
+                EnumRadioItem(
+                    label = style.name.lowercase().replace("_", " ").replaceFirstChar { it.titlecase() },
+                    selected = volumeStyle == style,
+                    onSelect = { prefs.setString(PrefKeys.VolumeControlStyle, style.name) },
+                )
+            }
+        }
+
         SettingsSection("Slider style") {
             val squiggly = prefs.getBoolean(PrefKeys.SquigglySlider, false)
             val sliderStyle = runCatching {
@@ -721,7 +732,10 @@ fun AppearanceSettingsScreen(navController: NavController) {
             SliderStyle.entries.forEachIndexed { index, style ->
                 if (index > 0) SettingsDivider()
                 EnumRadioItem(
-                    label = style.name.lowercase().replaceFirstChar { it.titlecase() },
+                    label = when (style) {
+                        SliderStyle.M3_EXPRESSIVE -> "M3 Expressive"
+                        else -> style.name.lowercase().replaceFirstChar { it.titlecase() }
+                    },
                     selected = sliderStyle == style,
                     onSelect = { prefs.setString(PrefKeys.SliderStyle, style.name) },
                 )
@@ -765,6 +779,16 @@ fun PlayerSettingsScreen(navController: NavController) {
             .padding(bottom = 96.dp),
     ) {
         SettingsBackHeader(title = "Player and audio", onBack = { navController.navigateUp() })
+
+                SettingsSection("Integrations") {
+            SwitchItem(
+                icon = Icons.Outlined.Groups,
+                title = "Discord Rich Presence",
+                subtitle = "Show what you're listening to on Discord",
+                checked = prefs.getBoolean(PrefKeys.DiscordRpcEnabled, true),
+                onChecked = { prefs.setBoolean(PrefKeys.DiscordRpcEnabled, it) },
+            )
+        }
 
         SettingsSection("Stream") {
             SwitchItem(

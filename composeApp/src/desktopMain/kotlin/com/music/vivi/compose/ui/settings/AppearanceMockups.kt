@@ -53,6 +53,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -535,6 +536,66 @@ private fun SliderStyleCanvas(
     Canvas(modifier) {
         val p = progress.coerceIn(0.05f, 0.95f)
         val midY = size.height / 2f
+        
+        val m3Expressive = style == SliderStyle.M3_EXPRESSIVE
+        if (m3Expressive) {
+            val trackH = 16.dp.toPx()
+            val thumbW = 4.dp.toPx()
+            val thumbH = 34.dp.toPx()
+            val gap = 6.dp.toPx()
+            
+            val tx = size.width * p
+            
+            // Active track
+            val activeEnd = (tx - gap - thumbW/2f).coerceAtLeast(0f)
+            if (activeEnd > 0f) {
+                val activePath = Path().apply {
+                    addRoundRect(RoundRect(
+                        left = 0f, top = midY - trackH/2f,
+                        right = activeEnd, bottom = midY + trackH/2f,
+                        topLeftCornerRadius = CornerRadius(trackH/2f),
+                        bottomLeftCornerRadius = CornerRadius(trackH/2f),
+                        topRightCornerRadius = CornerRadius.Zero,
+                        bottomRightCornerRadius = CornerRadius.Zero,
+                    ))
+                }
+                drawPath(activePath, primary)
+            }
+            
+            // Thumb
+            val thumbLeft = (tx - thumbW/2f).coerceIn(0f, size.width - thumbW)
+            drawRoundRect(
+                color = primary,
+                topLeft = Offset(thumbLeft, midY - thumbH/2f),
+                size = Size(thumbW, thumbH),
+                cornerRadius = CornerRadius(thumbW/2f)
+            )
+            
+            // Inactive track
+            val inactiveStart = (tx + gap + thumbW/2f).coerceAtMost(size.width)
+            if (inactiveStart < size.width) {
+                val inactivePath = Path().apply {
+                    addRoundRect(RoundRect(
+                        left = inactiveStart, top = midY - trackH/2f,
+                        right = size.width, bottom = midY + trackH/2f,
+                        topLeftCornerRadius = CornerRadius.Zero,
+                        bottomLeftCornerRadius = CornerRadius.Zero,
+                        topRightCornerRadius = CornerRadius(trackH/2f),
+                        bottomRightCornerRadius = CornerRadius(trackH/2f),
+                    ))
+                }
+                drawPath(inactivePath, track)
+                
+                // Dot
+                drawCircle(
+                    color = primary,
+                    radius = 2.dp.toPx(),
+                    center = Offset((size.width - trackH/2f).coerceAtLeast(inactiveStart), midY)
+                )
+            }
+            return@Canvas
+        }
+
         val wavy = squiggly || style == SliderStyle.WAVY
         val slim = style == SliderStyle.SLIM
         val expressive = style == SliderStyle.EXPRESSIVE

@@ -59,6 +59,8 @@ import com.music.vivi.compose.WindowFullscreen
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.PlayerBackgroundStyle
 import com.music.vivi.compose.prefs.PrefKeys
+import com.music.vivi.compose.prefs.VolumeControlStyle
+import com.music.vivi.compose.prefs.SliderStyle
 import com.music.vivi.compose.ui.component.PlayPauseIcon
 import com.music.vivi.compose.ui.player.background.PlayerBackgroundLayer
 import com.music.vivi.compose.ui.player.canvas.CanvasResolver
@@ -297,44 +299,59 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                         active = repeat != RepeatMode.Off,
                     ) { controller.cycleRepeatMode() }
                     Spacer(Modifier.width(4.dp))
-                    Icon(
-                        Icons.Outlined.VolumeDown,
-                        contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.75f),
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Slider(
-                        value = displayVolume,
-                        onValueChange = {
-                            scrubVolume = true
-                            scrubVol = it
-                            controller.setVolume(it)
-                        },
-                        onValueChangeFinished = {
-                            scrubVolume = false
-                            prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
-                        },
-                        colors = SliderDefaults.colors(
-                            thumbColor = Color.White,
-                            activeTrackColor = Color.White,
-                            inactiveTrackColor = Color.White.copy(alpha = 0.28f),
-                        ),
-                        modifier = Modifier.weight(1f).height(24.dp),
-                    )
-                    Icon(
-                        Icons.Outlined.VolumeUp,
-                        contentDescription = null,
-                        tint = Color.White.copy(alpha = 0.75f),
-                        modifier = Modifier.size(20.dp),
-                    )
-                    Text(
-                        "${(displayVolume * 100).toInt()}%",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = Color.White.copy(alpha = 0.7f),
-                        modifier = Modifier.widthIn(min = 36.dp),
-                    )
+                    val volumeStyle = runCatching { VolumeControlStyle.valueOf(prefs.getString(PrefKeys.VolumeControlStyle, VolumeControlStyle.SLIDER.name)) }.getOrDefault(VolumeControlStyle.SLIDER)
+                    if (volumeStyle == VolumeControlStyle.COMPACT_PILL) {
+                        VolumePillControl(
+                            volume = displayVolume,
+                            onVolumeChange = {
+                                scrubVolume = true
+                                scrubVol = it
+                                controller.setVolume(it)
+                            },
+                            onVolumeChangeFinished = {
+                                scrubVolume = false
+                                prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
+                            }
+                        )
+                    } else {
+                        Icon(
+                            Icons.Outlined.VolumeDown,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.75f),
+                            modifier = Modifier.size(20.dp),
+                        )
+                        PlayerSeekBar(
+                            progress = displayVolume,
+                            onScrub = {
+                                scrubVolume = true
+                                scrubVol = it
+                                controller.setVolume(it)
+                            },
+                            onScrubFinished = {
+                                scrubVolume = false
+                                prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
+                            },
+                            style = SliderStyle.M3_EXPRESSIVE,
+                            squiggly = false,
+                            compact = true,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Icon(
+                            Icons.Outlined.VolumeUp,
+                            contentDescription = null,
+                            tint = Color.White.copy(alpha = 0.75f),
+                            modifier = Modifier.size(20.dp),
+                        )
+                        Text(
+                            "${(displayVolume * 100).toInt()}%",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = Color.White.copy(alpha = 0.7f),
+                            modifier = Modifier.widthIn(min = 36.dp),
+                        )
+                    }
                 }
             }
         }
     }
 }
+

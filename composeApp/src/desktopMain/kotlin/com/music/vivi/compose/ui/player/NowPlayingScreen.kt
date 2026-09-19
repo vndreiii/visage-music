@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
@@ -75,7 +76,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -94,6 +101,18 @@ import com.music.vivi.compose.prefs.PlayerButtonsStyle
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.compose.prefs.QueuePanelMode
 import com.music.vivi.compose.prefs.SliderStyle
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Remove
+import com.music.vivi.compose.prefs.VolumeControlStyle
+
 import com.music.vivi.compose.ui.component.PlayPauseIcon
 import com.music.vivi.compose.ui.player.background.PlayerBackgroundLayer
 import com.music.vivi.compose.ui.player.canvas.CanvasResolver
@@ -241,8 +260,7 @@ fun NowPlayingScreen(
         canvasVideoUrl = CanvasResolver.videoUrl(art)
     }
 
-    val hideThumbnail = prefs.getBoolean(PrefKeys.HidePlayerThumbnail, false) ||
-        (bgStyle == PlayerBackgroundStyle.APPLE_MUSIC && canvasVideoUrl != null)
+    val hideThumbnail = prefs.getBoolean(PrefKeys.HidePlayerThumbnail, false)
 
     Box(Modifier.fillMaxSize()) {
         PlayerBackgroundLayer(
@@ -361,14 +379,34 @@ fun NowPlayingScreen(
                                         label = "npArtwork",
                                         modifier = Modifier.fillMaxSize().clip(coverShape),
                                     ) { (_, artUrl) ->
-                                        AsyncImage(
-                                            model = artUrl,
-                                            contentDescription = track?.title,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier
-                                                .fillMaxSize()
-                                                .clip(coverShape),
-                                        )
+                                        if (canvasVideoUrl?.let { it.isNotBlank() } == true && enableCanvas && bgStyle == PlayerBackgroundStyle.APPLE_MUSIC) {
+                                            com.music.vivi.compose.ui.player.background.CanvasVideoSurface(
+                                                videoUrl = canvasVideoUrl!!,
+                                                playing = playing,
+                                                modifier = Modifier.fillMaxSize()
+                                                    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+                                                    .drawWithContent {
+                                                        drawContent()
+                                                        drawRect(
+                                                            brush = Brush.horizontalGradient(
+                                                                0f to Color.Black,
+                                                                0.75f to Color.Black,
+                                                                1f to Color.Transparent,
+                                                            ),
+                                                            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn
+                                                        )
+                                                    }
+                                            )
+                                        } else {
+                                            AsyncImage(
+                                                model = artUrl,
+                                                contentDescription = track?.title,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .clip(coverShape),
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -395,18 +433,45 @@ fun NowPlayingScreen(
                         Column(
                             Modifier
                                 .width(stackW)
-                                .height(stackH)
-                                .playerControlsSurface(framedControls),
+                                .height(stackH),
                             verticalArrangement = Arrangement.Top,
                             horizontalAlignment = Alignment.Start,
                         ) {
-                            // Center title/seek/transport when not filling with under-playbar queue.
-                            if (!underQueue && !showLyrics) {
+                            val showCanvasOnRight = showLyrics && canvasVideoUrl?.let { it.isNotBlank() } == true && enableCanvas && bgStyle == PlayerBackgroundStyle.APPLE_MUSIC
+                            if (showCanvasOnRight) {
+                                com.music.vivi.compose.ui.player.background.CanvasVideoSurface(
+                                    videoUrl = canvasVideoUrl!!,
+                                    playing = playing,
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .weight(1f)
+                                        .padding(bottom = 16.dp)
+                                        .clip(RoundedCornerShape(24.dp))
+                                        .graphicsLayer {
+                                            compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                                        }
+                                        .drawWithContent {
+                                            drawContent()
+                                            drawRect(
+                                                brush = Brush.verticalGradient(
+                                                    0f to Color.Black,
+                                                    0.75f to Color.Black,
+                                                    1f to Color.Transparent,
+                                                ),
+                                                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn
+                                            )
+                                        }
+                                )
+                            } else if (!underQueue && !showLyrics) {
                                 Spacer(Modifier.weight(1f))
                             }
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
+                            
+                            Column(
+                                Modifier.fillMaxWidth().then(if (underQueue && !showCanvasOnRight) Modifier.weight(1f) else Modifier).playerControlsSurface(framedControls)
+                            ) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                                 PlainAnimatedVisibility(
-                                    visible = showLyrics && !hideThumbnail,
+                                    visible = showLyrics && !hideThumbnail && !showCanvasOnRight,
                                     enter = fadeIn() + scaleIn(initialScale = 0.85f),
                                     exit = fadeOut() + scaleOut(targetScale = 0.85f),
                                     label = "npCoverThumb",
@@ -507,7 +572,9 @@ fun NowPlayingScreen(
                                         .weight(1f)
                                         .padding(top = 12.dp),
                                 )
-                            } else if (!showLyrics) {
+                            }
+                            } // Close inner Column
+                            if (!underQueue && !showLyrics) {
                                 Spacer(Modifier.weight(1f))
                             }
                         }
@@ -557,11 +624,13 @@ fun NowPlayingScreen(
                                 }
                             }
                         }
+                        val volumeStyle = runCatching { VolumeControlStyle.valueOf(prefs.getString(PrefKeys.VolumeControlStyle, VolumeControlStyle.SLIDER.name)) }.getOrDefault(VolumeControlStyle.SLIDER)
                         Row(
                             Modifier
                                 .weight(1f)
                                 .padding(horizontal = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
                             Icon(
                                 Icons.Outlined.VolumeDown,
@@ -569,30 +638,45 @@ fun NowPlayingScreen(
                                 tint = Color.White.copy(alpha = 0.75f),
                                 modifier = Modifier.size(20.dp),
                             )
-                            Slider(
-                                value = displayVolume,
-                                onValueChange = {
-                                    scrubVolume = true
-                                    scrubVol = it
-                                    controller.setVolume(it)
-                                },
-                                onValueChangeFinished = {
-                                    scrubVolume = false
-                                    prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
-                                },
-                                colors = SliderDefaults.colors(
-                                    thumbColor = Color.White,
-                                    activeTrackColor = Color.White,
-                                    inactiveTrackColor = Color.White.copy(alpha = 0.28f),
-                                ),
-                                modifier = Modifier.weight(1f).height(24.dp),
-                            )
-                            Text(
-                                "${(displayVolume * 100).toInt()}%",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = Color.White.copy(alpha = 0.7f),
-                                modifier = Modifier.widthIn(min = 36.dp),
-                            )
+                            if (volumeStyle == VolumeControlStyle.COMPACT_PILL) {
+                                VolumePillControl(
+                                    volume = displayVolume,
+                                    onVolumeChange = {
+                                        scrubVolume = true
+                                        scrubVol = it
+                                        controller.setVolume(it)
+                                    },
+                                    onVolumeChangeFinished = {
+                                        scrubVolume = false
+                                        prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
+                                    }
+                                )
+                                
+                            } else {
+                                PlayerSeekBar(
+                                    progress = displayVolume,
+                                    onScrub = {
+                                        scrubVolume = true
+                                        scrubVol = it
+                                        controller.setVolume(it)
+                                    },
+                                    onScrubFinished = {
+                                        scrubVolume = false
+                                        prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
+                                    },
+                                    style = SliderStyle.M3_EXPRESSIVE,
+                                    squiggly = false,
+                                    compact = true,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    "${(displayVolume * 100).toInt()}%",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = Color.White.copy(alpha = 0.7f),
+                                    modifier = Modifier.widthIn(min = 36.dp),
+                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                                )
+                            }
                         }
                         Box {
                             ToolIconButton(Icons.Outlined.MoreVert, "More", circle = true) {
@@ -831,4 +915,83 @@ internal fun formatMs(ms: Long): String {
     if (ms <= 0L) return "0:00"
     val totalSec = ms / 1000L
     return "%d:%02d".format(totalSec / 60L, totalSec % 60L)
+}
+
+@Composable
+fun VolumePillControl(
+    volume: Float,
+    onVolumeChange: (Float) -> Unit,
+    onVolumeChangeFinished: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var editing by remember { mutableStateOf(false) }
+    var text by remember(volume) { mutableStateOf((volume * 100).toInt().toString()) }
+    val focusRequester = remember { FocusRequester() }
+    
+    LaunchedEffect(editing) {
+        if (editing) {
+            try { focusRequester.requestFocus() } catch (e: Exception) {}
+        }
+    }
+    
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = Color.White.copy(alpha = 0.12f),
+        modifier = modifier.height(28.dp)
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Box(
+                Modifier.size(28.dp).clickable {
+                    onVolumeChange((volume - 0.05f).coerceAtLeast(0f))
+                    onVolumeChangeFinished()
+                },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Remove, null, tint = Color.White, modifier = Modifier.size(16.dp))
+            }
+            
+            Box(
+                Modifier.width(36.dp).clickable { editing = true },
+                contentAlignment = Alignment.Center
+            ) {
+                if (editing) {
+                    BasicTextField(
+                        value = text,
+                        onValueChange = { if (it.length <= 3) text = it.filter { c -> c.isDigit() } },
+                        textStyle = MaterialTheme.typography.labelSmall.copy(color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+                        cursorBrush = SolidColor(Color.White),
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
+                        keyboardActions = KeyboardActions(onDone = {
+                            val p = text.toIntOrNull()?.coerceIn(0, 150) ?: (volume * 100).toInt()
+                            onVolumeChange(p / 100f)
+                            onVolumeChangeFinished()
+                            editing = false
+                        }),
+                        modifier = Modifier.focusRequester(focusRequester).fillMaxWidth()
+                    )
+                } else {
+                    Text(
+                        "${(volume * 100).toInt()}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color.White,
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    )
+                }
+            }
+            
+            Box(
+                Modifier.size(28.dp).clickable {
+                    onVolumeChange((volume + 0.05f).coerceAtMost(1.5f))
+                    onVolumeChangeFinished()
+                },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.size(16.dp))
+            }
+        }
+    }
 }

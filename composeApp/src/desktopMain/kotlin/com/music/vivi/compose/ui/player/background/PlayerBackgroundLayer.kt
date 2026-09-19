@@ -10,8 +10,15 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.ShaderBrush
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -29,6 +36,7 @@ import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.center
 import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ColorFilter
@@ -79,7 +87,10 @@ fun PlayerBackgroundLayer(
             }
             PlayerBackgroundStyle.GRADIENT -> RotatingCoverGradientBg(palette, artworkUrl)
             PlayerBackgroundStyle.BLUR -> BlurBg(artworkUrl)
-            PlayerBackgroundStyle.GLOW_ANIMATED -> GlowCoverBg(palette, artworkUrl)
+            PlayerBackgroundStyle.GLOW_ANIMATED, PlayerBackgroundStyle.FLUID -> GlowCoverBg(palette, artworkUrl, FLUID_SHADER_SKSL)
+            PlayerBackgroundStyle.WAVE -> GlowCoverBg(palette, artworkUrl, WAVE_SHADER_SKSL)
+            PlayerBackgroundStyle.XMB -> GlowCoverBg(palette, artworkUrl, XMB_SHADER_SKSL)
+            PlayerBackgroundStyle.DISTORT -> DistortCoverBg(artworkUrl)
             PlayerBackgroundStyle.APPLE_MUSIC -> AppleMusicBg(
                 artworkUrl = artworkUrl,
                 canvasVideoUrl = canvasVideoUrl,
@@ -178,23 +189,156 @@ private fun BlurBg(artworkUrl: String?) {
     }
 }
 
-/** Dimmed rotating cover + palette glow orbs + slight blur. */
+
+
+
+private const val WAVE_SHADER_SKSL = """
+uniform float2 iResolution;
+uniform float iTime;
+uniform vec3 color1;
+uniform vec3 color2;
+uniform vec3 color3;
+
+const float TWO_PI = 6.28318530718;
+
+half4 main(vec2 fragCoord) {
+    vec2 uv = (fragCoord - iResolution.xy * 0.5) / min(iResolution.x, iResolution.y);
+    float time_factor = iTime * TWO_PI / 10.0;
+
+    float wave1 = sin(uv.x * 3.0 + time_factor * 1.0) * 0.1;
+    float wave2 = cos(uv.y * 4.0 - time_factor * 2.0) * 0.12; 
+    float wave3 = sin((uv.x + uv.y) * 5.0 + time_factor * 3.0) * 0.08;
+    float large_wave = sin(uv.x * 1.0 - time_factor * 1.0) * 0.25; 
+    float combined_waves = wave1 + wave2 + wave3 + large_wave;
+
+    vec3 dark_color = color1 * 0.1;
+    vec3 mid_color = color2 * 0.2;
+    float intensity = smoothstep(-0.2, 0.2, combined_waves);
+    vec3 base_color = mix(dark_color, mid_color, intensity);
+
+    float gradient = abs(sin(combined_waves * 10.0));
+    float outline = smoothstep(0.8, 1.0, gradient);
+    vec3 outline_color = color3;
+
+    vec3 final_color = mix(base_color, outline_color, outline);
+    return half4(final_color, 1.0);
+}
+"""
+
+private const val XMB_SHADER_SKSL = """
+uniform float2 iResolution;
+uniform float iTime;
+uniform vec3 color1;
+uniform vec3 color2;
+uniform vec3 color3;
+
+half4 main(vec2 fragCoord) {
+    vec2 uv = (fragCoord - iResolution.xy * 0.5) / min(iResolution.x, iResolution.y);
+    
+    float t = iTime * 0.3;
+    vec3 col = vec3(0.0);
+    
+    for(int i = 1; i <= 4; i++) {
+        float fi = float(i);
+        float wave = sin(uv.x * (1.0 + fi * 0.3) + t * (0.8 + fi * 0.2)) * 0.2 
+                   * cos(uv.x * (0.5 + fi * 0.1) - t * 0.4) 
+                   + sin(uv.x * 2.5 - t * 0.3 + fi) * 0.1;
+                   
+        float dist = abs(uv.y - wave);
+        
+        float thickness = 0.4;
+        float fill = smoothstep(thickness, 0.0, dist);
+        float core = smoothstep(0.02, 0.0, dist); 
+        
+        vec3 color = mix(color1, color2, 0.5 + 0.5 * sin(t + fi));
+        
+        col += color * fill * 0.5;
+        col += color3 * core;
+    }
+    
+    return half4(col, 1.0);
+}
+"""
+
+private const val DISTORT_SHADER_SKSL = """
+uniform float2 iResolution;
+uniform float iTime;
+uniform shader image;
+
+half4 main(vec2 fragCoord) {
+    vec2 uv = fragCoord / iResolution;
+    
+    float waveX = sin(uv.y * 5.0 + iTime * 0.5) * 0.05 + cos(uv.y * 3.0 - iTime * 0.3) * 0.03;
+    float waveY = cos(uv.x * 5.0 + iTime * 0.5) * 0.05 + sin(uv.x * 3.0 - iTime * 0.3) * 0.03;
+    
+    vec2 distorted = uv + vec2(waveX, waveY);
+    return image.eval(distorted * iResolution);
+}
+"""
+
+private const val FLUID_SHADER_SKSL = """
+uniform float2 iResolution;
+uniform float iTime;
+uniform vec3 color1;
+uniform vec3 color2;
+uniform vec3 color3;
+
+half4 main(vec2 fragCoord) {
+    vec2 uv = (fragCoord - iResolution.xy * 0.5) / min(iResolution.x, iResolution.y);
+    
+    vec2 p = uv;
+    float t = iTime * 0.2;
+    vec3 col = vec3(0.0);
+    
+    for(int i = 1; i < 8; i++) {
+        float fi = float(i);
+        float angle = t * 0.2 / fi;
+        float s = sin(angle);
+        float c = cos(angle);
+        p = vec2(p.x * c - p.y * s, p.x * s + p.y * c);
+        
+        p.x += sin(t * 0.8 + p.y * 1.5 * fi) * 0.2;
+        p.y += cos(t * 0.9 + p.x * 1.5 * fi) * 0.2;
+        
+        float len = length(p);
+        float stroke = smoothstep(0.8, 0.0, len * (0.5 + 0.2 * fi));
+        
+        float mix1 = sin(iTime * 0.2 + p.x * 2.0 + fi) * 0.5 + 0.5;
+        float mix2 = cos(iTime * 0.2 + p.y * 2.0 + fi) * 0.5 + 0.5;
+        vec3 strokeColor = mix(mix(color1, color2, mix1), color3, mix2);
+        
+        col += strokeColor * stroke * 0.3;
+    }
+    
+    return half4(col, 1.0);
+}
+"""
+
 @Composable
-private fun GlowCoverBg(palette: ArtworkPalette?, artworkUrl: String?) {
+private fun GlowCoverBg(palette: ArtworkPalette?, artworkUrl: String?, sksl: String = FLUID_SHADER_SKSL) {
     val glow = palette?.glowColors?.takeIf { it.isNotEmpty() }
         ?: palette?.gradient
-        ?: listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
+        ?: listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.tertiary)
+    val c1 = glow.getOrElse(0) { MaterialTheme.colorScheme.primary }
+    val c2 = glow.getOrElse(1) { c1 }
+    val c3 = glow.getOrElse(2) { c2 }
+    
     val infinite = rememberInfiniteTransition(label = "glowCover")
     val rot by infinite.animateFloat(
         0f, 360f,
         infiniteRepeatable(tween(40_000, easing = LinearEasing), RepeatMode.Restart),
         label = "glowRot",
     )
-    val pulse by infinite.animateFloat(
-        0.55f, 0.9f,
-        infiniteRepeatable(tween(6_000, easing = LinearEasing), RepeatMode.Reverse),
-        label = "glowPulse",
-    )
+    
+    var time by remember { mutableStateOf(0f) }
+    LaunchedEffect(Unit) {
+        val start = System.currentTimeMillis()
+        while(true) {
+            androidx.compose.runtime.withFrameNanos { time = (System.currentTimeMillis() - start) / 1000f }
+        }
+    }
+    val effect = remember(sksl) { org.jetbrains.skia.RuntimeEffect.makeForShader(sksl) }
+
     val dimMatrix = remember {
         ColorMatrix(
             floatArrayOf(
@@ -229,23 +373,22 @@ private fun GlowCoverBg(palette: ArtworkPalette?, artworkUrl: String?) {
                 .drawWithCache {
                     val w = size.width
                     val h = size.height
-                    val brushes = glow.take(4).mapIndexed { i, color ->
-                        val t = (rot / 360f + i * 0.22f) % 1f
-                        val cx = 0.2f + 0.6f * ((sin(t * 2f * PI.toFloat() + i) + 1f) * 0.5f)
-                        val cy = 0.2f + 0.6f * ((cos(t * 2f * PI.toFloat() + i * 1.3f) + 1f) * 0.5f)
-                        Brush.radialGradient(
-                            colors = listOf(
-                                color.copy(alpha = 0.55f * pulse),
-                                color.copy(alpha = 0.18f * pulse),
-                                Color.Transparent,
-                            ),
-                            center = Offset(w * cx, h * cy),
-                            radius = w * (0.45f + i * 0.08f),
-                        )
-                    }
-                    onDrawBehind { brushes.forEach { drawRect(brush = it) } }
+                    
+                    val buffer = ByteBuffer.allocate(48).order(ByteOrder.LITTLE_ENDIAN)
+                    buffer.putFloat(w)
+                    buffer.putFloat(h)
+                    buffer.putFloat(time)
+                    buffer.putFloat(c1.red).putFloat(c1.green).putFloat(c1.blue)
+                    buffer.putFloat(c2.red).putFloat(c2.green).putFloat(c2.blue)
+                    buffer.putFloat(c3.red).putFloat(c3.green).putFloat(c3.blue)
+                    
+                    val data = org.jetbrains.skia.Data.makeFromBytes(buffer.array())
+                    val shader = effect.makeShader(data, null, null)
+                    val brush = ShaderBrush(shader)
+                    
+                    onDrawBehind { drawRect(brush) }
                 }
-                .blur(18.dp),
+                .blur(12.dp),
         )
         Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.2f)))
     }
@@ -296,15 +439,9 @@ private fun AppleMusicBg(
                         model = url,
                         contentDescription = null,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize().blur(50.dp).alpha(0.85f),
                     )
-                    if (!canvasVideoUrl.isNullOrBlank()) {
-                        CanvasVideoSurface(
-                            videoUrl = canvasVideoUrl,
-                            playing = canvasPlaying,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
+                    
                 }
             }
             Box(
@@ -508,70 +645,10 @@ fun MiniPlayerBackgroundLayer(
                     Box(Modifier.fillMaxSize().background(themeSurface))
                 }
             }
-            PlayerBackgroundStyle.GLOW_ANIMATED -> {
-                val glow = palette?.glowColors?.takeIf { it.isNotEmpty() }
-                    ?: palette?.gradient
-                    ?: listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary)
-                val infinite = rememberInfiniteTransition(label = "miniGlow")
-                val rot by infinite.animateFloat(
-                    0f, 360f,
-                    infiniteRepeatable(tween(36_000, easing = LinearEasing), RepeatMode.Restart),
-                    label = "miniGlowRot",
-                )
-                val dimMatrix = remember {
-                    ColorMatrix(
-                        floatArrayOf(
-                            0.5f, 0f, 0f, 0f, 0f,
-                            0f, 0.5f, 0f, 0f, 0f,
-                            0f, 0f, 0.5f, 0f, 0f,
-                            0f, 0f, 0f, 1f, 0f,
-                        ),
-                    )
-                }
-                Box(Modifier.fillMaxSize().background(Color(0xFF101010))) {
-                    if (artworkUrl != null) {
-                        AsyncImage(
-                            model = artworkUrl,
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            colorFilter = ColorFilter.colorMatrix(dimMatrix),
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .graphicsLayer {
-                                    rotationZ = rot * 0.4f
-                                    scaleX = 1.4f
-                                    scaleY = 1.4f
-                                }
-                                .blur(16.dp)
-                                .alpha(0.9f),
-                        )
-                    }
-                    Box(
-                        Modifier
-                            .fillMaxSize()
-                            .drawWithCache {
-                                val w = size.width
-                                val h = size.height
-                                val brushes = glow.take(3).mapIndexed { i, color ->
-                                    val t = (rot / 360f + i * 0.28f) % 1f
-                                    val cx = 0.25f + 0.5f * ((sin(t * 2f * PI.toFloat() + i) + 1f) * 0.5f)
-                                    val cy = 0.3f + 0.4f * ((cos(t * 2f * PI.toFloat() + i) + 1f) * 0.5f)
-                                    Brush.radialGradient(
-                                        colors = listOf(
-                                            color.copy(alpha = 0.65f),
-                                            color.copy(alpha = 0.2f),
-                                            Color.Transparent,
-                                        ),
-                                        center = Offset(w * cx, h * cy),
-                                        radius = w * (0.55f + i * 0.1f),
-                                    )
-                                }
-                                onDrawBehind { brushes.forEach { drawRect(brush = it) } }
-                            }
-                            .blur(10.dp),
-                    )
-                }
-            }
+            PlayerBackgroundStyle.GLOW_ANIMATED, PlayerBackgroundStyle.FLUID -> MiniGlowCoverBg(palette, artworkUrl, FLUID_SHADER_SKSL)
+            PlayerBackgroundStyle.WAVE -> MiniGlowCoverBg(palette, artworkUrl, WAVE_SHADER_SKSL)
+            PlayerBackgroundStyle.XMB -> MiniGlowCoverBg(palette, artworkUrl, XMB_SHADER_SKSL)
+            PlayerBackgroundStyle.DISTORT -> MiniDistortCoverBg(artworkUrl)
             PlayerBackgroundStyle.LIVE_MESH -> {
                 LiveMeshShapesBg(palette)
             }
@@ -589,6 +666,213 @@ fun MiniPlayerBackgroundLayer(
                 } else {
                     Box(Modifier.fillMaxSize().background(themeSurface))
                 }
+            }
+        }
+    }
+}
+
+
+
+
+
+@Composable
+private fun DistortCoverBg(artworkUrl: String?) {
+    val infinite = rememberInfiniteTransition(label = "distortTr")
+    var time by remember { mutableStateOf(0f) }
+    LaunchedEffect(Unit) {
+        val start = System.currentTimeMillis()
+        while(true) {
+            androidx.compose.runtime.withFrameNanos { time = (System.currentTimeMillis() - start) / 1000f }
+        }
+    }
+    val waveX by infinite.animateFloat(
+        -30f, 30f,
+        infiniteRepeatable(tween(14_000, easing = LinearEasing), RepeatMode.Reverse),
+        label = "waveX",
+    )
+    val waveY by infinite.animateFloat(
+        -30f, 30f,
+        infiniteRepeatable(tween(18_000, easing = LinearEasing), RepeatMode.Reverse),
+        label = "waveY",
+    )
+    
+    val effect = remember { org.jetbrains.skia.RuntimeEffect.makeForShader(DISTORT_SHADER_SKSL) }
+    
+    Box(Modifier.fillMaxSize().background(Color.Black)) {
+        if (artworkUrl != null) {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val w = maxWidth.value
+                val h = maxHeight.value
+                val builder = remember(effect, time, w, h) {
+                    val b = org.jetbrains.skia.RuntimeShaderBuilder(effect)
+                    b.uniform("iTime", time)
+                    b.uniform("iResolution", w, h)
+                    b
+                }
+                val imageFilter = remember(builder) {
+                    org.jetbrains.skia.ImageFilter.makeRuntimeShader(builder, "image", null)
+                }
+                
+                AsyncImage(
+                    model = artworkUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = 1.3f
+                            scaleY = 1.3f
+                            translationX = waveX
+                            translationY = waveY
+                            renderEffect = imageFilter.asComposeRenderEffect()
+                        }
+                        .blur(40.dp)
+                        .alpha(0.6f)
+                )
+            }
+        }
+    }
+}
+
+
+
+
+
+
+@Composable
+private fun MiniGlowCoverBg(palette: ArtworkPalette?, artworkUrl: String?, sksl: String) {
+    val glow = palette?.glowColors?.takeIf { it.isNotEmpty() }
+        ?: palette?.gradient
+        ?: listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.tertiary)
+    val c1 = glow.getOrElse(0) { MaterialTheme.colorScheme.primary }
+    val c2 = glow.getOrElse(1) { c1 }
+    val c3 = glow.getOrElse(2) { c2 }
+    
+    val infinite = rememberInfiniteTransition(label = "miniGlow")
+    val rot by infinite.animateFloat(
+        0f, 360f,
+        infiniteRepeatable(tween(36_000, easing = LinearEasing), RepeatMode.Restart),
+        label = "miniGlowRot",
+    )
+    
+    var time by remember { mutableStateOf(0f) }
+    LaunchedEffect(Unit) {
+        val start = System.currentTimeMillis()
+        while(true) {
+            androidx.compose.runtime.withFrameNanos { time = (System.currentTimeMillis() - start) / 1000f }
+        }
+    }
+    val effect = remember(sksl) { org.jetbrains.skia.RuntimeEffect.makeForShader(sksl) }
+
+    val dimMatrix = remember {
+        ColorMatrix(
+            floatArrayOf(
+                0.5f, 0f, 0f, 0f, 0f,
+                0f, 0.5f, 0f, 0f, 0f,
+                0f, 0f, 0.5f, 0f, 0f,
+                0f, 0f, 0f, 1f, 0f,
+            ),
+        )
+    }
+    Box(Modifier.fillMaxSize().background(Color(0xFF101010))) {
+        if (artworkUrl != null) {
+            AsyncImage(
+                model = artworkUrl,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                colorFilter = ColorFilter.colorMatrix(dimMatrix),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        rotationZ = rot * 0.4f
+                        scaleX = 1.4f
+                        scaleY = 1.4f
+                    }
+                    .blur(16.dp)
+                    .alpha(0.6f), // lowered opacity
+            )
+        }
+        Box(
+            Modifier
+                .fillMaxSize()
+                .drawWithCache {
+                    val w = size.width
+                    val h = size.height
+                    
+                    val buffer = ByteBuffer.allocate(48).order(ByteOrder.LITTLE_ENDIAN)
+                    buffer.putFloat(w)
+                    buffer.putFloat(h)
+                    buffer.putFloat(time)
+                    buffer.putFloat(c1.red).putFloat(c1.green).putFloat(c1.blue)
+                    buffer.putFloat(c2.red).putFloat(c2.green).putFloat(c2.blue)
+                    buffer.putFloat(c3.red).putFloat(c3.green).putFloat(c3.blue)
+                    
+                    val data = org.jetbrains.skia.Data.makeFromBytes(buffer.array())
+                    val shader = effect.makeShader(data, null, null)
+                    val brush = ShaderBrush(shader)
+                    
+                    onDrawBehind { drawRect(brush) }
+                }
+                .blur(12.dp)
+                .alpha(0.75f), // lower opacity for better contrast
+        )
+    }
+}
+
+@Composable
+private fun MiniDistortCoverBg(artworkUrl: String?) {
+    val infinite = rememberInfiniteTransition(label = "distortTr")
+    var time by remember { mutableStateOf(0f) }
+    LaunchedEffect(Unit) {
+        val start = System.currentTimeMillis()
+        while(true) {
+            androidx.compose.runtime.withFrameNanos { time = (System.currentTimeMillis() - start) / 1000f }
+        }
+    }
+    val waveX by infinite.animateFloat(
+        -20f, 20f,
+        infiniteRepeatable(tween(14_000, easing = LinearEasing), RepeatMode.Reverse),
+        label = "waveX",
+    )
+    val waveY by infinite.animateFloat(
+        -20f, 20f,
+        infiniteRepeatable(tween(18_000, easing = LinearEasing), RepeatMode.Reverse),
+        label = "waveY",
+    )
+    
+    val effect = remember { org.jetbrains.skia.RuntimeEffect.makeForShader(DISTORT_SHADER_SKSL) }
+    
+    Box(Modifier.fillMaxSize().background(Color(0xFF101010))) {
+        if (artworkUrl != null) {
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val w = maxWidth.value
+                val h = maxHeight.value
+                val builder = remember(effect, time, w, h) {
+                    val b = org.jetbrains.skia.RuntimeShaderBuilder(effect)
+                    b.uniform("iTime", time)
+                    b.uniform("iResolution", w, h)
+                    b
+                }
+                val imageFilter = remember(builder) {
+                    org.jetbrains.skia.ImageFilter.makeRuntimeShader(builder, "image", null)
+                }
+                
+                AsyncImage(
+                    model = artworkUrl,
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            scaleX = 1.3f
+                            scaleY = 1.3f
+                            translationX = waveX
+                            translationY = waveY
+                            renderEffect = imageFilter.asComposeRenderEffect()
+                        }
+                        .blur(24.dp)
+                        .alpha(0.5f)
+                )
             }
         }
     }

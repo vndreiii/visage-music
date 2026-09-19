@@ -26,3 +26,8 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
 }
+
+tasks.register<JavaExec>("runMprisTest") {
+    mainClass.set("com.music.vivi.player.mpris.TestMprisKt")
+    classpath = sourceSets["main"].runtimeClasspath
+}

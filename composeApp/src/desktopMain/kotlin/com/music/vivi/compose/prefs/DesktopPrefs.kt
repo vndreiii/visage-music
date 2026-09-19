@@ -103,6 +103,7 @@ object PrefKeys {
     /** Canonical mini architecture: FULL_WIDTH_BAR | FLOATING_PILL | COMPACT_EDGE */
     const val MiniPlayerStyle = "miniPlayerStyle"
     const val SliderStyle = "sliderStyle"
+    const val VolumeControlStyle = "volumeControlStyle"
     const val SquigglySlider = "squigglySlider"
     const val PlayerButtonsStyle = "player_buttons_style"
     const val PlayerBackgroundStyle = "playerBackgroundStyle"
@@ -112,6 +113,7 @@ object PrefKeys {
     const val TopNavStyle = "topNavStyle"
     const val CanvasSource = "canvasSource"
     const val EnableCanvas = "enableCanvas"
+    const val DiscordRpcEnabled = "discordRpcEnabled"
     const val HidePlayerThumbnail = "hidePlayerThumbnail"
     const val AudioQuality = "audioQuality"
     const val PersistentQueue = "persistentQueue"
@@ -153,9 +155,11 @@ enum class M3PaletteStyle {
 }
 
 /** Center top-bar destinations: icon only (default), icon+label, or text only. */
+enum class VolumeControlStyle { SLIDER, COMPACT_PILL }
+
 enum class TopNavStyle { ICON_ONLY, ICON_AND_TEXT, TEXT_ONLY }
 
-enum class SliderStyle { DEFAULT, WAVY, SLIM, EXPRESSIVE }
+enum class SliderStyle { DEFAULT, WAVY, SLIM, EXPRESSIVE, M3_EXPRESSIVE }
 
 enum class PlayerButtonsStyle { DEFAULT, PRIMARY, TERTIARY }
 
@@ -168,6 +172,10 @@ enum class PlayerBackgroundStyle {
     LIVE_MESH,
     /** Classic horizontal cover→black gradient (former mini default look). */
     LEGACY,
+    FLUID,
+    WAVE,
+    XMB,
+    DISTORT,
 }
 
 /** Mini-player chrome architecture (Appearance → Mini-player / Apple mini). */

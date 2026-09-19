@@ -25,6 +25,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
+import com.music.vivi.compose.ui.player.PlayerSeekBar
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -180,22 +181,20 @@ fun AudioOutputSheet(onDismiss: () -> Unit) {
                         )
                     }
                 }
-                Slider(
-                    value = displayVol,
-                    onValueChange = {
+                PlayerSeekBar(
+                    progress = displayVol,
+                    onScrub = {
                         scrubbing = true
                         scrubVol = it
                         controller.setVolume(it)
                     },
-                    onValueChangeFinished = {
+                    onScrubFinished = {
                         scrubbing = false
                         prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
                     },
-                    colors = SliderDefaults.colors(
-                        thumbColor = MaterialTheme.colorScheme.primary,
-                        activeTrackColor = MaterialTheme.colorScheme.primary,
-                    ),
-                    modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    style = com.music.vivi.compose.prefs.SliderStyle.M3_EXPRESSIVE,
+                    squiggly = false,
+                    compact = true,
                 )
 
                 Spacer(Modifier.height(14.dp))
