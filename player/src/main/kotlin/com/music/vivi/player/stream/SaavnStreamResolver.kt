@@ -1,6 +1,8 @@
 package com.music.vivi.player.stream
 
 import com.music.innertube.models.WatchEndpoint
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import com.music.innertube.YouTube
 import com.music.jiosaavn.SaavnService
 import com.music.jiosaavn.SaavnSong
@@ -81,14 +83,14 @@ object SaavnStreamResolver {
         val artwork: String?,
     )
 
-    private suspend fun loadHints(videoId: String): Hints {
-        val next = YouTube.next(WatchEndpoint(videoId = videoId)).getOrNull()
-        val item = next?.items?.getOrNull(next.currentIndex ?: 0)
-            ?: next?.items?.firstOrNull()
-        val player = YouTube.player(
-            videoId,
-            client = com.music.innertube.models.YouTubeClient.WEB_REMIX,
-        ).getOrNull()
+    private suspend fun loadHints(videoId: String): Hints = coroutineScope {
+        val nextDef = async { YouTube.next(WatchEndpoint(videoId = videoId)).getOrNull() }
+        val playerDef = async { YouTube.player(videoId, client = com.music.innertube.models.YouTubeClient.WEB_REMIX).getOrNull() }
+        
+        val next = nextDef.await()
+        val player = playerDef.await()
+        
+        val item = next?.items?.getOrNull(next.currentIndex ?: 0) ?: next?.items?.firstOrNull()
         val details = player?.videoDetails
 
         val title = item?.title?.takeIf { it.isNotBlank() }
@@ -104,7 +106,7 @@ object SaavnStreamResolver {
             ?: item?.duration
         val artwork = details?.thumbnail?.thumbnails?.lastOrNull()?.url
             ?: item?.thumbnail
-        return Hints(title, artists, album, durationSec, artwork)
+        Hints(title, artists, album, durationSec, artwork)
     }
 
     private suspend fun findMatch(

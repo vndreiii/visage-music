@@ -13,14 +13,14 @@ import com.music.vivi.player.NowPlaying
  */
 object StreamResolver {
     private val streamClients = listOf(
-        // Prefer web clients when session cookies exist (headers match).
-        YouTubeClient.WEB_REMIX,
-        YouTubeClient.WEB,
+        // IOS and Android VR clients bypass 403 Forbidden errors for playback URLs
         YouTubeClient.IOS,
-        YouTubeClient.ANDROID_VR_1_43_32,
         YouTubeClient.ANDROID_VR_1_61_48,
+        YouTubeClient.ANDROID_VR_1_43_32,
+        YouTubeClient.WEB_REMIX,
         YouTubeClient.ANDROID_VR_NO_AUTH,
         YouTubeClient.MWEB,
+        YouTubeClient.WEB,
         YouTubeClient.MOBILE,
     )
 
@@ -34,10 +34,6 @@ object StreamResolver {
         }
 
         // Prefer yt-dlp when available — Innertube googlevideo URLs currently 403 here.
-        if (System.getenv("VIVI_PREFER_YTDLP") != "0") {
-            YtDlpStreamResolver.resolve(videoId, settings.quality)?.let { return it }
-        }
-
         var metadata: PlayerResponse.VideoDetails? = null
         var lastError: Throwable? = null
 
