@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -331,8 +332,17 @@ private fun QueuePanelBody(
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                 }
+                val listState = rememberLazyListState()
+                
+                LaunchedEffect(queueIndex) {
+                    if (queueIndex in queueTracks.indices) {
+                        listState.animateScrollToItem(queueIndex)
+                    }
+                }
+                
                 LazyColumn(
                     Modifier.weight(1f),
+                    state = listState,
                     contentPadding = PaddingValues(bottom = 24.dp),
                 ) {
                     if (queueTracks.isEmpty()) {
@@ -367,8 +377,17 @@ private fun QueuePanelBody(
                 }
             }
             QueueTab.Recent -> {
+                val listState = rememberLazyListState()
+                
+                LaunchedEffect(queueIndex) {
+                    if (queueIndex in queueTracks.indices) {
+                        listState.animateScrollToItem(queueIndex)
+                    }
+                }
+                
                 LazyColumn(
                     Modifier.weight(1f),
+                    state = listState,
                     contentPadding = PaddingValues(bottom = 24.dp),
                 ) {
                     if (recent.isEmpty()) {
