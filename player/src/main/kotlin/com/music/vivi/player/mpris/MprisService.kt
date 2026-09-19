@@ -37,6 +37,9 @@ class MprisService(
                 // Export as public implementation of public ifaces
                 conn.exportObject(OBJECT_PATH, Exported())
             }
+    }.onFailure { e ->
+        System.err.println("MPRIS DBus Connection Failed: ${e.message}")
+        e.printStackTrace()
     }.getOrNull()
 
     @Volatile private var playbackStatus = "Stopped"
@@ -251,7 +254,7 @@ class MprisService(
     }
 
     companion object {
-        const val BUS_NAME = "org.mpris.MediaPlayer2.vivi"
+        val BUS_NAME = "org.mpris.MediaPlayer2.vivi.instance${ProcessHandle.current().pid()}"
         const val OBJECT_PATH = "/org/mpris/MediaPlayer2"
         private const val IFACE_ROOT = "org.mpris.MediaPlayer2"
         private const val IFACE_PLAYER = "org.mpris.MediaPlayer2.Player"

@@ -89,7 +89,7 @@ class DefaultPlaybackController(
      * outgoing track near EOF. Set at soft UI / dual start; cleared after swap.
      */
     private val crossfadeUiHold = AtomicBoolean(false)
-    private val mpris by lazy { if (enableMpris) MprisService(
+    private val mpris = if (enableMpris) MprisService(
         onPlay = { play() },
         onPause = { pause() },
         onStop = { stop() },
@@ -100,7 +100,7 @@ class DefaultPlaybackController(
         onShuffle = { enabled ->
             if (_shuffleEnabled.value != enabled) toggleShuffle()
         },
-    ) else null }
+    ) else null
 
     private val players: Array<PlaybackEngine> = arrayOf(
         createMpvPlayer(0),
@@ -194,6 +194,9 @@ class DefaultPlaybackController(
     init {
         if (applyStoredSession) {
             SessionSecretStore.loadSession()?.applyToYouTube()
+        }
+        if (enableMpris) {
+            mpris?.updatePlaybackState(PlaybackState.Idle)
         }
     }
 
