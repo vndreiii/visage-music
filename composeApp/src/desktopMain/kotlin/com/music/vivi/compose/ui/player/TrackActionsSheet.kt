@@ -176,7 +176,7 @@ fun TrackActionsMenu(
                     shape = RoundedCornerShape(20.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     tonalElevation = 8.dp,
-                    shadowElevation = 12.dp,
+                    shadowElevation = 0.dp,
                     modifier = Modifier
                         .widthIn(min = 320.dp, max = 380.dp)
                         .heightIn(max = 480.dp),
