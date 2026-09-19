@@ -31,7 +31,11 @@ class MpvCanvasPlayer : AutoCloseable {
         lib.mpv_set_option_string(h, "input-default-bindings", "no")
         lib.mpv_set_option_string(h, "keep-open", "yes")
         lib.mpv_set_option_string(h, "wid", wid.toString())
-        runCatching { lib.mpv_set_option_string(h, "vo", "x11") }
+        // Let mpv auto-detect the video output for the embedded window.
+        // vo=x11 fails on pure Wayland; omit to let mpv try gpu/x11/etc.
+        runCatching { lib.mpv_set_option_string(h, "vo", "gpu") }
+        runCatching { lib.mpv_set_option_string(h, "gpu-context", "x11egl") }
+        runCatching { lib.mpv_set_option_string(h, "hwdec", "auto") }
         if (lib.mpv_initialize(h) != 0) {
             lib.mpv_terminate_destroy(h)
             handle = null
