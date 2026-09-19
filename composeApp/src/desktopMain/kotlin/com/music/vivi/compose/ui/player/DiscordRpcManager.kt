@@ -1,8 +1,9 @@
 package com.music.vivi.compose.ui.player
 
-import club.minnced.discord.rpc.DiscordEventHandlers
-import club.minnced.discord.rpc.DiscordRPC
-import club.minnced.discord.rpc.DiscordRichPresence
+import com.jagrosh.discordipc.IPCClient
+import com.jagrosh.discordipc.IPCListener
+import com.jagrosh.discordipc.entities.RichPresence
+import com.jagrosh.discordipc.entities.pipe.PipeStatus
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.player.PlaybackController
@@ -16,6 +17,8 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import java.time.OffsetDateTime
+import java.time.ZoneOffset
 
 class DiscordRpcManager(
     private val scope: CoroutineScope
@@ -23,97 +26,101 @@ class DiscordRpcManager(
     private val controller: PlaybackController by inject()
     private val prefs: DesktopPrefs by inject()
 
-    private val rpc = DiscordRPC.INSTANCE
-    private var initialized = false
-    private var callbackJob: Job? = null
-    
-    // Use the vivimusic Discord application ID
-    private val applicationId = "1411019391843172514"
+    private val applicationId = 1411019391843172514L
+    private var client: IPCClient? = null
+    private var isConnected = false
 
     fun start() {
         scope.launch {
-            prefs.addListener { 
-                checkState() 
-            }
+            prefs.addListener { checkState() }
             checkState()
             
-            // Watch playback changes
-            launch {
-                controller.nowPlaying.collectLatest { updatePresence() }
-            }
-            launch {
-                controller.state.collectLatest { updatePresence() }
-            }
+            launch { controller.nowPlaying.collectLatest { updatePresence() } }
+            launch { controller.state.collectLatest { updatePresence() } }
         }
     }
 
     private fun checkState() {
         val enabled = prefs.getBoolean(PrefKeys.DiscordRpcEnabled, true)
-        if (enabled && !initialized) {
+        if (enabled && client == null) {
             initRpc()
-        } else if (!enabled && initialized) {
+        } else if (!enabled && client != null) {
             shutdownRpc()
         }
     }
 
     private fun initRpc() {
-        val handlers = DiscordEventHandlers()
-        handlers.ready = { println("Discord RPC Ready") }
-        rpc.Discord_Initialize(applicationId, handlers, true, "")
-        initialized = true
-        
-        callbackJob = scope.launch(Dispatchers.IO) {
-            while (isActive) {
-                rpc.Discord_RunCallbacks()
-                delay(2000)
+        client = IPCClient(applicationId)
+        client?.setListener(object : IPCListener {
+            override fun onReady(client: IPCClient?) {
+                isConnected = true
+                updatePresence()
             }
+            override fun onClose(client: IPCClient?, json: org.json.JSONObject?) {
+                isConnected = false
+            }
+            override fun onDisconnect(client: IPCClient?, t: Throwable?) {
+                isConnected = false
+            }
+        })
+        try {
+            client?.connect()
+        } catch (e: Exception) {
+            e.printStackTrace()
+            // Ignore connection errors, it will retry or stay disconnected
         }
-        
-        updatePresence()
     }
 
     private fun shutdownRpc() {
-        callbackJob?.cancel()
-        callbackJob = null
-        if (initialized) {
-            rpc.Discord_ClearPresence()
-            rpc.Discord_Shutdown()
-            initialized = false
+        try {
+            if (isConnected) {
+                client?.close()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
         }
+        client = null
+        isConnected = false
     }
 
     private fun updatePresence() {
-        if (!initialized) return
+        if (!isConnected) return
+        val currentClient = client ?: return
         
         val track = controller.nowPlaying.value
         val state = controller.state.value
 
         if (track == null) {
-            rpc.Discord_ClearPresence()
+            currentClient.sendRichPresence(null)
             return
         }
 
-        val presence = DiscordRichPresence()
-        presence.details = track.title
-        presence.state = track.artist
-
-        // If you want images, you could set largeImageKey but we need keys registered on Discord app.
-        // For java-discord-rpc, we can't easily pass external URLs directly unless they are Discord assets or if Discord started supporting external urls?
-        // Wait, Discord API now supports external URLs if prefixed with external? No, Kizzy uses it but maybe club.minnced doesn't expose it or just passes strings.
-        // We can just pass the artworkUrl. Discord might ignore it if it doesn't match a registered asset.
+        val builder = RichPresence.Builder()
+        builder.setDetails(track.title)
+        builder.setState(track.artist)
         
+        // Jagrosh supports arbitrary image URLs if Discord allows them
+        track.artworkUrl?.let { url ->
+            builder.setLargeImage(url, track.title)
+        }
+
         if (state == PlaybackState.Playing) {
             val position = controller.positionMs.value
             val duration = controller.durationMs.value.takeIf { it > 0 } ?: track.durationMs
             
             val startTimestamp = System.currentTimeMillis() / 1000 - (position / 1000)
-            presence.startTimestamp = startTimestamp
+            builder.setStartTimestamp(OffsetDateTime.ofEpochSecond(startTimestamp, 0, ZoneOffset.UTC))
             
             if (duration > 0) {
-                presence.endTimestamp = startTimestamp + (duration / 1000)
+                val endTimestamp = startTimestamp + (duration / 1000)
+                builder.setEndTimestamp(OffsetDateTime.ofEpochSecond(endTimestamp, 0, ZoneOffset.UTC))
             }
         }
 
-        rpc.Discord_UpdatePresence(presence)
+        try {
+            currentClient.sendRichPresence(builder.build())
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 }
