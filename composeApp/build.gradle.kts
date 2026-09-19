@@ -25,6 +25,14 @@ kotlin {
                 implementation(project(":canvas"))
                 implementation(project(":applecanvas"))
                 implementation(project(":vivimusiccanvas"))
+                val osName = System.getProperty("os.name").lowercase()
+                val jfxClassifier = when {
+                    osName.contains("win") -> "win"
+                    osName.contains("mac") -> "mac"
+                    else -> "linux"
+                }
+                implementation("org.openjfx:javafx-media:21.0.6:$jfxClassifier")
+                implementation("org.openjfx:javafx-swing:21.0.6:$jfxClassifier")
                 implementation(compose.desktop.currentOs)
                 implementation(compose.foundation)
                 implementation(compose.material3)

@@ -111,6 +111,13 @@ class SilentAwtExceptionHandler {
  */
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
+    System.setProperty("compose.interop.blending", "true")
+    // Initialize JavaFX Toolkit to prevent deadlocks in JFXPanel
+    try {
+        javafx.application.Platform.startup {}
+    } catch (e: Exception) {
+        // Toolkit already initialized
+    }
     // Prefer this as Wayland app_id / X11 WM_CLASS where the toolkit honors it
     System.setProperty("awt.appClassName", "com.music.vivi.alex")
     // Before any Jaudiotagger class loads (local scan is very chatty otherwise).
