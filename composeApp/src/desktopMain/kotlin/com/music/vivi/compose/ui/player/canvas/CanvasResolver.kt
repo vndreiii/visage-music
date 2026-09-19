@@ -36,11 +36,11 @@ object CanvasResolver {
         val fetched = when (source) {
             CanvasSource.AUTO -> {
                 AppleMusicCanvasProvider.getBySongArtist(title, artist, albumTitle, storefront)
-                    ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() && matches(it, title, artist, albumTitle) }
+                    ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
                     ?: TidalCanvasProvider.getBySongArtist(title, artist, albumTitle)
-                        ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() && matches(it, title, artist, albumTitle) }
+                        ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
                     ?: ViviMusicCanvasProvider.getBySongArtist(title, artist, albumTitle)
-                        ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() && matches(it, title, artist, albumTitle) }
+                        ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
             }
             CanvasSource.APPLE_MUSIC ->
                 AppleMusicCanvasProvider.getBySongArtist(title, artist, albumTitle, storefront)
