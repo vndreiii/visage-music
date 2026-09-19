@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -107,6 +108,7 @@ fun LyricsPanel(
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
 
     val alignPref = runCatching {
         LyricsTextAlign.valueOf(
@@ -171,9 +173,12 @@ fun LyricsPanel(
     LaunchedEffect(activeIndex) {
         if (activeIndex >= 0) {
             runCatching {
+                val viewport = listState.layoutInfo.viewportSize.height
+                val topPaddingPx = 350f * density
+                val centerOffset = (viewport / 2f) - topPaddingPx - 30f
                 listState.animateScrollToItem(
                     index = activeIndex.coerceAtLeast(0),
-                    scrollOffset = -(listState.layoutInfo.viewportSize.height / 2) + 60,
+                    scrollOffset = centerOffset.toInt(),
                 )
             }
         }
@@ -218,6 +223,7 @@ fun LyricsPanel(
                             active = index == activeIndex,
                             distance = if (activeIndex < 0) 1 else abs(index - activeIndex),
                             textAlign = textAlign,
+                            onClick = line.timeMs?.let { ms -> { controller.seekTo(ms) } },
                         )
                     }
                 }
@@ -474,6 +480,7 @@ private fun LyricLineItem(
     active: Boolean,
     distance: Int,
     textAlign: TextAlign,
+    onClick: (() -> Unit)? = null,
 ) {
     val targetScale = when {
         active -> 1.08f
@@ -514,6 +521,13 @@ private fun LyricLineItem(
         ),
         modifier = Modifier
             .fillMaxWidth()
+            .then(
+                if (onClick != null) Modifier.clickable(
+                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                    indication = null,
+                    onClick = onClick,
+                ) else Modifier
+            )
             .padding(vertical = 10.dp)
             .graphicsLayer {
                 scaleX = scale
