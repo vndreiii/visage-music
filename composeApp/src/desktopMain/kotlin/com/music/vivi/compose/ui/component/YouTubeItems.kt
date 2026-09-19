@@ -17,6 +17,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -81,10 +85,11 @@ fun YouTubeGridItem(
                             .background(Color.Black.copy(alpha = 0.35f)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            if (isPlaying) "▶" else "❚❚",
-                            color = Color.White,
-                            style = MaterialTheme.typography.titleMedium,
+                        Icon(
+                            if (isPlaying) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(32.dp)
                         )
                     }
                 } else if (item is SongItem) {
@@ -97,7 +102,7 @@ fun YouTubeGridItem(
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.9f)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text("▶", color = MaterialTheme.colorScheme.onPrimary, style = MaterialTheme.typography.labelSmall)
+                        Icon(Icons.Filled.PlayArrow, contentDescription = null, tint = MaterialTheme.colorScheme.onPrimary, modifier = Modifier.size(16.dp))
                     }
                 }
             }
@@ -180,10 +185,11 @@ fun YouTubeListItem(
                             .background(Color.Black.copy(alpha = 0.4f)),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            if (isPlaying) "▶" else "❚❚",
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelMedium,
+                        Icon(
+                            if (isPlaying) Icons.Filled.PlayArrow else Icons.Filled.Pause,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }

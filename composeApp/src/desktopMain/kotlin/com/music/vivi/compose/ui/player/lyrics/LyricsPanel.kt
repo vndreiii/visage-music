@@ -45,6 +45,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.graphicsLayer
@@ -169,7 +173,7 @@ fun LyricsPanel(
             runCatching {
                 listState.animateScrollToItem(
                     index = activeIndex.coerceAtLeast(0),
-                    scrollOffset = -220,
+                    scrollOffset = -(listState.layoutInfo.viewportSize.height / 2) + 60,
                 )
             }
         }
@@ -189,11 +193,24 @@ fun LyricsPanel(
                     contentPadding = PaddingValues(
                         start = 48.dp,
                         end = 48.dp,
-                        top = 64.dp,
-                        bottom = 72.dp,
+                        top = 350.dp,
+                        bottom = 350.dp,
                     ),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier.fillMaxSize()
+                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                        .drawWithContent {
+                            drawContent()
+                            drawRect(
+                                brush = Brush.verticalGradient(
+                                    0f to Color.Transparent,
+                                    0.1f to Color.Black,
+                                    0.9f to Color.Black,
+                                    1f to Color.Transparent
+                                ),
+                                blendMode = BlendMode.DstIn
+                            )
+                        },
                 ) {
                     itemsIndexed(lines, key = { i, line -> "${line.timeMs}-$i-${line.text}" }) { index, line ->
                         LyricLineItem(
@@ -547,8 +564,8 @@ private fun stripLyricsMeta(text: String): String =
 private fun isRichSyncWordLine(line: String): Boolean {
     if (!line.startsWith("<") || !line.endsWith(">")) return false
     val inner = line.removeSurrounding("<", ">")
-    // Paxsenix: word:start:end|word:start:end
-    if (inner.contains('|') && inner.contains(':')) return true
+    // Paxsenix: word:start:end|word:start:end (single word may not have a pipe)
+    if (inner.contains(':') && (inner.contains('|') || inner.count { it == ':' } >= 2)) return true
     // Alternate rich LRC: <00:01.23> word …
     if (Regex("""^\d{1,2}:\d{2}""").containsMatchIn(inner)) return true
     return false
