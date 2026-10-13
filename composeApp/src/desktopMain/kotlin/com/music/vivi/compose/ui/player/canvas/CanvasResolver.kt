@@ -2,6 +2,7 @@ package com.music.vivi.compose.ui.player.canvas
 
 import com.music.vivi.applecanvas.AppleMusicCanvasProvider
 import com.music.vivi.canvas.CanvasArtwork
+import com.music.vivi.canvas.NativeCanvas
 import com.music.vivi.canvas.TidalCanvasProvider
 import com.music.vivi.vivimusiccanvas.ViviMusicCanvasProvider
 import java.util.Locale
@@ -32,6 +33,24 @@ object CanvasResolver {
         if (key in misses) return@runCatching null
         val storefront = Locale.getDefault().country.lowercase(Locale.ROOT)
             .takeIf { it.length == 2 } ?: "us"
+        if (NativeCanvas.available) {
+            // Rust path: sources run concurrently, results cached on disk across sessions.
+            val native = NativeCanvas.resolve(
+                title = title,
+                artist = artist,
+                album = album,
+                source = when (source) {
+                    CanvasSource.AUTO -> "auto"
+                    CanvasSource.APPLE_MUSIC -> "apple"
+                    CanvasSource.VIVIMUSIC -> "vivi"
+                    CanvasSource.TIDAL -> "tidal"
+                },
+                storefront = storefront,
+            )
+            // Misses are cached by the helper (clean misses only), so network failures get retried.
+            if (native != null) cache[key] = native
+            return@runCatching native
+        }
         val albumTitle = album.orEmpty()
         val cleanTitle = title.replace(Regex("(?i)\\s*[\\[\\(].*?[\\]\\)]"), "").split(" - ").first().trim()
         val fetched = when (source) {

@@ -16,6 +16,7 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.java.keyring)
+    implementation(project(":nativelib"))
     implementation(libs.jna)
     implementation(libs.dbus.java.core)
     implementation(libs.dbus.java.transport.native.unixsocket)

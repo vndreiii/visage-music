@@ -15,6 +15,9 @@ kotlin {
             implementation(libs.ktor.client.encoding)
             implementation(libs.kotlinx.serialization.json)
         }
+        jvmMain.dependencies {
+            implementation(project(":nativelib"))
+        }
         jvmTest.dependencies {
             implementation(libs.junit)
             implementation(libs.kotlin.test)

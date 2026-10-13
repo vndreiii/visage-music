@@ -78,40 +78,12 @@ private data class SearchItem(val id: String, val text: String)
  * Optional Rust acceleration. Everything here returns null / false when the shared library
  * is missing so callers keep their pure-JVM path.
  *
- * Lookup order: `$VIVI_NATIVE_LIB` (absolute path), the packaged app's resources dir, then the
- * system library path. The working directory is deliberately never searched.
+ * Library lookup is shared: see `NativeLibLoader`.
  */
 object NativeHelpers {
     private val json = Json { ignoreUnknownKeys = true }
 
-    private val lib: ViviNativeLib? by lazy {
-        if (System.getenv("VIVI_NATIVE_DISABLE") == "1") return@lazy null
-        val candidates = buildList {
-            // Explicit absolute path (run-dev.sh and the Gradle test task set this).
-            System.getenv("VIVI_NATIVE_LIB")?.takeIf { it.isNotBlank() }?.let(::add)
-            // Packaged app: next to the bundled resources.
-            System.getProperty("compose.application.resources.dir")?.let { add(File(it, "libvivi_native.so").path) }
-            add("vivi_native") // system library path
-        }
-        for (name in candidates) {
-            if (name.contains('/') && !isTrusted(File(name))) continue
-            try {
-                return@lazy Native.load(name, ViviNativeLib::class.java)
-            } catch (_: Throwable) {
-            }
-        }
-        null
-    }
-
-    /** An absolute, existing file that other users can't have swapped out. */
-    private fun isTrusted(f: File): Boolean {
-        if (!f.isAbsolute || !f.isFile) return false
-        return runCatching {
-            val perms = java.nio.file.Files.getPosixFilePermissions(f.toPath())
-            java.nio.file.attribute.PosixFilePermission.GROUP_WRITE !in perms &&
-                java.nio.file.attribute.PosixFilePermission.OTHERS_WRITE !in perms
-        }.getOrDefault(false)
-    }
+    private val lib: ViviNativeLib? by lazy { com.music.vivi.nativelib.NativeLibLoader.load(ViviNativeLib::class.java) }
 
     val available: Boolean get() = lib != null
 

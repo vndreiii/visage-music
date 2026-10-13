@@ -2,11 +2,7 @@ package com.music.vivi.player.mpris
 
 import com.sun.jna.Callback
 import com.sun.jna.Library
-import com.sun.jna.Native
 import com.sun.jna.Pointer
-import java.io.File
-import java.nio.file.Files
-import java.nio.file.attribute.PosixFilePermission
 
 @Suppress("FunctionName")
 internal interface ViviMprisLib : Library {
@@ -57,31 +53,7 @@ internal class NativeMpris private constructor(
         const val LOOP = 11
         const val RAISE = 12
 
-        private val lib: ViviMprisLib? by lazy {
-            if (System.getenv("VIVI_NATIVE_DISABLE") == "1") return@lazy null
-            val candidates = buildList {
-                System.getenv("VIVI_NATIVE_LIB")?.takeIf { it.isNotBlank() }?.let(::add)
-                System.getProperty("compose.application.resources.dir")?.let { add(File(it, "libvivi_native.so").path) }
-                add("vivi_native")
-            }
-            for (name in candidates) {
-                if (name.contains('/') && !trusted(File(name))) continue
-                try {
-                    return@lazy Native.load(name, ViviMprisLib::class.java)
-                } catch (_: Throwable) {
-                }
-            }
-            null
-        }
-
-        /** Never load a library other users could have replaced. */
-        private fun trusted(f: File): Boolean {
-            if (!f.isAbsolute || !f.isFile) return false
-            return runCatching {
-                val perms = Files.getPosixFilePermissions(f.toPath())
-                PosixFilePermission.GROUP_WRITE !in perms && PosixFilePermission.OTHERS_WRITE !in perms
-            }.getOrDefault(false)
-        }
+        private val lib: ViviMprisLib? by lazy { com.music.vivi.nativelib.NativeLibLoader.load(ViviMprisLib::class.java) }
 
         fun start(onCommand: (cmd: Int, num: Double, text: String?) -> Unit): NativeMpris? {
             val l = lib ?: return null

@@ -24,6 +24,7 @@ dependencies {
     implementation(libs.sqldelight.sqlite.driver)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
+    implementation(project(":nativelib"))
     implementation(libs.jna)
     // Innertube models for mapping helpers
     implementation(project(":innertube"))

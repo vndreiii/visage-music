@@ -2,6 +2,7 @@
 //! (`*mut c_char`, release with [`vivi_free_string`]) so the boundary stays tiny and the
 //! Kotlin side can fall back to its pure-JVM implementation when this library is absent.
 
+mod canvas;
 mod mpris;
 mod scan;
 mod search;
@@ -98,4 +99,19 @@ pub unsafe extern "C" fn vivi_mpris_update(handle: u64, json: *const c_char) {
 #[no_mangle]
 pub extern "C" fn vivi_mpris_stop(handle: u64) {
     mpris::stop(handle);
+}
+
+/// Resolve motion artwork: `{title, artist, album, source, storefront, cache_dir}` →
+/// CanvasArtwork JSON, or the string `null` when nothing was found. Blocks (network), call off the UI thread.
+///
+/// # Safety
+/// `request` must be a valid NUL-terminated string.
+#[no_mangle]
+pub unsafe extern "C" fn vivi_canvas_resolve(request: *const c_char) -> *mut c_char {
+    let out = from_c(request)
+        .and_then(|j| serde_json::from_str::<canvas::Request>(j).ok())
+        .map(|r| canvas::resolve(&r))
+        .and_then(|a| serde_json::to_string(&a).ok())
+        .unwrap_or_else(|| "null".to_string());
+    into_c(out)
 }
