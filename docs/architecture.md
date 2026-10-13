@@ -10,8 +10,8 @@ Linux desktop port of [VIVI Music](vivi-music/) (Android). Upstream Android tree
 
 ```
 ┌─────────────┐    cookies/CDP     ┌──────────────────┐
-│  :desktop   │ ─────────────────► │ Linux keyring    │
-│  (JavaFX    │    save session    │ (Secret Service) │
+│ :player     │ ─────────────────► │ Linux keyring    │
+│  (Compose   │    save session    │ (Secret Service) │
 │   login)    │ ◄───────────────── │ vivi-desktop /   │
 └─────────────┘    load session    │ yt-music-session │
                                    └────────┬─────────┘
@@ -63,9 +63,9 @@ Gradle: Kotlin **2.3.10**, JVM **21**, Compose Multiplatform **1.10.2**, Koin (n
 2. CDP scrapes cookies, `visitorData`, `dataSyncId`.
 3. Session validated via Innertube `accountInfo`, stored with **java-keyring** (Secret Service): service `vivi-desktop`, accounts `yt-music-session` / `yt-music-account`.
 4. `YtMusicSession.applyToYouTube()` sets the global `YouTube` singleton used by Innertube.
-5. `:core`’s `KeyringSessionManager` reloads that session for Compose / player without JavaFX.
+5. `:core`’s `KeyringSessionManager` reloads that session for Compose / player.
 
-Login stays on JavaFX for now (Google blocks embedded WebViews). Compose shows `LoginGateScreen` if no session.
+Login runs in `:player` (`YtLoginFlow`: real Chromium window + CDP → keyring); Compose hosts it in Settings → Account.
 
 ---
 
@@ -98,7 +98,6 @@ On `playVideo` / `playQueue`:
 | `:database` | JVM | SQLDelight playlist/song cache |
 | `:core` | JVM | Koin: `SessionManager`, `PlaybackController`, `YouTubeMusicService`, chart suggestions |
 | `:composeApp` | CMP desktop | Full shell UI (`com.music.vivi.alex`) |
-| `:desktop` | JVM + JavaFX | Login (+ transitional playback pane) |
 
 ### Compose connection
 
@@ -207,7 +206,6 @@ Thumb: `Surface(shape = CircleShape, onClick)` so hover/ripple stay circular (ha
 ## Hard rules (porting)
 
 1. Do **not** add Android Gradle plugin, Hilt, Timber, or Media3 to desktop modules.
-2. Do **not** embed Compose inside the JavaFX Stage — UI lives in `:composeApp` only.
 3. Do **not** call `YouTube.*` from UI without session applied.
 4. Prefer extending `PlaybackController` / `:core` facades over leaking `:player` into screens.
 5. Port one screen/route cluster per change; `./gradlew :composeApp:compileKotlinDesktop` after each.

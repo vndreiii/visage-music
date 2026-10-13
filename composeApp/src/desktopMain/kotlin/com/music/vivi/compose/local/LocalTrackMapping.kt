@@ -9,7 +9,10 @@ fun Local_track.toQueueTrack(): QueueTrack = QueueTrack(
     videoId = "local:$id",
     title = title,
     artist = artist_name,
-    artworkUrl = cover_path?.let { File(it).toURI().toString() },
+    artworkUrl = cover_path?.let {
+        if (it.startsWith("opus-lazy://")) null
+        else File(it).toURI().toString()
+    },
     localPath = file_path,
     durationMs = (duration_sec ?: 0) * 1000,
     album = album_title,

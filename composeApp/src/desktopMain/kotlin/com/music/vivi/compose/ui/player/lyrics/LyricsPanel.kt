@@ -1,5 +1,12 @@
 package com.music.vivi.compose.ui.player.lyrics
 
+import com.music.vivi.compose.ui.component.smoothWheelScroll
+
+import androidx.compose.runtime.derivedStateOf
+
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -93,7 +100,7 @@ fun LyricsPanel(
     val controller = LocalPlaybackController.current
     val prefs = koinInject<DesktopPrefs>()
     val nowPlaying by controller.nowPlaying.collectAsState()
-    val positionMs by controller.positionMs.collectAsState()
+    val positionState = controller.positionMs.collectAsState()
     val durationMs by controller.durationMs.collectAsState()
     var prefsTick by remember { mutableStateOf(0) }
     DisposableEffect(prefs) {
@@ -161,26 +168,50 @@ fun LyricsPanel(
         }
     }
 
-    val activeIndex = remember(positionMs, lines) {
-        var idx = -1
-        for (i in lines.indices) {
-            val t = lines[i].timeMs ?: continue
-            if (t <= positionMs) idx = i else break
+    // derivedStateOf: recompose only when the active line changes, not on every position tick.
+    val activeIndex by remember(lines) {
+        derivedStateOf {
+            val positionMs = positionState.value
+            var idx = -1
+            for (i in lines.indices) {
+                val t = lines[i].timeMs ?: continue
+                if (t <= positionMs) idx = i else break
+            }
+            idx
         }
-        idx
     }
 
-    LaunchedEffect(activeIndex) {
-        if (activeIndex >= 0) {
-            runCatching {
-                val viewport = listState.layoutInfo.viewportSize.height
-                val topPaddingPx = 350f * density
-                val centerOffset = (viewport / 2f) - topPaddingPx - 30f
-                listState.animateScrollToItem(
-                    index = activeIndex.coerceAtLeast(0),
-                    scrollOffset = centerOffset.toInt(),
-                )
+    // Pause auto-follow while the user scrolls the lyrics by hand; resume shortly after.
+    var userScrolledAt by remember { mutableStateOf(0L) }
+    val dragging = listState.isScrollInProgress
+    var autoScrolling by remember { mutableStateOf(false) }
+    LaunchedEffect(dragging) {
+        if (dragging && !autoScrolling) userScrolledAt = System.currentTimeMillis()
+    }
+
+    LaunchedEffect(activeIndex, lines) {
+        if (activeIndex < 0) return@LaunchedEffect
+        if (System.currentTimeMillis() - userScrolledAt < 3500) return@LaunchedEffect
+        autoScrolling = true
+        try {
+            val target = activeIndex + 1 // +1 for the leading spacer item
+            val info = listState.layoutInfo
+            val item = info.visibleItemsInfo.firstOrNull { it.index == target }
+            if (item == null) {
+                listState.scrollToItem(target)
             }
+            val fresh = listState.layoutInfo
+            val placed = fresh.visibleItemsInfo.firstOrNull { it.index == target } ?: return@LaunchedEffect
+            val delta = placed.offset + placed.size / 2f - fresh.viewportSize.height / 2f
+            listState.animateScrollBy(
+                delta,
+                androidx.compose.animation.core.spring(
+                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                    stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
+                ),
+            )
+        } finally {
+            autoScrolling = false
         }
     }
 
@@ -189,18 +220,15 @@ fun LyricsPanel(
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 ViviLoadingIndicator(color = Color.White)
             }
-            error != null && lines.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Text(error!!, color = Color.White.copy(alpha = 0.55f), textAlign = TextAlign.Center)
+            error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text(error ?: "", color = Color.White.copy(alpha = 0.55f), textAlign = TextAlign.Center)
+            }
+            lines.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Text("No lyrics available", color = Color.White.copy(alpha = 0.5f))
             }
             else -> {
                 LazyColumn(
                     state = listState,
-                    contentPadding = PaddingValues(
-                        start = 48.dp,
-                        end = 48.dp,
-                        top = 350.dp,
-                        bottom = 350.dp,
-                    ),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                     modifier = Modifier.fillMaxSize()
                         .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
@@ -211,21 +239,24 @@ fun LyricsPanel(
                                     0f to Color.Transparent,
                                     0.1f to Color.Black,
                                     0.9f to Color.Black,
-                                    1f to Color.Transparent
+                                    1f to Color.Transparent,
                                 ),
                                 blendMode = BlendMode.DstIn
                             )
-                        },
+                        }
+                        .smoothWheelScroll(listState)
                 ) {
+                    item { Spacer(Modifier.height(350.dp)) }
                     itemsIndexed(lines, key = { i, line -> "${line.timeMs}-$i-${line.text}" }) { index, line ->
                         LyricLineItem(
                             text = line.text,
                             active = index == activeIndex,
                             distance = if (activeIndex < 0) 1 else abs(index - activeIndex),
                             textAlign = textAlign,
-                            onClick = line.timeMs?.let { ms -> { controller.seekTo(ms) } },
+                            onClick = line.timeMs?.let { ms -> { userScrolledAt = 0L; controller.seekTo(ms) } },
                         )
                     }
+                    item { Spacer(Modifier.height(350.dp)) }
                 }
             }
         }
@@ -483,9 +514,9 @@ private fun LyricLineItem(
     onClick: (() -> Unit)? = null,
 ) {
     val targetScale = when {
-        active -> 1.08f
-        distance == 1 -> 0.96f
-        else -> 0.92f
+        active -> 1.06f
+        distance == 1 -> 0.97f
+        else -> 0.94f
     }
     val targetAlpha = when {
         active -> 1f
@@ -511,7 +542,7 @@ private fun LyricLineItem(
         textAlign = textAlign,
         style = TextStyle(
             color = Color.White,
-            fontSize = if (active) 28.sp else 24.sp,
+            fontSize = 26.sp,
             fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
             shadow = if (active) {
                 Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 2f), 8f)
@@ -533,6 +564,14 @@ private fun LyricLineItem(
                 scaleX = scale
                 scaleY = scale
                 this.alpha = alpha
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(
+                    when (textAlign) {
+                        TextAlign.Left, TextAlign.Start -> 0f
+                        TextAlign.Right, TextAlign.End -> 1f
+                        else -> 0.5f
+                    },
+                    0.5f,
+                )
             },
     )
 }

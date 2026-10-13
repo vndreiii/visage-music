@@ -40,6 +40,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -120,8 +121,11 @@ fun MiniPlayerBar(
     val isFavorite by controller.isFavorite.collectAsState()
     val queue by controller.queueIds.collectAsState()
     val queueIndex by controller.queueIndex.collectAsState()
-    val positionMs by controller.positionMs.collectAsState()
-    val durationMs by controller.durationMs.collectAsState()
+    // Held as State and read lazily (progress lambda / derivedStateOf) so position ticks
+    // redraw only the progress line instead of recomposing the whole bar.
+    val positionState = controller.positionMs.collectAsState()
+    val durationState = controller.durationMs.collectAsState()
+    val hasPosition by remember { derivedStateOf { positionState.value > 0L } }
     val volume by controller.volume.collectAsState()
 
     var showVolumeOverlay by remember { mutableStateOf(false) }
@@ -154,14 +158,13 @@ fun MiniPlayerBar(
 
     val track = nowPlaying
     val idleEmpty = track == null && state == PlaybackState.Idle && lastError == null
-    val canPrev = queueIndex > 0 || positionMs > 0L
+    val canPrev = queueIndex > 0 || hasPosition
     val canNext = queueIndex >= 0 && queueIndex + 1 < queue.size
     val playing = state == PlaybackState.Playing
     val loading = state == PlaybackState.Loading
-    val progress = if (durationMs > 0L) {
-        (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-    } else {
-        0f
+    val progress: () -> Float = {
+        val d = durationState.value
+        if (d > 0L) (positionState.value.toFloat() / d.toFloat()).coerceIn(0f, 1f) else 0f
     }
 
     @Suppress("UNUSED_EXPRESSION")
@@ -298,7 +301,7 @@ fun MiniPlayerBar(
                                 when {
                                     state == PlaybackState.Error && !lastError.isNullOrBlank() ->
                                         lastError!!.take(64)
-                                    state == PlaybackState.Loading -> "Resolving stream…"
+                                    state == PlaybackState.Loading && track?.artist.isNullOrBlank() -> "Resolving stream…"
                                     idleEmpty -> "Pick a song to start"
                                     else -> track?.artist?.takeIf { it.isNotBlank() } ?: ""
                                 },
@@ -374,7 +377,7 @@ fun MiniPlayerBar(
 
                     if (miniStyle == MiniPlayerStyle.FLOATING_PILL || miniStyle == MiniPlayerStyle.COMPACT_EDGE) {
                         LinearProgressIndicator(
-                            progress = { progress },
+                            progress = progress,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(2.dp),

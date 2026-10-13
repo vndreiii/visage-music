@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.album
 
+import com.music.vivi.compose.ui.component.smoothWheelScroll
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -137,7 +139,8 @@ fun OnlineAlbumScreen(
                 ).coerceIn(0f, 320f) / 320f
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize()
+                    .smoothWheelScroll(listState),
                 contentPadding = PaddingValues(bottom = 120.dp),
             ) {
                 item(key = "toolbar") {

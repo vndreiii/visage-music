@@ -41,14 +41,13 @@ Prefs live at `~/.config/vivi-desktop/settings.properties`.
 | Module | Role |
 |--------|------|
 | `:composeApp` | Main Compose Desktop UI |
-| `:desktop` | JavaFX login helper (Chromium + CDP → keyring) |
 | `:player` | PlaybackController, libmpv, MPRIS, stream resolve |
 | `:innertube` | YouTube Music Innertube API |
 | `:core` | DI / session / service facades |
 | `:database` | Local SQLDelight cache |
 | `:lyrics`, `:jiosaavn`, … | Lyrics backends, Saavn stream assist, other integrations |
 
-Deeper architecture notes: [`architecture.md`](architecture.md). Session changelog for agents: [`summary.md`](summary.md).
+Deeper architecture notes: [`docs/architecture.md`](docs/architecture.md). Session changelog for agents: [`SUMMARY.md`](SUMMARY.md).
 
 ## Build / test
 

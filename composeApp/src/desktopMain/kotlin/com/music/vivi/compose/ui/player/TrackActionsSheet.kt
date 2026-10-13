@@ -3,8 +3,13 @@ package com.music.vivi.compose.ui.player
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
@@ -83,6 +88,8 @@ private enum class TrackMenuPane { Actions, Playlists }
  * Uses [Popup] + bounded [heightIn] then [verticalScroll] — not Material [DropdownMenu],
  * which crashes on Compose Desktop with infinite max-height constraints.
  */
+private val MenuTransformOrigin = TransformOrigin(1f, 1f)
+
 @Composable
 fun TrackActionsMenu(
     expanded: Boolean,
@@ -168,9 +175,17 @@ fun TrackActionsMenu(
         ) {
             AnimatedVisibility(
                 visibleState = visibleState,
-                // Expand like Material dropdowns (anchor is bottom-end under the More button).
-                enter = expandVertically(expandFrom = Alignment.Bottom),
-                exit = shrinkVertically(shrinkTowards = Alignment.Bottom),
+                // Same scale+fade from the anchor corner as Material's DropdownMenu (Settings menu).
+                enter = fadeIn(tween(30)) + scaleIn(
+                    initialScale = 0.8f,
+                    transformOrigin = MenuTransformOrigin,
+                    animationSpec = tween(120, easing = LinearOutSlowInEasing),
+                ),
+                exit = fadeOut(tween(75, delayMillis = 0)) + scaleOut(
+                    targetScale = 0.8f,
+                    transformOrigin = MenuTransformOrigin,
+                    animationSpec = tween(75),
+                ),
             ) {
                 Surface(
                     shape = RoundedCornerShape(20.dp),

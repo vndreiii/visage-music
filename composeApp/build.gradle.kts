@@ -10,7 +10,6 @@ kotlin {
     sourceSets {
         val desktopTest by getting {
             dependencies {
-    implementation("com.github.jagrosh:DiscordIPC:master-SNAPSHOT")
                 implementation(kotlin("test"))
                 implementation(libs.junit)
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.6")
@@ -19,20 +18,12 @@ kotlin {
         }
         val desktopMain by getting {
             dependencies {
-    implementation("com.github.jagrosh:DiscordIPC:master-SNAPSHOT")
+                implementation("com.github.jagrosh:DiscordIPC:master-SNAPSHOT")
                 implementation(project(":core"))
                 implementation(project(":lyrics"))
                 implementation(project(":canvas"))
                 implementation(project(":applecanvas"))
                 implementation(project(":vivimusiccanvas"))
-                val osName = System.getProperty("os.name").lowercase()
-                val jfxClassifier = when {
-                    osName.contains("win") -> "win"
-                    osName.contains("mac") -> "mac"
-                    else -> "linux"
-                }
-                implementation("org.openjfx:javafx-media:21.0.6:$jfxClassifier")
-                implementation("org.openjfx:javafx-swing:21.0.6:$jfxClassifier")
                 implementation(compose.desktop.currentOs)
                 implementation(compose.foundation)
                 implementation(compose.material3)

@@ -1,4 +1,4 @@
-package com.music.vivi.desktop.login
+package com.music.vivi.player.login
 
 /**
  * Upstream DataSyncId helper — keep delegated id after "||" when present.

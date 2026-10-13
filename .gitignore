@@ -29,3 +29,9 @@ META-INF/
 skill-observations/
 review.diff
 *.bak
+.agents/
+
+# Local tooling / crash dumps
+.serena/
+hs_err_pid*.log
+*.log

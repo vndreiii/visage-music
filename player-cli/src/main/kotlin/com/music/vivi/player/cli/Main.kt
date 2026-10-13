@@ -12,6 +12,7 @@ fun main(args: Array<String>) = runBlocking {
     when (args.firstOrNull()) {
         "play" -> runPlay(args.drop(1))
         "like" -> runLike(args.drop(1))
+        "switch" -> runSwitch()
         else -> {
             System.err.println(
                 """
@@ -85,4 +86,41 @@ private suspend fun runPlay(args: List<String>) {
     } finally {
         controller.release()
     }
+}
+
+/** Repro: play a queue, then pick a song from a different queue mid-playback. */
+private suspend fun runSwitch() {
+    val controller = DefaultPlaybackController.create(
+        fadeSettings = { com.music.vivi.player.PlaybackFadeSettings(crossfadeEnabled = System.getenv("XFADE") == "1") },
+    )
+    controller.setVolume(0f)
+    fun q(vararg ids: String) = ids.map { com.music.vivi.player.QueueTrack(videoId = it) }
+    val a = q("dQw4w9WgXcQ", "kJQP7kiw5Fk", "fJ9rUzIMcZQ")
+    val b = q("hTWKbfoikeg", "RgKAFK5djSk", "JGwWNGJdvx8", "60ItHLz5WEA")
+    suspend fun watch(label: String, seconds: Int) {
+        repeat(seconds) {
+            delay(1.seconds)
+            println("[$label] t=${it + 1}s state=${controller.state.value} pos=${controller.positionMs.value} np=${controller.nowPlaying.value?.videoId} err=${controller.lastError.value}")
+        }
+    }
+    println("== play queue A[0]")
+    controller.playQueue(a, 0)
+    watch("A", 6)
+    println("== pick B[2] from another list")
+    controller.playQueue(b, 2)
+    watch("B", 10)
+    System.getenv("LOCAL_FILE")?.let { path ->
+        println("== pick a local file")
+        controller.playLocalQueue(listOf(com.music.vivi.player.QueueTrack(videoId = "local:test", title = "local", localPath = path)), 0)
+        watch("L", 8)
+        println("== back to online B[0]")
+        controller.playQueue(b, 0)
+        watch("B0", 8)
+    }
+    println("== pause, then pick A[1]")
+    controller.pause()
+    delay(1.seconds)
+    controller.playQueue(a, 1)
+    watch("A1", 10)
+    kotlin.system.exitProcess(0)
 }

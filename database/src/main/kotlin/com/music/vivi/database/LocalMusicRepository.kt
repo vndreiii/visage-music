@@ -154,4 +154,11 @@ class LocalMusicRepository(
             }
         }
     }
+
+    fun updateCoverPathForOpusLazy(oldPath: String, newPath: String) {
+        inTransaction {
+            db.localTrackQueries.updateCoverPathByOld(newPath, oldPath)
+            db.localAlbumQueries.updateCoverPathByOld(newPath, oldPath)
+        }
+    }
 }

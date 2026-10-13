@@ -29,6 +29,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.BlurredEdgeTreatment
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.drawWithCache
@@ -75,6 +76,8 @@ fun PlayerBackgroundLayer(
     artworkUrl: String?,
     canvasVideoUrl: String? = null,
     canvasPlaying: Boolean = true,
+    /** Blur the canvas into an ambient wash (true) or show it full-bleed and sharp (false). */
+    canvasBlurred: Boolean = true,
     showClearArtwork: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
@@ -95,6 +98,7 @@ fun PlayerBackgroundLayer(
                 artworkUrl = artworkUrl,
                 canvasVideoUrl = canvasVideoUrl,
                 canvasPlaying = canvasPlaying,
+                canvasBlurred = canvasBlurred,
                 showClearArtwork = showClearArtwork,
             )
             PlayerBackgroundStyle.LIVE_MESH -> LiveMeshShapesBg(palette)
@@ -399,8 +403,10 @@ private fun AppleMusicBg(
     artworkUrl: String?,
     canvasVideoUrl: String?,
     canvasPlaying: Boolean,
+    canvasBlurred: Boolean,
     showClearArtwork: Boolean,
 ) {
+    Box(Modifier.fillMaxSize()) {
     AnimatedContent(
         targetState = artworkUrl,
         transitionSpec = { fadeIn(tween(1200)) togetherWith fadeOut(tween(1200)) },
@@ -444,16 +450,35 @@ private fun AppleMusicBg(
                     
                 }
             }
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Black.copy(alpha = 0.05f), Color.Black.copy(alpha = 0.4f)),
-                        ),
-                    ),
-            )
         }
+    }
+    if (canvasVideoUrl != null) {
+        CanvasVideoSurface(
+            videoUrl = canvasVideoUrl,
+            playing = canvasPlaying,
+            // Slow cross-fade over the blurred artwork so the switch to video is invisible;
+            // overscan before blurring so the blur never pulls transparent edges inward.
+            fadeInMillis = if (canvasBlurred) 1400 else 600,
+            modifier = if (canvasBlurred) {
+                Modifier.fillMaxSize().graphicsLayer { scaleX = 1.35f; scaleY = 1.35f }.blur(120.dp, edgeTreatment = BlurredEdgeTreatment.Unbounded).alpha(0.85f)
+            } else {
+                Modifier.fillMaxSize()
+            },
+        )
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    if (canvasBlurred || canvasVideoUrl == null) {
+                        listOf(Color.Black.copy(alpha = 0.05f), Color.Black.copy(alpha = 0.4f))
+                    } else {
+                        listOf(Color.Transparent, Color.Transparent, Color.Black.copy(alpha = 0.7f))
+                    },
+                ),
+            ),
+    )
     }
 }
 

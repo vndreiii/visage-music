@@ -139,7 +139,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                 )
             }.getOrNull()
         }
-        canvasVideoUrl = CanvasResolver.videoUrl(art)
+        canvasVideoUrl = CanvasResolver.tallUrl(art)
     }
 
     val hideThumbnail = prefs.getBoolean(PrefKeys.HidePlayerThumbnail, false) ||
@@ -148,9 +148,10 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
     Box(Modifier.fillMaxSize()) {
         PlayerBackgroundLayer(
             style = bgStyle,
-            artworkUrl = track?.artworkUrl,
+            artworkUrl = com.music.vivi.compose.ui.component.rememberReadyArtwork(track?.artworkUrl),
             canvasVideoUrl = canvasVideoUrl,
             canvasPlaying = playing,
+            canvasBlurred = false,
             showClearArtwork = true,
         )
 

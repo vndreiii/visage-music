@@ -54,9 +54,11 @@ object SaavnStreamResolver {
                 nowPlaying = NowPlaying(
                     videoId = videoId,
                     title = match.name.ifBlank { title },
-                    artist = match.artists.all.firstOrNull()?.name
-                        ?: match.artists.primary.firstOrNull()?.name
-                        ?: artistJoined.ifBlank { "Unknown" },
+                    artist = artistJoined.ifBlank {
+                        match.artists.primary.firstOrNull()?.name
+                            ?: match.artists.all.firstOrNull()?.name
+                            ?: "Unknown"
+                    },
                     album = match.album?.name ?: album.takeIf { it.isNotBlank() },
                     artworkUrl = match.image.lastOrNull()?.url ?: artwork,
                     durationMs = (match.duration ?: durationSec)?.times(1000L) ?: 0L,

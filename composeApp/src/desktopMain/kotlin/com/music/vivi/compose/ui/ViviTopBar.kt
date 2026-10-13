@@ -28,6 +28,7 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Home
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Palette
+import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.Close
@@ -290,24 +291,18 @@ private fun SettingsDropdownMenu(
             onClick = { onOpen(Routes.SETTINGS_ACCOUNT) },
         )
         DropdownMenuItem(
-            text = { Text("Appearance") },
-            leadingIcon = {
-                Icon(Icons.Outlined.Palette, contentDescription = null)
-            },
-            onClick = { onOpen(Routes.SETTINGS_APPEARANCE) },
-        )
-        DropdownMenuItem(
             text = { Text("Theme") },
-            leadingIcon = {
-                Icon(Icons.Outlined.Palette, contentDescription = null)
-            },
+            leadingIcon = { Icon(Icons.Outlined.Palette, contentDescription = null) },
             onClick = { onOpen(Routes.SETTINGS_THEME) },
         )
         DropdownMenuItem(
-            text = { Text("Player and audio") },
-            leadingIcon = {
-                Icon(Icons.AutoMirrored.Outlined.VolumeUp, contentDescription = null)
-            },
+            text = { Text("Now Playing") },
+            leadingIcon = { Icon(Icons.Outlined.PlayCircle, contentDescription = null) },
+            onClick = { onOpen(Routes.SETTINGS_NOW_PLAYING) },
+        )
+        DropdownMenuItem(
+            text = { Text("Playback & audio") },
+            leadingIcon = { Icon(Icons.AutoMirrored.Outlined.VolumeUp, contentDescription = null) },
             onClick = { onOpen(Routes.SETTINGS_PLAYER) },
         )
     }

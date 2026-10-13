@@ -65,6 +65,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -190,7 +191,9 @@ fun NowPlayingScreen(
     val showUnderPlaybar = queueMode == QueuePanelMode.UNDER_PLAYBAR
     val nowPlaying by controller.nowPlaying.collectAsState()
     val state by controller.state.collectAsState()
-    val positionMs by controller.positionMs.collectAsState()
+    // Position is only read lazily (derivedStateOf / NowPlayingSeekSection) so ticks don't
+    // recompose the whole screen with its backgrounds and shared transitions.
+    val positionState = controller.positionMs.collectAsState()
     val durationMs by controller.durationMs.collectAsState()
     val isFavorite by controller.isFavorite.collectAsState()
     val queueTracks by controller.queueTracks.collectAsState()
@@ -204,16 +207,9 @@ fun NowPlayingScreen(
 
     val track = nowPlaying
     val duration = durationMs.takeIf { it > 0 } ?: track?.durationMs ?: 0L
-    var scrubbing by remember { mutableStateOf(false) }
-    var scrubPos by remember { mutableFloatStateOf(0f) }
-    val progress = when {
-        scrubbing -> scrubPos
-        duration <= 0L -> 0f
-        else -> (positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
-    }
-    val displayPos = if (scrubbing) (scrubPos * duration).toLong() else positionMs
     val playing = state == PlaybackState.Playing
-    val canPrev = queueIndex > 0 || positionMs > 0L
+    val hasPosition by remember { derivedStateOf { positionState.value > 0L } }
+    val canPrev = queueIndex > 0 || hasPosition
     val canNext = track != null
     val upcoming = remember(queueTracks, queueIndex) {
         queueTracks.mapIndexedNotNull { i, t -> if (i > queueIndex) i to t else null }
@@ -239,13 +235,15 @@ fun NowPlayingScreen(
         CanvasSource.valueOf(prefs.getString(PrefKeys.CanvasSource, CanvasSource.AUTO.name))
     }.getOrDefault(CanvasSource.AUTO)
 
-    var canvasVideoUrl by remember { mutableStateOf<String?>(null) }
+    var canvasArt by remember { mutableStateOf<com.music.vivi.canvas.CanvasArtwork?>(null) }
+    val canvasSquareUrl = CanvasResolver.squareUrl(canvasArt)
+    val canvasTallUrl = CanvasResolver.tallUrl(canvasArt)
     var showLyrics by remember { mutableStateOf(false) }
     var showTrackActions by remember { mutableStateOf(false) }
     val windowState = LocalWindowState.current
 
     LaunchedEffect(track?.videoId, bgStyle, enableCanvas, canvasSource) {
-        canvasVideoUrl = null
+        canvasArt = null
         if (bgStyle != PlayerBackgroundStyle.APPLE_MUSIC || !enableCanvas || track == null) return@LaunchedEffect
         val art = withContext(Dispatchers.IO) {
             runCatching {
@@ -257,16 +255,27 @@ fun NowPlayingScreen(
                 )
             }.getOrNull()
         }
-        canvasVideoUrl = CanvasResolver.videoUrl(art)
+        canvasArt = art
     }
 
     val hideThumbnail = prefs.getBoolean(PrefKeys.HidePlayerThumbnail, false)
+    // Only animate to artwork that is already decoded at full quality.
+    val readyArt = com.music.vivi.compose.ui.component.rememberReadyArtwork(track?.artworkUrl)
+    var artTarget by remember { mutableStateOf<Pair<String?, String?>>(null to null) }
+    LaunchedEffect(readyArt) { artTarget = track?.videoId to readyArt }
+
+    // The lyrics view swaps to the portrait stream; keep its decoder open (parked on the
+    // first frame) so toggling lyrics shows it instantly instead of cold-starting HLS.
+    if (canvasTallUrl != null && canvasTallUrl != canvasSquareUrl) {
+        com.music.vivi.compose.ui.player.background.rememberCanvasVideo(canvasTallUrl, playing = false)
+    }
 
     Box(Modifier.fillMaxSize()) {
         PlayerBackgroundLayer(
             style = bgStyle,
-            artworkUrl = track?.artworkUrl,
-            canvasVideoUrl = canvasVideoUrl,
+            artworkUrl = readyArt,
+            // Same URL as the cover slot: one shared decoder, frames stay in sync.
+            canvasVideoUrl = canvasSquareUrl,
             canvasPlaying = playing,
             showClearArtwork = !showLyrics,
         )
@@ -371,7 +380,9 @@ fun NowPlayingScreen(
                                         .clip(coverShape),
                                 ) {
                                     AnimatedContent(
-                                        targetState = track?.videoId to track?.artworkUrl,
+                                        targetState = artTarget,
+                                        // Same song, sharper URL: swap in place, no second transition.
+                                        contentKey = { it.first },
                                         transitionSpec = {
                                             (slideInHorizontally { it / 3 } + fadeIn() + scaleIn(initialScale = 0.92f)) togetherWith
                                                 (slideOutHorizontally { -it / 3 } + fadeOut() + scaleOut(targetScale = 0.92f))
@@ -379,33 +390,27 @@ fun NowPlayingScreen(
                                         label = "npArtwork",
                                         modifier = Modifier.fillMaxSize().clip(coverShape),
                                     ) { (_, artUrl) ->
-                                        if (canvasVideoUrl?.let { it.isNotBlank() } == true && enableCanvas && bgStyle == PlayerBackgroundStyle.APPLE_MUSIC) {
-                                            com.music.vivi.compose.ui.player.background.CanvasVideoSurface(
-                                                videoUrl = canvasVideoUrl!!,
-                                                playing = playing,
-                                                modifier = Modifier.fillMaxSize()
-                                                    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
-                                                    .drawWithContent {
-                                                        drawContent()
-                                                        drawRect(
-                                                            brush = Brush.horizontalGradient(
-                                                                0f to Color.Black,
-                                                                0.75f to Color.Black,
-                                                                1f to Color.Transparent,
-                                                            ),
-                                                            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn
-                                                        )
-                                                    }
-                                            )
-                                        } else {
-                                            AsyncImage(
-                                                model = artUrl,
-                                                contentDescription = track?.title,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .clip(coverShape),
-                                            )
+                                        Box(Modifier.fillMaxSize()) {
+                                            val squareUrl = canvasSquareUrl
+                                            // The canvas takes over the cover: the static art only shows
+                                            // until the first video frame, then it's removed entirely.
+                                            var canvasShowing by remember(squareUrl) { mutableStateOf(false) }
+                                            if (!canvasShowing) {
+                                                AsyncImage(
+                                                    model = artUrl,
+                                                    contentDescription = track?.title,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                )
+                                            }
+                                            if (squareUrl != null) {
+                                                com.music.vivi.compose.ui.player.background.CanvasVideoSurface(
+                                                    videoUrl = squareUrl,
+                                                    playing = playing,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    onFirstFrame = { canvasShowing = true },
+                                                )
+                                            }
                                         }
                                     }
                                 }
@@ -437,10 +442,11 @@ fun NowPlayingScreen(
                             verticalArrangement = Arrangement.Bottom,
                             horizontalAlignment = Alignment.Start,
                         ) {
-                            val showCanvasOnRight = showLyrics && canvasVideoUrl?.let { it.isNotBlank() } == true && enableCanvas && bgStyle == PlayerBackgroundStyle.APPLE_MUSIC
-                            if (showCanvasOnRight) {
+                            val rightCanvasUrl = canvasTallUrl ?: canvasSquareUrl
+                            val showCanvasOnRight = showLyrics && rightCanvasUrl != null
+                            if (showCanvasOnRight && rightCanvasUrl != null) {
                                 com.music.vivi.compose.ui.player.background.CanvasVideoSurface(
-                                    videoUrl = canvasVideoUrl!!,
+                                    videoUrl = rightCanvasUrl,
                                     playing = playing,
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -530,21 +536,11 @@ fun NowPlayingScreen(
                             }
 
                             Spacer(Modifier.height(stackGap))
-                            PlayerSeekBar(
-                                progress = progress,
-                                onScrub = { scrubbing = true; scrubPos = it },
-                                onScrubFinished = {
-                                    scrubbing = false
-                                    controller.seekTo((scrubPos * duration).toLong().coerceAtLeast(0L))
-                                },
-                                style = sliderStyle,
+                            NowPlayingSeekSection(
+                                duration = duration,
+                                sliderStyle = sliderStyle,
                                 squiggly = squigglySlider,
-                                modifier = Modifier.fillMaxWidth(),
                             )
-                            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                                Text(formatMs(displayPos), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
-                                Text(formatMs(duration), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
-                            }
 
                             Spacer(Modifier.height(stackGap))
                             TransportRow(
@@ -690,6 +686,43 @@ fun NowPlayingScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+/** Seek bar + time labels; the only part of Now Playing that recomposes per position tick. */
+@Composable
+internal fun NowPlayingSeekSection(
+    duration: Long,
+    sliderStyle: SliderStyle,
+    squiggly: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val controller = LocalPlaybackController.current
+    val positionMs by controller.positionMs.collectAsState()
+    var scrubbing by remember { mutableStateOf(false) }
+    var scrubPos by remember { mutableFloatStateOf(0f) }
+    val progress = when {
+        scrubbing -> scrubPos
+        duration <= 0L -> 0f
+        else -> (positionMs.toFloat() / duration.toFloat()).coerceIn(0f, 1f)
+    }
+    val displayPos = if (scrubbing) (scrubPos * duration).toLong() else positionMs
+    Column(modifier.fillMaxWidth()) {
+        PlayerSeekBar(
+            progress = progress,
+            onScrub = { scrubbing = true; scrubPos = it },
+            onScrubFinished = {
+                scrubbing = false
+                controller.seekTo((scrubPos * duration).toLong().coerceAtLeast(0L))
+            },
+            style = sliderStyle,
+            squiggly = squiggly,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(formatMs(displayPos), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
+            Text(formatMs(duration), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
         }
     }
 }

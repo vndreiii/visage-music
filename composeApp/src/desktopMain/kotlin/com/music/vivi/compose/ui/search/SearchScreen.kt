@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.search
 
+import com.music.vivi.compose.ui.component.smoothWheelScroll
+
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -384,6 +386,7 @@ fun SearchScreen(navController: NavController) {
                     LazyColumn(
                         state = listState,
                         contentPadding = PaddingValues(bottom = 96.dp),
+                        modifier = Modifier.smoothWheelScroll(listState),
                     ) {
                         if (suggestions.isNotEmpty()) {
                             item {
@@ -434,6 +437,7 @@ fun SearchScreen(navController: NavController) {
                     LazyColumn(
                         state = listState,
                         contentPadding = PaddingValues(bottom = 96.dp),
+                        modifier = Modifier.smoothWheelScroll(listState),
                     ) {
                         when (filter) {
                             SearchFilterType.ALL -> renderSummary(
@@ -508,6 +512,7 @@ fun SearchScreen(navController: NavController) {
                             LazyColumn(
                                 state = listState,
                                 contentPadding = PaddingValues(bottom = 96.dp),
+                                modifier = Modifier.smoothWheelScroll(listState),
                             ) {
                                 item {
                                     Text(

@@ -5,6 +5,10 @@ import com.music.innertube.YouTube
 import com.music.innertube.models.YouTubeClient
 import com.music.innertube.models.response.PlayerResponse
 import com.music.vivi.player.NowPlaying
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Resolve an audio stream URL for [videoId].
@@ -24,20 +28,77 @@ object StreamResolver {
         YouTubeClient.MOBILE,
     )
 
+    /**
+     * @param skipSources sources that already failed for this track (e.g. a URL mpv got a
+     *   403 on); resolution moves on to the next source instead of returning it again.
+     */
     suspend fun resolve(
         videoId: String,
         preferSaavn: Boolean = SaavnStreamResolver.defaultEnabled(),
         settings: StreamSettings = StreamSettings(saavnEnabled = preferSaavn),
-    ): ResolvedStream {
-        if (settings.saavnEnabled) {
-            SaavnStreamResolver.resolveForVideo(videoId, enabled = true, quality = if (settings.quality == StreamQuality.LOW) "96kbps" else "320kbps")?.let { return it }
+        skipSources: Set<String> = emptySet(),
+    ): ResolvedStream = coroutineScope {
+        // Race everything that can run independently: a Saavn miss or the metadata
+        // lookup no longer adds its full round-trip before YouTube is even tried.
+        val saavn = if (settings.saavnEnabled && "saavn" !in skipSources) {
+            async(Dispatchers.IO) {
+                runCatching {
+                    SaavnStreamResolver.resolveForVideo(
+                        videoId,
+                        enabled = true,
+                        quality = if (settings.quality == StreamQuality.LOW) "96kbps" else "320kbps",
+                    )
+                }.getOrNull()
+            }
+        } else {
+            null
+        }
+        val metadata = async(Dispatchers.IO) {
+            YouTube.player(videoId, client = YouTubeClient.WEB_REMIX).getOrNull()?.videoDetails
+        }
+        val newPipe: kotlinx.coroutines.Deferred<List<Pair<Int, String>>>? = if ("newpipe" !in skipSources) {
+            async(Dispatchers.IO) { runCatching { NewPipeExtractor.newPipePlayer(videoId) }.getOrDefault(emptyList<Pair<Int, String>>()) }
+        } else {
+            null
         }
 
-        // Prefer yt-dlp when available — Innertube googlevideo URLs currently 403 here.
-        var metadata: PlayerResponse.VideoDetails? = null
-        var lastError: Throwable? = null
+        fun cancelRest() {
+            metadata.cancel()
+            newPipe?.cancel()
+        }
 
+        saavn?.let { withTimeoutOrNull(SAAVN_WAIT_MS) { it.await() } }?.let {
+            cancelRest()
+            return@coroutineScope it
+        }
+        saavn?.cancel()
+
+        val streams = newPipe?.await().orEmpty()
+        val best = if (settings.quality == StreamQuality.LOW) streams.minByOrNull { it.first } else streams.maxByOrNull { it.first }
+        if (best != null) {
+            val details = withTimeoutOrNull(METADATA_WAIT_MS) { metadata.await() }
+            metadata.cancel()
+            return@coroutineScope ResolvedStream(
+                nowPlaying = toNowPlaying(videoId, details),
+                streamUrl = best.second,
+                source = "newpipe",
+                httpHeaders = youtubeHeaders(YouTubeClient.WEB),
+            )
+        }
+
+        if ("ytdlp" !in skipSources) {
+            YtDlpStreamResolver.resolve(videoId, settings.quality)?.let {
+                metadata.cancel()
+                return@coroutineScope it
+            }
+        }
+
+        // Last resort: InnerTube clients directly (often 403 without a PoToken).
+        var lastError: Throwable? = null
+        var fallbackDetails: PlayerResponse.VideoDetails? = withTimeoutOrNull(METADATA_WAIT_MS) { metadata.await() }
         for (client in streamClients) {
+            val source = "youtube/${client.clientName}"
+            if (source in skipSources) continue
             val response = YouTube.player(videoId, client = client).getOrElse {
                 lastError = it
                 continue
@@ -48,37 +109,22 @@ object StreamResolver {
                 )
                 continue
             }
-            metadata = response.videoDetails ?: metadata
+            fallbackDetails = response.videoDetails ?: fallbackDetails
             val url = pickAudioUrl(response, videoId, settings.quality) ?: continue
-            val details = response.videoDetails ?: metadata
-            return ResolvedStream(
-                nowPlaying = toNowPlaying(videoId, details),
+            metadata.cancel()
+            return@coroutineScope ResolvedStream(
+                nowPlaying = toNowPlaying(videoId, fallbackDetails),
                 streamUrl = url,
-                source = "youtube/${client.clientName}",
+                source = source,
                 httpHeaders = youtubeHeaders(client),
             )
         }
 
-        val newPipe = NewPipeExtractor.newPipePlayer(videoId)
-        val best = if (settings.quality == StreamQuality.LOW) newPipe.minByOrNull { it.first } else newPipe.maxByOrNull { it.first }
-        if (best != null) {
-            if (metadata == null) {
-                YouTube.player(videoId, client = YouTubeClient.WEB_REMIX).getOrNull()
-                    ?.videoDetails
-                    ?.let { metadata = it }
-            }
-            return ResolvedStream(
-                nowPlaying = toNowPlaying(videoId, metadata),
-                streamUrl = best.second,
-                source = "newpipe",
-                httpHeaders = youtubeHeaders(YouTubeClient.WEB),
-            )
-        }
-
-        YtDlpStreamResolver.resolve(videoId, settings.quality)?.let { return it }
-
         throw lastError ?: IllegalStateException("No playable audio stream for $videoId")
     }
+
+    private const val SAAVN_WAIT_MS = 4_000L
+    private const val METADATA_WAIT_MS = 2_500L
 
     private fun youtubeHeaders(client: YouTubeClient): Map<String, String> = buildMap {
         put("User-Agent", client.userAgent)

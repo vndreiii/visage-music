@@ -79,14 +79,7 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
         statusMsg = progress.message
     }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 96.dp),
-    ) {
-        SettingsBackHeader(title = "Local / Offline", onBack = { navController.navigateUp() })
+    SettingsPage(title = "Local files", onBack = { navController.navigateUp() }) {
 
         SettingsSection("Offline (app downloads)") {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {

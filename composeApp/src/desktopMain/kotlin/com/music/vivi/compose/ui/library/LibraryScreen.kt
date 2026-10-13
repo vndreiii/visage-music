@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.library
 
+import com.music.vivi.compose.ui.component.smoothWheelScroll
+
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -10,10 +12,18 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.LinearProgressIndicator
+import com.music.vivi.database.DatabaseFactory
+import com.music.vivi.database.OpusCoverExtractor
 import com.music.vivi.database.LocalMusicScanner
 import com.music.vivi.compose.ui.component.PageLoadingState
 import com.music.vivi.compose.ui.component.PageEmptyState
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import org.koin.core.context.GlobalContext
+import org.koin.core.context.loadKoinModules
+import org.koin.dsl.module
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,6 +49,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.LibraryMusic
 import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material3.Button
@@ -110,7 +121,7 @@ private enum class LibraryTab(val label: String) {
     Recent("Recent"),
 }
 
-private data class YtLibraryData(
+data class YtLibraryData(
     val playlists: List<PlaylistItem> = emptyList(),
     val songs: List<SongItem> = emptyList(),
     val albums: List<AlbumItem> = emptyList(),
@@ -119,7 +130,7 @@ private data class YtLibraryData(
     val error: String? = null,
 )
 
-private data class LocalFeed(
+data class LocalFeed(
     val recentTracks: List<Local_track> = emptyList(),
     val recentAlbums: List<Local_album> = emptyList(),
     val heavy: List<Local_track> = emptyList(),
@@ -178,40 +189,62 @@ private suspend fun fetchYtLibrary(
     YtLibraryData(playlists, songs, albums, artists, recent, error)
 }
 
-/**
- * Library as a "Second Home": chips for sections, default feed from local index,
- * Offline from the download registry (not ~/Downloads).
- */
 @Composable
-fun LibraryScreen(navController: NavController) {
-    val yt = koinInject<YouTubeMusicService>()
-    val libraryRepo = koinInject<LibraryRepository>()
-    val localRepo = koinInject<LocalMusicRepository>()
-    val downloads = koinInject<TrackDownloadService>()
-    val controller = LocalPlaybackController.current
-    val scope = rememberCoroutineScope()
-    val (playingId, isPlaying) = rememberNowPlayingIds()
+fun LazyCoverImage(
+    coverPath: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop
+) {
+    var finalPath by remember(coverPath) { mutableStateOf(if (coverPath?.startsWith("opus-lazy://") == true) null else coverPath) }
+    
+    LaunchedEffect(coverPath) {
+        if (coverPath != null && coverPath.startsWith("opus-lazy://")) {
+            val audioPath = coverPath.substring("opus-lazy://".length)
+            val extracted = OpusCoverExtractor.extractCover(audioPath, DatabaseFactory.coversDir())
+            if (extracted != null) {
+                finalPath = extracted
+                try {
+                    val localRepo = GlobalContext.get().get<LocalMusicRepository>()
+                    localRepo.updateCoverPathForOpusLazy(coverPath, extracted)
+                } catch (e: Exception) {}
+            }
+        }
+    }
+    
+    if (finalPath != null) {
+        AsyncImage(
+            model = File(finalPath!!),
+            contentDescription = null,
+            contentScale = contentScale,
+            modifier = modifier
+        )
+    } else {
+        Icon(
+            Icons.Outlined.Album,
+            contentDescription = null,
+            modifier = Modifier.size(40.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
 
-    val scanner = koinInject<LocalMusicScanner>()
-    val scanProgress by scanner.progress.collectAsState()
-    val downloadStatus by downloads.status.collectAsState()
-    var tab by rememberSaveable { mutableStateOf(LibraryTab.Home) }
-    var collectionId by rememberSaveable { mutableStateOf<String?>(null) }
-    var collectionTitle by rememberSaveable { mutableStateOf("") }
-    var collectionArtist by rememberSaveable { mutableStateOf(false) }
-    var collectionTracks by remember { mutableStateOf(emptyList<Local_track>()) }
-    var collectionLoading by remember { mutableStateOf(false) }
-    var localError by remember { mutableStateOf<String?>(null) }
-    val tabStates = rememberSaveableStateHolder()
-    var loading by remember { mutableStateOf(true) }
-    var refreshing by remember { mutableStateOf(false) }
-    var ytData by remember { mutableStateOf(YtLibraryData()) }
-    var local by remember { mutableStateOf(LocalFeed()) }
-    var offline by remember { mutableStateOf(emptyList<Downloaded_track>()) }
+class LibraryCache(
+    private val yt: YouTubeMusicService,
+    private val libraryRepo: LibraryRepository,
+    private val localRepo: LocalMusicRepository,
+    private val downloads: TrackDownloadService
+) {
+    val local = MutableStateFlow(LocalFeed())
+    val offline = MutableStateFlow<List<Downloaded_track>>(emptyList())
+    val ytData = MutableStateFlow(YtLibraryData())
+    
+    val loading = MutableStateFlow(true)
+    val refreshing = MutableStateFlow(false)
+    val localError = MutableStateFlow<String?>(null)
 
     suspend fun loadLocal() {
         try {
-            local = withContext(Dispatchers.IO) {
+            val nextLocal = withContext(Dispatchers.IO) {
                 LocalFeed(
                     recentTracks = localRepo.recentlyAddedTracks(36),
                     recentAlbums = localRepo.recentlyAddedAlbums(24),
@@ -224,34 +257,85 @@ fun LibraryScreen(navController: NavController) {
                     liked = localRepo.allTracks().filter { libraryRepo.isLiked("local:${it.id}") },
                 )
             }
-            offline = withContext(Dispatchers.IO) { downloads.listOfflineTracks() }
-            localError = null
+            val nextOffline = withContext(Dispatchers.IO) { downloads.listOfflineTracks() }
+            local.value = nextLocal
+            offline.value = nextOffline
+            localError.value = null
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            localError = "Couldn't read your library: ${e.message}"
+            localError.value = "Couldn't read your library: ${e.message}"
         } finally {
-            loading = false
+            loading.value = false
         }
     }
 
     suspend fun loadOnline() {
-        refreshing = true
+        refreshing.value = true
         try {
-            ytData = withContext(Dispatchers.IO) { fetchYtLibrary(yt, libraryRepo) }
+            ytData.value = withContext(Dispatchers.IO) { fetchYtLibrary(yt, libraryRepo) }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            ytData = ytData.copy(error = e.message ?: "Online library unavailable")
+            ytData.update { it.copy(error = e.message ?: "Online library unavailable") }
         } finally {
-            refreshing = false
+            refreshing.value = false
         }
     }
+}
+
+val libraryModule = module {
+    single { LibraryCache(get(), get(), get(), get()) }
+}
+
+/**
+ * Library as a "Second Home": chips for sections, default feed from local index,
+ * Offline from the download registry (not ~/Downloads).
+ */
+@Composable
+fun LibraryScreen(navController: NavController) {
+    val yt = koinInject<YouTubeMusicService>()
+    val libraryRepo = koinInject<LibraryRepository>()
+    val localRepo = koinInject<LocalMusicRepository>()
+    val downloads = koinInject<TrackDownloadService>()
+    val cache = remember {
+        try {
+            GlobalContext.get().get<LibraryCache>()
+        } catch (e: Exception) {
+            loadKoinModules(libraryModule)
+            GlobalContext.get().get<LibraryCache>()
+        }
+    }
+    
+    val controller = LocalPlaybackController.current
+    val scope = rememberCoroutineScope()
+    val (playingId, isPlaying) = rememberNowPlayingIds()
+
+    val scanner = koinInject<LocalMusicScanner>()
+    val scanProgress by scanner.progress.collectAsState()
+    val downloadStatus by downloads.status.collectAsState()
+    
+    var tab by rememberSaveable { mutableStateOf(LibraryTab.Home) }
+    var collectionId by rememberSaveable { mutableStateOf<String?>(null) }
+    var collectionTitle by rememberSaveable { mutableStateOf("") }
+    var collectionArtist by rememberSaveable { mutableStateOf(false) }
+    var collectionTracks by remember { mutableStateOf(emptyList<Local_track>()) }
+    var collectionLoading by remember { mutableStateOf(false) }
+    
+    val tabStates = rememberSaveableStateHolder()
+    
+    val loading by cache.loading.collectAsState()
+    val refreshing by cache.refreshing.collectAsState()
+    val ytData by cache.ytData.collectAsState()
+    val local by cache.local.collectAsState()
+    val offline by cache.offline.collectAsState()
+    val localError by cache.localError.collectAsState()
 
     LaunchedEffect(scanProgress.running, downloadStatus) {
-        if (!scanProgress.running) loadLocal()
+        if (!scanProgress.running) cache.loadLocal()
     }
-    LaunchedEffect(Unit) { loadOnline() }
+    LaunchedEffect(Unit) { cache.loadOnline() }
+    
     LaunchedEffect(collectionId, collectionArtist, local) {
         val id = collectionId ?: return@LaunchedEffect
         collectionLoading = true
@@ -302,7 +386,7 @@ fun LibraryScreen(navController: NavController) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Library", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
             TextButton(onClick = { navController.navigate(Routes.SETTINGS_LOCAL_OFFLINE) }) { Text("Manage folders") }
-            TextButton(enabled = !refreshing && !loading, onClick = { scope.launch { loadLocal(); loadOnline() } }) { Text("Refresh") }
+            TextButton(enabled = !refreshing && !loading, onClick = { scope.launch { cache.loadLocal(); cache.loadOnline() } }) { Text("Refresh") }
         }
         ChipsRow(
             chips = LibraryTab.entries.map { it to it.label },
@@ -356,8 +440,8 @@ fun LibraryScreen(navController: NavController) {
                 refreshing = refreshing,
                 onRetry = {
                     scope.launch {
-                        loadLocal()
-                        loadOnline()
+                        cache.loadLocal()
+                        cache.loadOnline()
                     }
                 },
             )
@@ -445,9 +529,12 @@ private fun SecondHomeFeed(
     onRetry: () -> Unit,
 ) {
     val emptyLocal = local.tracks.isEmpty() && local.albums.isEmpty()
+    val smoothScroll1 = androidx.compose.foundation.lazy.rememberLazyListState()
     LazyColumn(
+        state = smoothScroll1,
         contentPadding = PaddingValues(bottom = 128.dp),
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize()
+            .smoothWheelScroll(smoothScroll1),
     ) {
         item {
             Row(
@@ -491,7 +578,7 @@ private fun SecondHomeFeed(
         if (local.recentTracks.isNotEmpty()) {
             item {
                 LocalTrackShelf(
-                    title = "Recently added",
+                    title = "Recently added (On this computer / 本机)",
                     tracks = local.recentTracks,
                     playingId = playingId,
                     isPlaying = isPlaying,
@@ -513,7 +600,7 @@ private fun SecondHomeFeed(
         if (local.recentAlbums.isNotEmpty()) {
             item {
                 LocalAlbumShelf(
-                    title = "New local albums",
+                    title = "New albums (On this computer / 本机)",
                     albums = local.recentAlbums,
                     onClick = onPlayAlbum,
                 )
@@ -522,7 +609,7 @@ private fun SecondHomeFeed(
         if (local.heavy.isNotEmpty()) {
             item {
                 LocalTrackShelf(
-                    title = "Heavy rotation",
+                    title = "Heavy rotation (On this computer / 本机)",
                     tracks = local.heavy,
                     playingId = playingId,
                     isPlaying = isPlaying,
@@ -533,7 +620,7 @@ private fun SecondHomeFeed(
         if (local.rediscover.isNotEmpty()) {
             item {
                 LocalTrackShelf(
-                    title = "Rediscover",
+                    title = "Rediscover (On this computer / 本机)",
                     tracks = local.rediscover,
                     playingId = playingId,
                     isPlaying = isPlaying,
@@ -800,31 +887,32 @@ private fun LocalCoverCard(
                     .clip(RoundedCornerShape(12.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant),
             ) {
-                if (coverPath != null) {
-                    AsyncImage(
-                        model = File(coverPath),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Icon(
-                        Icons.Outlined.Album,
-                        contentDescription = null,
-                        modifier = Modifier.align(Alignment.Center).size(40.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    LazyCoverImage(
+                        coverPath = coverPath,
+                        modifier = Modifier.fillMaxSize()
                     )
                 }
-                if (badge != null) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(6.dp)
+                        .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.9f), RoundedCornerShape(6.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Outlined.Folder,
+                        contentDescription = null,
+                        modifier = Modifier.size(12.dp),
+                        tint = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                    Spacer(Modifier.width(4.dp))
                     Text(
-                        badge,
+                        badge ?: "Local",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(6.dp)
-                            .background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(6.dp))
-                            .padding(horizontal = 6.dp, vertical = 2.dp),
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -858,7 +946,11 @@ private fun LikedList(
     if (songs.isEmpty()) {
         EmptyContent(emptyMessage)
     } else {
-        LazyColumn(contentPadding = PaddingValues(bottom = 128.dp)) {
+        val smoothScroll2 = androidx.compose.foundation.lazy.rememberLazyListState()
+        LazyColumn(
+            state = smoothScroll2,contentPadding = PaddingValues(bottom = 128.dp),
+            modifier = Modifier.smoothWheelScroll(smoothScroll2),
+        ) {
             items(songs, key = { it.id }) { song ->
                 YouTubeListItem(
                     item = song,
@@ -883,7 +975,11 @@ private fun LocalTrackList(
         EmptyContent("No local tracks — add folders in Settings → Local / Offline")
         return
     }
-    LazyColumn(contentPadding = PaddingValues(bottom = 128.dp)) {
+    val smoothScroll3 = androidx.compose.foundation.lazy.rememberLazyListState()
+    LazyColumn(
+        state = smoothScroll3,contentPadding = PaddingValues(bottom = 128.dp),
+        modifier = Modifier.smoothWheelScroll(smoothScroll3),
+    ) {
         items(tracks, key = { it.id }) { track ->
             val id = "local:${track.id}"
             Surface(
@@ -905,22 +1001,12 @@ private fun LocalTrackList(
                     Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    if (track.cover_path != null) {
-                        AsyncImage(
-                            model = File(track.cover_path),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(8.dp)),
-                        )
-                    } else {
-                        Icon(
-                            Icons.Outlined.LibraryMusic,
-                            contentDescription = null,
-                            modifier = Modifier.size(28.dp),
-                        )
-                    }
+                    LazyCoverImage(
+                        coverPath = track.cover_path,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                    )
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
                         Text(
@@ -961,7 +1047,11 @@ private fun RecentMixedList(
         EmptyContent(emptyMessage)
         return
     }
-    LazyColumn(contentPadding = PaddingValues(bottom = 128.dp)) {
+    val smoothScroll4 = androidx.compose.foundation.lazy.rememberLazyListState()
+    LazyColumn(
+        state = smoothScroll4,contentPadding = PaddingValues(bottom = 128.dp),
+        modifier = Modifier.smoothWheelScroll(smoothScroll4),
+    ) {
         if (localRecent.isNotEmpty()) {
             item {
                 Text(
@@ -1057,7 +1147,11 @@ private fun OfflineList(
         if (tracks.isEmpty()) {
             EmptyContent("Nothing available offline yet")
         } else {
-            LazyColumn(contentPadding = PaddingValues(bottom = 128.dp)) {
+            val smoothScroll5 = androidx.compose.foundation.lazy.rememberLazyListState()
+            LazyColumn(
+                state = smoothScroll5,contentPadding = PaddingValues(bottom = 128.dp),
+                modifier = Modifier.smoothWheelScroll(smoothScroll5),
+            ) {
                 items(tracks, key = { it.video_id }) { track ->
                     val id = "offline:${track.video_id}"
                     Surface(
@@ -1127,12 +1221,15 @@ private fun LocalAlbumsGrid(
         EmptyContent("No albums yet — scan local folders or like albums on YouTube")
         return
     }
+    val smoothScroll6 = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     LazyVerticalGrid(
+        state = smoothScroll6,
         columns = GridCells.Adaptive(minSize = 164.dp),
         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 128.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize()
+            .smoothWheelScroll(smoothScroll6),
     ) {
         items(albums, key = { "l-${it.id}" }) { album ->
             LocalCoverCard(
@@ -1164,12 +1261,15 @@ private fun LocalArtistsGrid(
         EmptyContent("No artists yet")
         return
     }
+    val smoothScroll7 = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     LazyVerticalGrid(
+        state = smoothScroll7,
         columns = GridCells.Adaptive(minSize = 164.dp),
         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 128.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize()
+            .smoothWheelScroll(smoothScroll7),
     ) {
         items(artists, key = { "l-${it.id}" }) { artist ->
             Surface(
@@ -1213,12 +1313,15 @@ private fun PlaylistsGrid(
         EmptyContent("No playlists yet")
         return
     }
+    val smoothScroll8 = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     LazyVerticalGrid(
+        state = smoothScroll8,
         columns = GridCells.Adaptive(minSize = 164.dp),
         contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 12.dp, bottom = 128.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
-        modifier = Modifier.fillMaxSize(),
+        modifier = Modifier.fillMaxSize()
+            .smoothWheelScroll(smoothScroll8),
     ) {
         items(playlists, key = { it.id }) { pl ->
             YouTubeGridItem(

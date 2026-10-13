@@ -1,4 +1,4 @@
-package com.music.vivi.desktop.login
+package com.music.vivi.player.login
 
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body

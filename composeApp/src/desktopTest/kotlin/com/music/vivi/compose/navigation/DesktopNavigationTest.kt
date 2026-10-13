@@ -16,6 +16,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.savedstate.read
 import kotlinx.coroutines.*
 import kotlinx.coroutines.swing.Swing
 import kotlin.test.*
@@ -27,6 +28,7 @@ class DesktopNavigationTest {
         }
         val store = object : ViewModelStoreOwner { override val viewModelStore = ViewModelStore() }
         lateinit var nav: NavHostController
+        val seenAlbumIds = mutableListOf<String>()
         val scene = ImageComposeScene(width = 800, height = 600, coroutineContext = coroutineContext) {
             CompositionLocalProvider(LocalLifecycleOwner provides owner, LocalViewModelStoreOwner provides store) {
                 nav = rememberNavController()
@@ -36,6 +38,10 @@ class DesktopNavigationTest {
                         composable(Routes.LIBRARY) { Text("Library") }
                         composable(Routes.SEARCH) { Text("Search") }
                         composable("detail") { Text("Album") }
+                        composable(Routes.ALBUM) { entry ->
+                            seenAlbumIds += entry.arguments?.read { getStringOrNull("albumId") }.toString()
+                            Text("Album")
+                        }
                     }
                 }
             }
@@ -50,16 +56,24 @@ class DesktopNavigationTest {
                 navigateMain(nav, Routes.HOME); render()
                 assertEquals(Routes.HOME, nav.currentDestination?.route)
             }
+            // Leaving a tab from a nested page and coming back lands on the tab root.
             navigateMain(nav, Routes.LIBRARY); render()
             nav.navigate("detail"); render()
             navigateMain(nav, Routes.HOME); render()
-            navigateMain(nav, Routes.LIBRARY); render()
-            // A saved tab may restore its nested page; popping it must expose Library.
-            if (nav.currentDestination?.route == "detail") { nav.popBackStack(); render() }
-            assertEquals(Routes.LIBRARY, nav.currentDestination?.route)
-            navigateMain(nav, Routes.SEARCH); render()
+            assertEquals(Routes.HOME, nav.currentDestination?.route)
             navigateMain(nav, Routes.LIBRARY); render()
             assertEquals(Routes.LIBRARY, nav.currentDestination?.route)
+            // Home from a page opened on Home returns to Home, not the page.
+            navigateMain(nav, Routes.HOME); render()
+            nav.navigate("detail"); render()
+            navigateMain(nav, Routes.HOME); render()
+            assertEquals(Routes.HOME, nav.currentDestination?.route)
+            assertEquals(1, nav.currentBackStack.value.count { it.destination.route != null })
+            // Route args arrive intact (ids with underscores/dashes).
+            nav.navigate("album/MPREb_a-B1"); render()
+            nav.navigate("album/MPREb_second"); render()
+            nav.popBackStack(); render()
+            assertEquals(listOf("MPREb_a-B1", "MPREb_second"), seenAlbumIds.distinct())
         } finally {
             scene.close()
             store.viewModelStore.clear()

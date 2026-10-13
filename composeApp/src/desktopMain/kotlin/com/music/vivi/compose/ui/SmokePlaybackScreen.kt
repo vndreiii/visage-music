@@ -51,7 +51,7 @@ fun SmokePlaybackScreen() {
             if (sessionManager.isLoggedIn()) {
                 "Signed in as ${account ?: "unknown"}"
             } else {
-                "Not signed in — run :desktop login first"
+                "Not signed in — sign in from Settings → Account"
             },
             style = MaterialTheme.typography.bodyMedium,
         )

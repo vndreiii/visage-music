@@ -17,6 +17,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -78,6 +79,12 @@ class DefaultPlaybackController(
     private val desiredIndex = AtomicInteger(-1)
     private var navigateJob: Job? = null
     private var loadGeneration = AtomicInteger(0)
+
+    /**
+     * Serializes halt/load on the mpv slots. Without it a superseded load (already past its
+     * generation check) can land `halt()` (pause=yes) after the new track's `load()`.
+     */
+    private val playerOps = Mutex()
 
     /** Dual libmpv: active plays UI clock; idle receives the incoming crossfade stream. */
     private val pauseRequested = AtomicBoolean(false)
@@ -415,7 +422,7 @@ class DefaultPlaybackController(
         val stepMs = (durationMs / steps).coerceAtLeast(1L)
         for (i in 1..steps) {
             if (generation != null && generation != loadGeneration.get()) return
-            if (!coroutineContext.isActive) return
+            coroutineContext.ensureActive()
             val t = i.toFloat() / steps
             val rampTarget = if (to > 0) userVolumePercent() else 0
             val v = (from + (rampTarget - from) * t).toInt().coerceIn(0, 150)
@@ -446,13 +453,15 @@ class DefaultPlaybackController(
                 runCatching { incoming.setVolume((targetVol * t).toInt().coerceIn(0, 150)) }
                 delay(stepMs)
             }
-            if (generation != loadGeneration.get()) return
-            runCatching { outgoing.setVolume(0) }
-            runCatching { incoming.setVolume(userVolumePercent()) }
-            runCatching { outgoing.halt() }
-            // Promote incoming to active; UI already shows the new track.
-            activeSlot.set(1 - activeSlot.get())
-            endCrossfadeArmed.set(false)
+            playerOps.withLock {
+                if (generation != loadGeneration.get()) return
+                runCatching { outgoing.setVolume(0) }
+                runCatching { incoming.setVolume(userVolumePercent()) }
+                runCatching { outgoing.halt() }
+                // Promote incoming to active; UI already shows the new track.
+                activeSlot.set(1 - activeSlot.get())
+                endCrossfadeArmed.set(false)
+            }
         } finally {
             if (generation == loadGeneration.get()) {
                 dualOverlapActive.set(false)
@@ -685,7 +694,7 @@ class DefaultPlaybackController(
                 return
             }
 
-            val resolved: ResolvedStream = streams.get(videoId)
+            var resolved: ResolvedStream = streams.get(videoId)
                 ?: withContext(Dispatchers.IO) {
                     if (generation != loadGeneration.get()) {
                         throw CancellationLike()
@@ -706,6 +715,7 @@ class DefaultPlaybackController(
                     )
                 }
             }
+            resolved = resolved.copy(nowPlaying = mergeWithQueued(resolved.nowPlaying, queued))
             streams.onBecameCurrent(videoId, resolved)
             // Refresh metadata from resolved stream (may be richer than optimistic)
             if (generation != loadGeneration.get()) return
@@ -721,12 +731,32 @@ class DefaultPlaybackController(
                 mpris?.updateNowPlaying(resolved.nowPlaying, artFileUrl, favorite = _isFavorite.value)
             }
             refreshFavorite(videoId)
-            startDecodedPlayback(
-                url = resolved.streamUrl,
-                httpHeaders = resolved.httpHeaders,
-                generation = generation,
-                dualCrossfade = dualCrossfade,
-            )
+            try {
+                startDecodedPlayback(
+                    url = resolved.streamUrl,
+                    httpHeaders = resolved.httpHeaders,
+                    generation = generation,
+                    dualCrossfade = dualCrossfade,
+                )
+            } catch (t: Throwable) {
+                // A resolved URL can still be refused by the CDN (403 / expired). Try the
+                // next source once before giving up, instead of failing the whole track.
+                if (t is kotlinx.coroutines.CancellationException && t !is kotlinx.coroutines.TimeoutCancellationException) throw t
+                if (generation != loadGeneration.get()) return
+                println("Stream ${resolved.source} failed for $videoId (${t.message}); trying another source")
+                val alternate = withContext(Dispatchers.IO) {
+                    StreamResolver.resolve(videoId, settings = streamSettings(), skipSources = setOf(resolved.source))
+                }
+                if (generation != loadGeneration.get()) return
+                resolved = alternate.copy(nowPlaying = mergeWithQueued(alternate.nowPlaying, queued))
+                streams.onBecameCurrent(videoId, resolved)
+                startDecodedPlayback(
+                    url = resolved.streamUrl,
+                    httpHeaders = resolved.httpHeaders,
+                    generation = generation,
+                    dualCrossfade = false,
+                )
+            }
         } catch (t: kotlinx.coroutines.TimeoutCancellationException) {
             if (generation == loadGeneration.get()) failPlayback("Audio did not become ready. Try playing again.")
         } catch (t: kotlinx.coroutines.CancellationException) {
@@ -818,10 +848,12 @@ class DefaultPlaybackController(
             crossfadeUiHold.set(true)
             dualOverlapActive.set(true)
             withContext(Dispatchers.IO) {
-                if (generation != loadGeneration.get()) return@withContext
-                incoming.setVolume(0)
-                incoming.load(url, httpHeaders)
-                incoming.setVolume(0)
+                playerOps.withLock {
+                    if (generation != loadGeneration.get()) return@withLock
+                    incoming.setVolume(0)
+                    incoming.load(url, httpHeaders)
+                    incoming.setVolume(0)
+                }
             }
             if (generation != loadGeneration.get()) {
                 dualOverlapActive.set(false)
@@ -851,13 +883,15 @@ class DefaultPlaybackController(
         dualOverlapActive.set(false)
         crossfadeUiHold.set(false)
         withContext(Dispatchers.IO) {
-            if (generation != loadGeneration.get()) return@withContext
-            runCatching { idleMpv().halt() }
-            runCatching { activeMpv().halt() }
-            activeMpv().setVolume(targetVol)
-            activeMpv().load(url, httpHeaders)
-            // loadfile can reset volume — re-apply user level.
-            activeMpv().setVolume(targetVol)
+            playerOps.withLock {
+                if (generation != loadGeneration.get()) return@withLock
+                runCatching { idleMpv().halt() }
+                runCatching { activeMpv().halt() }
+                activeMpv().setVolume(targetVol)
+                activeMpv().load(url, httpHeaders)
+                // loadfile can reset volume — re-apply user level.
+                activeMpv().setVolume(targetVol)
+            }
         }
         activeMpv().awaitReady()
         if (generation == loadGeneration.get()) {
@@ -896,6 +930,23 @@ class DefaultPlaybackController(
                 runCatching { streams.resolveOrGet(prevVideo) }
             }
         }
+    }
+
+    /**
+     * Resolvers fall back to placeholder metadata (title = video id, "Unknown" artist) when
+     * their metadata lookup fails; never let that replace what the queue already knows.
+     */
+    private fun mergeWithQueued(resolved: NowPlaying, queued: QueueTrack?): NowPlaying {
+        if (queued == null) return resolved
+        val placeholderTitle = resolved.title.isBlank() || resolved.title == resolved.videoId
+        val placeholderArtist = resolved.artist.isBlank() || resolved.artist == "Unknown"
+        return resolved.copy(
+            title = if (placeholderTitle) queued.title.ifBlank { resolved.title } else resolved.title,
+            artist = if (placeholderArtist) queued.artist.ifBlank { resolved.artist } else resolved.artist,
+            artworkUrl = resolved.artworkUrl ?: queued.artworkUrl,
+            album = resolved.album ?: queued.album,
+            durationMs = resolved.durationMs.takeIf { it > 0 } ?: queued.durationMs,
+        )
     }
 
     private fun mergeNowPlayingIntoQueue(np: NowPlaying) {
@@ -1068,6 +1119,8 @@ class DefaultPlaybackController(
             val target = userVolumePercent()
             if (fades.playPauseFadeEnabled && fades.playPauseFadeMs > 0L) {
                 rampMpvVolume(from = target, to = 0, durationMs = fades.playPauseFadeMs)
+                // A track change cancels this job; never pause the track that replaced ours.
+                coroutineContext.ensureActive()
                 runCatching { activeMpv().pause() }
                 // Keep mpv at user target while paused so a hard play isn't silent.
                 runCatching { activeMpv().setVolume(userVolumePercent()) }

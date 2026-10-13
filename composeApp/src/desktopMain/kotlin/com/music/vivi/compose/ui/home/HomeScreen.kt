@@ -1,5 +1,10 @@
 package com.music.vivi.compose.ui.home
 
+import com.music.vivi.compose.ui.component.smoothWheelScroll
+import kotlinx.coroutines.withContext
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.derivedStateOf
+
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -252,8 +257,15 @@ fun HomeScreen(navController: NavController) {
     val vm = remember { HomeViewModel(yt, scope) }
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
+    val history = koinInject<com.music.vivi.database.PlayHistoryRepository>()
+    var recent by remember { mutableStateOf<List<com.music.vivi.database.Play_event>>(emptyList()) }
+    val nowPlayingId by remember(controller) { derivedStateOf { controller.nowPlaying.value?.videoId } }
 
     LaunchedEffect(Unit) { vm.loadInitial() }
+    // Refresh "Jump back in" on entry and whenever the playing song changes.
+    LaunchedEffect(nowPlayingId) {
+        recent = withContext(Dispatchers.IO) { runCatching { history.recentDistinct(20) }.getOrDefault(emptyList()) }
+    }
     LaunchedEffect(vm.homePage != null) {
         if (vm.homePage != null) focusRequester.requestFocus()
     }
@@ -361,7 +373,7 @@ fun HomeScreen(navController: NavController) {
                     val sections = remember(vm.homePage, vm.accountPlaylists) {
                         prepareHomeSections(vm.homePage?.sections.orEmpty(), vm.accountPlaylists.map { it.id }.toSet())
                     }
-                    val (quickPicks, otherSections) = sections.partition { it.isQuickPicks() }
+                    val (quickPicks, otherSections) = remember(sections) { sections.partition { it.isQuickPicks() } }
                     val showAccountPlaylists =
                         vm.selectedChip == null && vm.accountPlaylists.isNotEmpty()
 
@@ -381,7 +393,7 @@ fun HomeScreen(navController: NavController) {
                             halfWidth = halfWidth,
                             onPlaySong = ::playSong,
                             onYtItem = ::onYtItem,
-                            onBrowse = { browseId -> navController.navigate(Routes.browse(browseId)) },
+                            onBrowse = { browseId, params -> navController.navigate(Routes.forBrowse(browseId, params)) },
                             onPlayAll = { songs ->
                                 scope.launch(Dispatchers.IO) {
                                     controller.playQueue(songs.map { it.toQueueTrack() }, 0)
@@ -441,14 +453,24 @@ fun HomeScreen(navController: NavController) {
                         }
                     }
 
-                    val feedRows = packHomeFeedRows(otherSections)
+                    val feedRows = remember(otherSections) { packHomeFeedRows(otherSections) }
 
                     LazyColumn(
                         state = listState,
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.fillMaxSize()
+                            .smoothWheelScroll(listState),
                         contentPadding = PaddingValues(top = 4.dp, bottom = 128.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
+                        item(key = "header") {
+                            HomeHeader(
+                                name = vm.accountInfo?.name,
+                                onNewReleases = { navController.navigate(Routes.NEW_RELEASE) },
+                                onCharts = { navController.navigate(Routes.CHARTS) },
+                                onMoods = { navController.navigate(Routes.MOOD_AND_GENRES) },
+                                onHistory = { navController.navigate(Routes.HISTORY) },
+                            )
+                        }
                         item(key = "chips") {
                             val chips = vm.homePage?.chips
                                 ?.filter { !it.title.equals("Podcasts", ignoreCase = true) }
@@ -467,6 +489,34 @@ fun HomeScreen(navController: NavController) {
                         // 1) Quick picks  2) Your playlists  3) Packed feed (sparse pairs)
                         quickPicks.forEachIndexed { i, sectionData ->
                             emitSection(i, sectionData)
+                        }
+                        if (vm.selectedChip == null && recent.size >= 3) {
+                            item(key = "recent") {
+                                RecentlyPlayedShelf(
+                                    recent = recent,
+                                    playingId = playingId,
+                                    isPlaying = isPlaying,
+                                    onPlay = { index ->
+                                        scope.launch(Dispatchers.IO) {
+                                            val tracks = recent.map {
+                                                com.music.vivi.player.QueueTrack(
+                                                    videoId = it.song_id,
+                                                    title = it.title,
+                                                    artist = it.artists,
+                                                    artworkUrl = it.thumbnail,
+                                                    durationMs = (it.duration_sec ?: 0L) * 1000L,
+                                                )
+                                            }
+                                            if (recent[index].song_id == playingId) {
+                                                if (isPlaying) controller.pause() else controller.play()
+                                            } else {
+                                                controller.playQueue(tracks, index)
+                                            }
+                                        }
+                                    },
+                                    onSeeAll = { navController.navigate(Routes.HISTORY) },
+                                )
+                            }
                         }
                         if (showAccountPlaylists) {
                             emitAccountPlaylists()
@@ -499,8 +549,8 @@ fun HomeScreen(navController: NavController) {
                                                     halfWidth = true,
                                                     onPlaySong = ::playSong,
                                                     onYtItem = ::onYtItem,
-                                                    onBrowse = { browseId ->
-                                                        navController.navigate(Routes.browse(browseId))
+                                                    onBrowse = { browseId, params ->
+                                                        navController.navigate(Routes.forBrowse(browseId, params))
                                                     },
                                                     onPlayAll = { songs ->
                                                         scope.launch(Dispatchers.IO) {
@@ -527,8 +577,8 @@ fun HomeScreen(navController: NavController) {
                                                     halfWidth = true,
                                                     onPlaySong = ::playSong,
                                                     onYtItem = ::onYtItem,
-                                                    onBrowse = { browseId ->
-                                                        navController.navigate(Routes.browse(browseId))
+                                                    onBrowse = { browseId, params ->
+                                                        navController.navigate(Routes.forBrowse(browseId, params))
                                                     },
                                                     onPlayAll = { songs ->
                                                         scope.launch(Dispatchers.IO) {
@@ -576,7 +626,7 @@ private fun LazyListScope.homeSectionItems(
     halfWidth: Boolean,
     onPlaySong: (SongItem, List<SongItem>) -> Unit,
     onYtItem: (YTItem, List<SongItem>) -> Unit,
-    onBrowse: (String) -> Unit,
+    onBrowse: (String, String?) -> Unit,
     onPlayAll: (List<SongItem>) -> Unit,
 ) {
     val sectionSongs = sectionData.items.filterIsInstance<SongItem>()
@@ -621,23 +671,18 @@ private fun HomeSectionBlock(
     halfWidth: Boolean,
     onPlaySong: (SongItem, List<SongItem>) -> Unit,
     onYtItem: (YTItem, List<SongItem>) -> Unit,
-    onBrowse: (String) -> Unit,
+    onBrowse: (String, String?) -> Unit,
     onPlayAll: (List<SongItem>) -> Unit,
 ) {
     val kind = sectionData.categoryKind(isSongsOnly, hero)
     val isQuickPicks = sectionData.isQuickPicks()
-    var shuffleNonce by remember(sectionData.title, sectionSongs.map { it.id }) {
+    var shuffleNonce by remember(sectionData.title, sectionSongs) {
         mutableIntStateOf(0)
     }
     val displaySongs = remember(sectionSongs, shuffleNonce) {
         val distinct = sectionSongs.distinctBy { it.id }
         if (shuffleNonce == 0) distinct else distinct.shuffled()
     }
-    // Quick picks: taller grid (6 rows) + denser columns so more tracks show at once.
-    val songGridRows = if (isQuickPicks) 6.coerceAtMost(displaySongs.size.coerceAtLeast(1)) else 4.coerceAtMost(displaySongs.size.coerceAtLeast(1))
-    val songGridItemWidth =
-        if (isQuickPicks) (horizontalLazyGridItemWidth * 0.88f).coerceAtLeast(240.dp)
-        else horizontalLazyGridItemWidth
 
     val sectionTitle: @Composable () -> Unit = {
         HomeCategoryHeader(
@@ -662,8 +707,8 @@ private fun HomeSectionBlock(
                     )
                 }
             },
-            onClick = sectionData.endpoint?.browseId?.let { browseId ->
-                { onBrowse(browseId) }
+            onClick = sectionData.endpoint?.let { ep ->
+                { onBrowse(ep.browseId, ep.params) }
             },
             onShuffleClick = if (isQuickPicks && displaySongs.size > 1) {
                 { shuffleNonce += 1 }
@@ -680,28 +725,40 @@ private fun HomeSectionBlock(
 
     val sectionBody: @Composable () -> Unit = {
         when {
-            isSongsOnly -> {
+            isSongsOnly -> BoxWithConstraints(Modifier.fillMaxWidth()) {
+                // Fill the row: as many ~280dp columns as fit, rows capped so the shelf
+                // stays compact; extra songs scroll sideways in whole columns.
+                val gap = 8.dp
+                val sidePad = 8.dp
+                val usable = maxWidth - sidePad * 2
+                val maxRows = if (isQuickPicks) 4 else 4
+                val minCol = if (halfWidth) 240.dp else 280.dp
+                val fitCols = ((usable + gap) / (minCol + gap)).toInt().coerceAtLeast(1)
+                val count = displaySongs.size.coerceAtLeast(1)
+                val rows = ((count + fitCols - 1) / fitCols).coerceIn(1, maxRows)
+                val colWidth = (usable - gap * (fitCols - 1)) / fitCols
                 val gridState = rememberLazyGridState()
                 LazyHorizontalGrid(
-                    rows = GridCells.Fixed(songGridRows),
+                    rows = GridCells.Fixed(rows),
                     state = gridState,
-                    contentPadding = PaddingValues(horizontal = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(horizontal = sidePad),
+                    horizontalArrangement = Arrangement.spacedBy(gap),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(ListItemHeight * songGridRows)
+                        .height(ListItemHeight * rows)
                         .horizontalWheelScroll(gridState),
                 ) {
                     itemsIndexed(
                         items = displaySongs,
                         key = { _, it -> "${it.id}_$shuffleNonce" },
+                        contentType = { _, _ -> "song" },
                     ) { _, song ->
                         YouTubeListItem(
                             item = song,
                             isActive = song.id == playingId,
                             isPlaying = isPlaying,
                             onClick = { onPlaySong(song, displaySongs) },
-                            modifier = Modifier.width(songGridItemWidth),
+                            modifier = Modifier.width(colWidth).animateItem(),
                         )
                     }
                 }
@@ -745,7 +802,7 @@ private fun HomeSectionBlock(
                                     },
                                     height = cardH,
                                     caption = sectionData.label,
-                                    parallaxPx = rowState.firstVisibleItemScrollOffset.toFloat(),
+                                    parallaxPx = { rowState.firstVisibleItemScrollOffset.toFloat() },
                                 )
                             }
                             else -> {
@@ -787,7 +844,7 @@ private fun HomeSectionBlock(
                                 width = if (halfWidth) 168.dp else if (item is PlaylistItem) 260.dp else HeroCardWidth,
                                 height = if (halfWidth) 220.dp else HeroCardHeight,
                                 caption = sectionData.label,
-                                parallaxPx = rowState.firstVisibleItemScrollOffset.toFloat(),
+                                parallaxPx = { rowState.firstVisibleItemScrollOffset.toFloat() },
                             )
                         } else {
                             YouTubeGridItem(

@@ -23,6 +23,8 @@ fun <E> ChipsRow(
     onValueUpdate: (E?) -> Unit,
     modifier: Modifier = Modifier,
     containerColor: Color = MaterialTheme.colorScheme.surfaceContainer,
+    /** Leading/trailing gutter; matches the page's 20dp content inset. */
+    gutter: androidx.compose.ui.unit.Dp = 20.dp,
 ) {
     Row(
         modifier = modifier
@@ -30,7 +32,7 @@ fun <E> ChipsRow(
             .horizontalScroll(rememberScrollState())
             .padding(0.dp),
     ) {
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(gutter))
         chips.forEach { (value, label) ->
             val selected = currentValue == value
             FilterChip(
@@ -46,6 +48,6 @@ fun <E> ChipsRow(
                 modifier = Modifier.padding(end = 8.dp),
             )
         }
-        Spacer(Modifier.width(12.dp))
+        Spacer(Modifier.width(gutter - 8.dp))
     }
 }

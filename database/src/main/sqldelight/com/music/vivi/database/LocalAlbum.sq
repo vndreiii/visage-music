@@ -27,3 +27,6 @@ UPDATE local_album SET title = ?, artist_id = ?, artist_name = ?,
 
 deleteEmpty:
 DELETE FROM local_album WHERE NOT EXISTS (SELECT 1 FROM local_track WHERE local_track.album_id = local_album.id);
+
+updateCoverPathByOld:
+UPDATE local_album SET cover_path = ? WHERE cover_path = ?;

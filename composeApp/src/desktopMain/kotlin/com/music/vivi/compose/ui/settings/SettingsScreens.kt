@@ -1,15 +1,20 @@
 package com.music.vivi.compose.ui.settings
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,38 +23,45 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ColorLens
 import androidx.compose.material.icons.outlined.Contrast
-import androidx.compose.material.icons.outlined.ExpandLess
-import androidx.compose.material.icons.outlined.ExpandMore
-import androidx.compose.material.icons.outlined.DarkMode
+import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Groups
-import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.HighQuality
+import androidx.compose.material.icons.outlined.Lyrics
+import androidx.compose.material.icons.outlined.Menu
+import androidx.compose.material.icons.outlined.MovieFilter
 import androidx.compose.material.icons.outlined.Palette
-import androidx.compose.material.icons.outlined.PhoneAndroid
-import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.PlayCircle
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.SmartDisplay
-import androidx.compose.material.icons.outlined.Translate
-import androidx.compose.material.icons.outlined.Update
+import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.Wallpaper
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.RadioButton
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -66,42 +78,46 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import coil3.compose.AsyncImage
 import com.materialkolor.dynamicColorScheme
 import com.music.innertube.models.AccountInfo
-import com.music.vivi.compose.download.XdgUserDirs
 import com.music.vivi.compose.navigation.Routes
-import com.music.vivi.database.DatabaseFactory
 import com.music.vivi.compose.prefs.AudioQuality
 import com.music.vivi.compose.prefs.DarkMode
 import com.music.vivi.compose.prefs.DefaultThemeColorArgb
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.DownloadAudioFormat
 import com.music.vivi.compose.prefs.DownloadAudioQuality
-import com.music.vivi.compose.prefs.M3PaletteStyle
-import com.music.vivi.compose.prefs.MiniPlayerStyle
 import com.music.vivi.compose.prefs.LyricsProvider
 import com.music.vivi.compose.prefs.LyricsTextAlign
+import com.music.vivi.compose.prefs.M3PaletteStyle
+import com.music.vivi.compose.prefs.MiniPlayerStyle
 import com.music.vivi.compose.prefs.PlayerBackgroundStyle
 import com.music.vivi.compose.prefs.PlayerButtonsStyle
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.compose.prefs.QueuePanelMode
 import com.music.vivi.compose.prefs.SliderStyle
-import com.music.vivi.compose.prefs.VolumeControlStyle
 import com.music.vivi.compose.prefs.TopNavStyle
-import com.music.vivi.compose.ui.component.InteractionCornerRadius
-import com.music.vivi.compose.ui.resolveMiniPlayerStyle
+import com.music.vivi.compose.prefs.VolumeControlStyle
 import com.music.vivi.compose.theme.MatugenColors
 import com.music.vivi.compose.theme.label
-import com.music.vivi.compose.theme.subtitle
 import com.music.vivi.compose.theme.toKolor
+import com.music.vivi.compose.ui.component.InteractionCornerRadius
+import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.player.canvas.CanvasSource
+import com.music.vivi.compose.ui.resolveMiniPlayerStyle
 import com.music.vivi.core.youtube.YouTubeMusicService
+import com.music.vivi.database.DatabaseFactory
 import com.music.vivi.player.stream.YtDlpBinary
 import org.koin.compose.koinInject
+import kotlinx.coroutines.launch
 
 /** Forces recomposition of the *caller* when prefs change (not just a child). */
 @Composable
@@ -115,216 +131,205 @@ internal fun rememberPrefsVersion(prefs: DesktopPrefs): Int {
     return version
 }
 
+private inline fun <reified T : Enum<T>> DesktopPrefs.enumPref(key: String, default: T): T =
+    runCatching { enumValueOf<T>(getString(key, default.name)) }.getOrDefault(default)
+
+private fun Enum<*>.titleLabel(): String =
+    name.lowercase().split('_').joinToString(" ").replaceFirstChar { it.titlecase() }
+
+private fun PlayerBackgroundStyle.label(): String = when (this) {
+    PlayerBackgroundStyle.DEFAULT -> "Solid"
+    PlayerBackgroundStyle.GRADIENT -> "Gradient"
+    PlayerBackgroundStyle.BLUR -> "Blur"
+    PlayerBackgroundStyle.GLOW_ANIMATED -> "Glow"
+    PlayerBackgroundStyle.APPLE_MUSIC -> "Apple Music"
+    PlayerBackgroundStyle.LIVE_MESH -> "Live mesh"
+    PlayerBackgroundStyle.LEGACY -> "Legacy"
+    PlayerBackgroundStyle.FLUID -> "Fluid"
+    PlayerBackgroundStyle.WAVE -> "Wave"
+    PlayerBackgroundStyle.XMB -> "XMB"
+    PlayerBackgroundStyle.DISTORT -> "Distort"
+}
+
+// —— Hub ——————————————————————————————————————————————————————
+
 @Composable
 fun SettingsHubScreen(navController: NavController) {
     val yt = koinInject<YouTubeMusicService>()
     var account by remember { mutableStateOf<AccountInfo?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
-
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(Unit) {
         yt.accountInfo()
             .onSuccess { account = it }
             .onFailure { error = it.message ?: it.toString() }
     }
 
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 8.dp, bottom = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
-    ) {
-        item {
-            Text(
-                "Settings",
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-                modifier = Modifier.padding(top = 8.dp, bottom = 8.dp),
+    SettingsPage(title = "Settings", onBack = null) {
+        AccountCard(account, error) { navController.navigate(Routes.SETTINGS_ACCOUNT) }
+
+        SettingsSection("Personalize") {
+            SettingsNavItem(
+                icon = Icons.Outlined.Palette,
+                title = "Theme",
+                subtitle = "Light or dark, dynamic color, palette, contrast",
+                onClick = { navController.navigate(Routes.SETTINGS_THEME) },
+            )
+            SettingsDivider()
+            SettingsNavItem(
+                icon = Icons.Outlined.Dashboard,
+                title = "Interface",
+                subtitle = "Top bar and mini-player",
+                onClick = { navController.navigate(Routes.SETTINGS_APPEARANCE) },
+            )
+            SettingsDivider()
+            SettingsNavItem(
+                icon = Icons.Outlined.PlayCircle,
+                title = "Now Playing",
+                subtitle = "Background, canvas, controls, lyrics, queue",
+                onClick = { navController.navigate(Routes.SETTINGS_NOW_PLAYING) },
             )
         }
 
-        item {
-            SettingsGroupCard {
-                SettingsNavItem(
-                    icon = Icons.Outlined.Update,
-                    title = "System update",
-                    subtitle = "Desktop builds — check releases manually",
-                    onClick = { },
-                    showChevron = false,
-                )
-                SettingsDivider()
-                SettingsNavItem(
-                    icon = Icons.Outlined.AccountCircle,
-                    title = "Account",
-                    subtitle = account?.email
-                        ?: account?.name
-                        ?: error
-                        ?: "Manage logged-in profiles",
-                    onClick = { navController.navigate(Routes.SETTINGS_ACCOUNT) },
-                )
-            }
+        SettingsSection("Listening") {
+            SettingsNavItem(
+                icon = Icons.AutoMirrored.Outlined.VolumeUp,
+                title = "Playback & audio",
+                subtitle = "Quality, sources, crossfade, Discord",
+                onClick = { navController.navigate(Routes.SETTINGS_PLAYER) },
+            )
         }
 
-        item {
-            SettingsGroupCard {
-                SettingsNavItem(
-                    icon = Icons.Outlined.Palette,
-                    title = "Appearance",
-                    subtitle = "Customize themes and layout",
-                    onClick = { navController.navigate(Routes.SETTINGS_APPEARANCE) },
-                )
-                SettingsDivider()
-                SettingsNavItem(
-                    icon = Icons.AutoMirrored.Outlined.VolumeUp,
-                    title = "Player and audio",
-                    subtitle = "Stream, quality, playback fades",
-                    onClick = { navController.navigate(Routes.SETTINGS_PLAYER) },
-                )
-                SettingsDivider()
-                SettingsNavItem(
-                    icon = Icons.Outlined.Download,
-                    title = "Downloads",
-                    subtitle = "Offline format and quality",
-                    onClick = { navController.navigate(Routes.SETTINGS_DOWNLOADS) },
-                )
-                SettingsDivider()
-                SettingsNavItem(
-                    icon = Icons.Outlined.Folder,
-                    title = "Local / Offline",
-                    subtitle = "Folders, scan, managed offline library",
-                    onClick = { navController.navigate(Routes.SETTINGS_LOCAL_OFFLINE) },
-                )
-                SettingsDivider()
-                SettingsNavItem(
-                    icon = Icons.Outlined.Groups,
-                    title = "Listen Together",
-                    subtitle = "Coming soon on desktop",
-                    onClick = { },
-                    showChevron = false,
-                )
-                SettingsDivider()
-                SettingsNavItem(
-                    icon = Icons.Outlined.Language,
-                    title = "Content",
-                    subtitle = "Language and library",
-                    onClick = { navController.navigate(Routes.SETTINGS_THEME) },
-                )
-            }
+        SettingsSection("Library & storage") {
+            SettingsNavItem(
+                icon = Icons.Outlined.Download,
+                title = "Downloads",
+                subtitle = "Folder, format and quality",
+                onClick = { navController.navigate(Routes.SETTINGS_DOWNLOADS) },
+            )
+            SettingsDivider()
+            SettingsNavItem(
+                icon = Icons.Outlined.Folder,
+                title = "Local files",
+                subtitle = "Music folders, scanning, offline library",
+                onClick = { navController.navigate(Routes.SETTINGS_LOCAL_OFFLINE) },
+            )
         }
 
-        item {
-            SettingsGroupCard {
-                SettingsNavItem(
-                    icon = Icons.Outlined.Translate,
-                    title = "AI Lyrics Translation",
-                    subtitle = "Coming soon on desktop",
-                    onClick = { },
-                    showChevron = false,
+        Text(
+            "VIVI Desktop — Linux port of VIVI Music",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 20.dp),
+        )
+    }
+}
+
+@Composable
+private fun AccountCard(account: AccountInfo?, error: String?, onClick: () -> Unit) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            val thumb = account?.thumbnailUrl
+            if (thumb != null) {
+                AsyncImage(
+                    model = thumb,
+                    contentDescription = null,
+                    modifier = Modifier.size(52.dp).clip(CircleShape),
+                )
+            } else {
+                Icon(
+                    Icons.Outlined.AccountCircle,
+                    contentDescription = null,
+                    modifier = Modifier.size(52.dp),
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
                 )
             }
-        }
-
-        item {
-            Text(
-                "VIVI Desktop — Linux port of VIVI Music",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    account?.name ?: if (error != null) "Not signed in" else "Loading account…",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    account?.email ?: "YouTube Music account",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Icon(
+                Icons.Outlined.ChevronRight,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSecondaryContainer,
             )
         }
     }
 }
 
+// —— Theme ————————————————————————————————————————————————————
+
 @Composable
 fun ThemeSettingsScreen(navController: NavController) {
     val prefs = koinInject<DesktopPrefs>()
-    val prefsVersion = rememberPrefsVersion(prefs)
     @Suppress("UNUSED_VARIABLE")
-    val observe = prefsVersion
+    val observe = rememberPrefsVersion(prefs)
 
-    val darkMode = runCatching {
-        DarkMode.valueOf(prefs.getString(PrefKeys.DarkMode, DarkMode.AUTO.name))
-    }.getOrDefault(DarkMode.AUTO)
+    val darkMode = prefs.enumPref(PrefKeys.DarkMode, DarkMode.AUTO)
     val pureBlack = prefs.getBoolean(PrefKeys.PureBlack, false)
     val colorArgb = prefs.getInt(PrefKeys.SelectedThemeColor, DefaultThemeColorArgb)
     val dynamicTheme = prefs.getBoolean(PrefKeys.DynamicTheme, true)
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 96.dp),
-    ) {
-        SettingsBackHeader(title = "Theme", onBack = { navController.navigateUp() })
-
+    SettingsPage(title = "Theme", onBack = { navController.navigateUp() }) {
         SettingsSection("Mode") {
-            DarkMode.entries.forEachIndexed { index, mode ->
-                if (index > 0) SettingsDivider()
-                val label = when (mode) {
-                    DarkMode.AUTO -> "Auto (system)"
-                    DarkMode.OFF -> "Light"
-                    DarkMode.ON -> "Dark"
-                }
-                EnumRadioItem(
-                    label = label,
-                    selected = darkMode == mode && !(mode == DarkMode.ON && pureBlack),
-                    onSelect = {
-                        prefs.setString(PrefKeys.DarkMode, mode.name)
-                        if (mode != DarkMode.ON) prefs.setBoolean(PrefKeys.PureBlack, false)
-                    },
-                    trailing = {
-                        val previewDark = when (mode) {
-                            DarkMode.OFF -> false
-                            DarkMode.ON -> true
-                            DarkMode.AUTO -> true
-                        }
-                        MockupFrame(width = 72.dp, height = 40.dp) {
-                            Box(
-                                Modifier
-                                    .fillMaxSize()
-                                    .background(if (previewDark) Color(0xFF121212) else Color(0xFFF5F5F5)),
-                                contentAlignment = Alignment.Center,
-                            ) {
-                                Surface(
-                                    shape = RoundedCornerShape(8.dp),
-                                    color = if (previewDark) Color(0xFFD0BCFF) else Color(0xFF6750A4),
-                                    modifier = Modifier.size(width = 36.dp, height = 18.dp),
-                                ) {}
-                            }
-                        }
-                    },
-                )
-            }
-            SettingsDivider()
-            EnumRadioItem(
-                label = "Pure black",
-                selected = darkMode == DarkMode.ON && pureBlack,
-                onSelect = {
-                    prefs.setString(PrefKeys.DarkMode, DarkMode.ON.name)
-                    prefs.setBoolean(PrefKeys.PureBlack, true)
-                    prefs.setBoolean(PrefKeys.PureBlackMiniPlayer, true)
+            ChoiceRow(
+                icon = Icons.Outlined.Contrast,
+                title = "Appearance",
+                options = listOf("auto" to "System", "light" to "Light", "dark" to "Dark", "black" to "Black"),
+                selected = when {
+                    darkMode == DarkMode.ON && pureBlack -> "black"
+                    darkMode == DarkMode.ON -> "dark"
+                    darkMode == DarkMode.OFF -> "light"
+                    else -> "auto"
                 },
-                trailing = {
-                    MockupFrame(width = 72.dp, height = 40.dp) {
-                        Box(
-                            Modifier.fillMaxSize().background(Color.Black),
-                            contentAlignment = Alignment.Center,
-                        ) {
-                            Surface(
-                                shape = RoundedCornerShape(8.dp),
-                                color = Color(0xFFD0BCFF),
-                                modifier = Modifier.size(width = 36.dp, height = 18.dp),
-                            ) {}
+                onSelect = { key ->
+                    when (key) {
+                        "auto" -> { prefs.setString(PrefKeys.DarkMode, DarkMode.AUTO.name); prefs.setBoolean(PrefKeys.PureBlack, false) }
+                        "light" -> { prefs.setString(PrefKeys.DarkMode, DarkMode.OFF.name); prefs.setBoolean(PrefKeys.PureBlack, false) }
+                        "dark" -> { prefs.setString(PrefKeys.DarkMode, DarkMode.ON.name); prefs.setBoolean(PrefKeys.PureBlack, false) }
+                        "black" -> {
+                            prefs.setString(PrefKeys.DarkMode, DarkMode.ON.name)
+                            prefs.setBoolean(PrefKeys.PureBlack, true)
+                            prefs.setBoolean(PrefKeys.PureBlackMiniPlayer, true)
                         }
                     }
                 },
             )
+            SettingsDivider()
+            val contrast = prefs.getFloat(PrefKeys.ContrastLevel, 0f)
+            ChoiceRow(
+                icon = Icons.Outlined.Tune,
+                title = "Contrast",
+                options = listOf(0f to "Standard", 0.5f to "Medium", 1f to "High"),
+                selected = listOf(0f, 0.5f, 1f).minBy { kotlin.math.abs(it - contrast) },
+                onSelect = { prefs.setFloat(PrefKeys.ContrastLevel, it) },
+            )
         }
 
-        SettingsSection("Dynamic color") {
+        SettingsSection("Color source") {
             SwitchItem(
                 icon = Icons.Outlined.ColorLens,
-                title = "Enable dynamic theme",
-                subtitle = "Seed from cover art when playing",
+                title = "Dynamic color",
+                subtitle = "Tint the app from the cover art that's playing",
                 checked = dynamicTheme,
                 onChecked = { prefs.setBoolean(PrefKeys.DynamicTheme, it) },
             )
@@ -332,811 +337,619 @@ fun ThemeSettingsScreen(navController: NavController) {
             val matugenOn = prefs.getBoolean(PrefKeys.MatugenTheme, false)
             val matugenReady = MatugenColors.defaultFile.isFile
             SwitchItem(
-                icon = Icons.Outlined.Palette,
-                title = "Matugen",
+                icon = Icons.Outlined.Wallpaper,
+                title = "Matugen wallpaper colors",
                 subtitle = if (matugenReady) {
-                    "Tint from system wallpaper (~/.cache/matugen/vivi-desktop.colors)"
+                    "Use ~/.cache/matugen/vivi-desktop.colors"
                 } else {
-                    "No colours yet — run matugen after installing the vivi-desktop template"
+                    "Run matugen with the vivi-desktop template first"
                 },
                 checked = matugenOn,
                 onChecked = { prefs.setBoolean(PrefKeys.MatugenTheme, it) },
             )
-            if (matugenOn && matugenReady) {
-                SettingsDivider()
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    val preview = remember(matugenOn) {
-                        MatugenColors.load()?.let { if (darkMode != DarkMode.OFF) it.dark else it.light }
-                    }
-                    if (preview != null) {
+            AnimatedVisibility(matugenOn && matugenReady, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                val preview = remember(matugenOn, darkMode) {
+                    MatugenColors.load()?.let { if (darkMode != DarkMode.OFF) it.dark else it.light }
+                }
+                if (preview != null) {
+                    Row(Modifier.padding(start = 60.dp, end = 16.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                         PaletteSwatchMockup(
                             listOfNotNull(
-                                preview["primary"],
-                                preview["secondary"],
-                                preview["tertiary"],
-                                preview["primaryContainer"],
-                                preview["surfaceContainerHigh"],
+                                preview["primary"], preview["secondary"], preview["tertiary"],
+                                preview["primaryContainer"], preview["surfaceContainerHigh"],
                             ),
                         )
                         Spacer(Modifier.width(12.dp))
-                        Text(
-                            "Live from wallpaper",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        Text("Live from wallpaper", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                 }
             }
         }
 
-        SettingsSection("Color algorithm") {
-            val style = runCatching {
-                M3PaletteStyle.valueOf(
-                    prefs.getString(PrefKeys.PaletteStyle, M3PaletteStyle.TONAL_SPOT.name),
-                )
-            }.getOrDefault(M3PaletteStyle.TONAL_SPOT)
-            M3PaletteStyle.entries.forEachIndexed { index, entry ->
-                if (index > 0) SettingsDivider()
-                val previewScheme = remember(entry, colorArgb, darkMode) {
-                    dynamicColorScheme(
-                        seedColor = Color(colorArgb.toLong() and 0xFFFFFFFFL),
-                        isDark = darkMode != DarkMode.OFF,
-                        style = entry.toKolor(),
-                    )
-                }
-                EnumRadioItem(
-                    label = entry.label(),
-                    subtitle = entry.subtitle(),
-                    selected = style == entry,
-                    onSelect = { prefs.setString(PrefKeys.PaletteStyle, entry.name) },
-                    trailing = {
-                        PaletteSwatchMockup(
-                            listOf(
-                                previewScheme.primary,
-                                previewScheme.secondary,
-                                previewScheme.tertiary,
-                                previewScheme.primaryContainer,
-                                previewScheme.surfaceContainerHigh,
-                            ),
-                        )
-                    },
-                )
-            }
-        }
-
-        SettingsSection("Contrast") {
-            val contrast = prefs.getFloat(PrefKeys.ContrastLevel, 0f)
-            listOf(
-                0f to "Standard",
-                0.5f to "Medium",
-                1f to "High",
-            ).forEachIndexed { index, (level, label) ->
-                if (index > 0) SettingsDivider()
-                EnumRadioItem(
-                    label = label,
-                    selected = kotlin.math.abs(contrast - level) < 0.05f,
-                    onSelect = { prefs.setFloat(PrefKeys.ContrastLevel, level) },
-                    trailing = { ContrastMockup(level) },
-                )
+        SettingsSection("Palette style") {
+            val style = prefs.enumPref(PrefKeys.PaletteStyle, M3PaletteStyle.TONAL_SPOT)
+            PaletteGrid(selected = style, seedArgb = colorArgb, dark = darkMode != DarkMode.OFF) {
+                prefs.setString(PrefKeys.PaletteStyle, it.name)
             }
         }
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PaletteGrid(
+    selected: M3PaletteStyle,
+    seedArgb: Int,
+    dark: Boolean,
+    onSelect: (M3PaletteStyle) -> Unit,
+) {
+    FlowRow(
+        Modifier.fillMaxWidth().padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        M3PaletteStyle.entries.forEach { entry ->
+            val scheme = remember(entry, seedArgb, dark) {
+                dynamicColorScheme(
+                    seedColor = Color(seedArgb.toLong() and 0xFFFFFFFFL),
+                    isDark = dark,
+                    style = entry.toKolor(),
+                )
+            }
+            val isSelected = entry == selected
+            val container by animateColorAsState(
+                if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
+                spring(stiffness = Spring.StiffnessMediumLow),
+                label = "paletteTile",
+            )
+            Surface(
+                onClick = { onSelect(entry) },
+                shape = RoundedCornerShape(16.dp),
+                color = container,
+                modifier = Modifier.width(148.dp),
+            ) {
+                Column(Modifier.padding(12.dp)) {
+                    PaletteSwatchMockup(
+                        listOf(scheme.primary, scheme.secondary, scheme.tertiary, scheme.primaryContainer, scheme.surfaceContainerHigh),
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        entry.label(),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+// —— Interface ————————————————————————————————————————————————
+
 @Composable
 fun AppearanceSettingsScreen(navController: NavController) {
     val prefs = koinInject<DesktopPrefs>()
-    val prefsVersion = rememberPrefsVersion(prefs)
     @Suppress("UNUSED_VARIABLE")
-    val observe = prefsVersion
-
-    val dynamicTheme = prefs.getBoolean(PrefKeys.DynamicTheme, true)
-    val pureBlackMini = prefs.getBoolean(PrefKeys.PureBlackMiniPlayer, false)
+    val observe = rememberPrefsVersion(prefs)
     val currentMiniLayout = resolveMiniPlayerStyle(prefs)
-    val miniStyle = prefs.getString(
-        PrefKeys.MiniPlayerBackgroundStyle,
-        PlayerBackgroundStyle.GRADIENT.name,
-    )
+    val miniBg = prefs.enumPref(PrefKeys.MiniPlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT)
+    val topNav = prefs.enumPref(PrefKeys.TopNavStyle, TopNavStyle.ICON_ONLY)
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 96.dp),
-    ) {
-        SettingsBackHeader(title = "Appearance", onBack = { navController.navigateUp() })
-
-        SettingsSection("Theme") {
-            SettingsNavItem(
-                icon = Icons.Outlined.Palette,
-                title = "Theme",
-                subtitle = "Dark mode, matugen, palette",
-                onClick = { navController.navigate(Routes.SETTINGS_THEME) },
-            )
-            SettingsDivider()
-            SettingsNavItem(
-                icon = Icons.Outlined.Info,
-                title = "App Font",
-                subtitle = null,
-                trailing = {
-                    Text(
-                        "System Default",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                },
-                onClick = { },
-                showChevron = false,
+    SettingsPage(title = "Interface", onBack = { navController.navigateUp() }) {
+        SettingsSection("Top bar") {
+            LiveTopNavHeroPreview(style = topNav)
+            ChoiceRow(
+                icon = Icons.Outlined.Menu,
+                title = "Tab labels",
+                options = listOf(
+                    TopNavStyle.ICON_ONLY to "Icons",
+                    TopNavStyle.ICON_AND_TEXT to "Both",
+                    TopNavStyle.TEXT_ONLY to "Text",
+                ),
+                selected = topNav,
+                onSelect = { prefs.setString(PrefKeys.TopNavStyle, it.name) },
             )
             SettingsDivider()
             SwitchItem(
-                icon = Icons.Outlined.Settings,
-                title = "Enable Settings Dropdown",
-                subtitle = "Show a menu under Settings in the top bar",
+                icon = Icons.Outlined.Tune,
+                title = "Settings shortcuts menu",
+                subtitle = "Open a quick menu from the Settings tab",
                 checked = prefs.getBoolean(PrefKeys.SettingsDropdown, true),
                 onChecked = { prefs.setBoolean(PrefKeys.SettingsDropdown, it) },
             )
-            SettingsDivider()
-            SwitchItem(
-                icon = Icons.Outlined.ColorLens,
-                title = "Enable dynamic theme",
-                subtitle = null,
-                checked = dynamicTheme,
-                onChecked = { prefs.setBoolean(PrefKeys.DynamicTheme, it) },
-            )
-        }
-
-        SettingsSection("Top bar style") {
-            val topNav = runCatching {
-                TopNavStyle.valueOf(
-                    prefs.getString(PrefKeys.TopNavStyle, TopNavStyle.ICON_ONLY.name),
-                )
-            }.getOrDefault(TopNavStyle.ICON_ONLY)
-            LiveTopNavHeroPreview(style = topNav)
-            SettingsDivider()
-            TopNavStyle.entries.forEachIndexed { index, style ->
-                if (index > 0) SettingsDivider()
-                val label = when (style) {
-                    TopNavStyle.ICON_ONLY -> "Icons only"
-                    TopNavStyle.ICON_AND_TEXT -> "Icons and text"
-                    TopNavStyle.TEXT_ONLY -> "Text only"
-                }
-                EnumRadioItem(
-                    label = label,
-                    selected = topNav == style,
-                    onSelect = { prefs.setString(PrefKeys.TopNavStyle, style.name) },
-                )
-            }
         }
 
         SettingsSection("Mini-player") {
-            val currentBg = runCatching {
-                PlayerBackgroundStyle.valueOf(miniStyle)
-            }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
-            LiveMiniPlayerHeroPreview(
-                layout = currentMiniLayout,
-                background = currentBg,
+            LiveMiniPlayerHeroPreview(layout = currentMiniLayout, background = miniBg)
+            ChoiceRow(
+                icon = Icons.Outlined.SmartDisplay,
+                title = "Layout",
+                options = listOf(
+                    MiniPlayerStyle.FULL_WIDTH_BAR to "Bar",
+                    MiniPlayerStyle.FLOATING_PILL to "Pill",
+                    MiniPlayerStyle.COMPACT_EDGE to "Compact",
+                ),
+                selected = currentMiniLayout,
+                onSelect = { style ->
+                    prefs.setString(PrefKeys.MiniPlayerStyle, style.name)
+                    prefs.setBoolean(PrefKeys.UseNewMiniPlayerDesign, style != MiniPlayerStyle.FULL_WIDTH_BAR)
+                    prefs.setBoolean(PrefKeys.UseAppleMiniPlayer, style == MiniPlayerStyle.COMPACT_EDGE)
+                },
             )
             SettingsDivider()
-            MiniPlayerStyle.entries.forEachIndexed { index, style ->
-                if (index > 0) SettingsDivider()
-                val label = when (style) {
-                    MiniPlayerStyle.FULL_WIDTH_BAR -> "Classic full-width"
-                    MiniPlayerStyle.FLOATING_PILL -> "Floating pill"
-                    MiniPlayerStyle.COMPACT_EDGE -> "Compact edge"
-                }
-                EnumRadioItem(
-                    label = label,
-                    selected = currentMiniLayout == style,
-                    onSelect = {
-                        prefs.setString(PrefKeys.MiniPlayerStyle, style.name)
-                        when (style) {
-                            MiniPlayerStyle.FULL_WIDTH_BAR -> {
-                                prefs.setBoolean(PrefKeys.UseNewMiniPlayerDesign, false)
-                                prefs.setBoolean(PrefKeys.UseAppleMiniPlayer, false)
-                            }
-                            MiniPlayerStyle.FLOATING_PILL -> {
-                                prefs.setBoolean(PrefKeys.UseNewMiniPlayerDesign, true)
-                                prefs.setBoolean(PrefKeys.UseAppleMiniPlayer, false)
-                            }
-                            MiniPlayerStyle.COMPACT_EDGE -> {
-                                prefs.setBoolean(PrefKeys.UseAppleMiniPlayer, true)
-                                prefs.setBoolean(PrefKeys.UseNewMiniPlayerDesign, true)
-                            }
-                        }
-                    },
-                )
-            }
+            ChipChoiceRow(
+                icon = Icons.Outlined.Wallpaper,
+                title = "Background",
+                options = PlayerBackgroundStyle.entries
+                    .filter { it != PlayerBackgroundStyle.APPLE_MUSIC }
+                    .map { it to it.label() },
+                selected = miniBg,
+                onSelect = { prefs.setString(PrefKeys.MiniPlayerBackgroundStyle, it.name) },
+            )
             SettingsDivider()
             SwitchItem(
                 icon = Icons.Outlined.Contrast,
                 title = "Pure black mini-player",
                 subtitle = null,
-                checked = pureBlackMini,
+                checked = prefs.getBoolean(PrefKeys.PureBlackMiniPlayer, false),
                 onChecked = { prefs.setBoolean(PrefKeys.PureBlackMiniPlayer, it) },
             )
         }
+    }
+}
 
-        SettingsSection("Mini-player background") {
-            val miniStyles = PlayerBackgroundStyle.entries.filter { it != PlayerBackgroundStyle.APPLE_MUSIC }
-            val currentBg = runCatching {
-                PlayerBackgroundStyle.valueOf(miniStyle)
-            }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
-            LiveMiniPlayerHeroPreview(
-                layout = currentMiniLayout,
-                background = currentBg,
+// —— Now Playing ——————————————————————————————————————————————
+
+@Composable
+fun NowPlayingSettingsScreen(navController: NavController) {
+    val prefs = koinInject<DesktopPrefs>()
+    @Suppress("UNUSED_VARIABLE")
+    val observe = rememberPrefsVersion(prefs)
+    val playerBg = prefs.enumPref(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT)
+    val canvasOn = prefs.getBoolean(PrefKeys.EnableCanvas, true)
+
+    SettingsPage(title = "Now Playing", onBack = { navController.navigateUp() }) {
+        SettingsSection("Background") {
+            LivePlayerBackgroundHeroPreview(style = playerBg)
+            ChipChoiceRow(
+                icon = Icons.Outlined.Wallpaper,
+                title = "Style",
+                options = PlayerBackgroundStyle.entries.map { it to it.label() },
+                selected = playerBg,
+                onSelect = { prefs.setString(PrefKeys.PlayerBackgroundStyle, it.name) },
             )
             SettingsDivider()
-            miniStyles.forEachIndexed { index, style ->
-                if (index > 0) SettingsDivider()
-                EnumRadioItem(
-                    label = when (style) {
-                        PlayerBackgroundStyle.LEGACY -> "Legacy"
-                        else -> style.name.lowercase().replace('_', ' ')
-                    },
-                    selected = miniStyle == style.name,
-                    onSelect = { prefs.setString(PrefKeys.MiniPlayerBackgroundStyle, style.name) },
-                )
-            }
-        }
-
-        SettingsSection("Lyrics") {
-            val lyricsAlign = runCatching {
-                LyricsTextAlign.valueOf(
-                    prefs.getString(PrefKeys.LyricsTextAlign, LyricsTextAlign.CENTER.name),
-                )
-            }.getOrDefault(LyricsTextAlign.CENTER)
-            LyricsTextAlign.entries.forEachIndexed { index, style ->
-                if (index > 0) SettingsDivider()
-                val label = when (style) {
-                    LyricsTextAlign.LEFT -> "Left"
-                    LyricsTextAlign.CENTER -> "Center"
-                    LyricsTextAlign.RIGHT -> "Right"
+            SwitchItem(
+                icon = Icons.Outlined.MovieFilter,
+                title = "Canvas video",
+                subtitle = if (playerBg == PlayerBackgroundStyle.APPLE_MUSIC) {
+                    "Animated album art in place of the cover when available"
+                } else {
+                    "Available with the Apple Music background"
+                },
+                checked = canvasOn,
+                onChecked = { prefs.setBoolean(PrefKeys.EnableCanvas, it) },
+            )
+            AnimatedVisibility(canvasOn && playerBg == PlayerBackgroundStyle.APPLE_MUSIC, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                Column {
+                    SettingsDivider()
+                    ChoiceRow(
+                        icon = Icons.Outlined.AutoAwesome,
+                        title = "Canvas source",
+                        options = listOf(
+                            CanvasSource.AUTO to "Auto",
+                            CanvasSource.APPLE_MUSIC to "Apple",
+                            CanvasSource.TIDAL to "Tidal",
+                            CanvasSource.VIVIMUSIC to "VIVI",
+                        ),
+                        selected = prefs.enumPref(PrefKeys.CanvasSource, CanvasSource.AUTO),
+                        onSelect = { prefs.setString(PrefKeys.CanvasSource, it.name) },
+                    )
                 }
-                EnumRadioItem(
-                    label = label,
-                    selected = lyricsAlign == style,
-                    onSelect = { prefs.setString(PrefKeys.LyricsTextAlign, style.name) },
-                )
-            }
-            SettingsDivider()
-            val lyricsProvider = runCatching {
-                LyricsProvider.valueOf(
-                    prefs.getString(PrefKeys.LyricsProvider, LyricsProvider.LRCLIB.name),
-                )
-            }.getOrDefault(LyricsProvider.LRCLIB)
-            LyricsProvider.entries.forEachIndexed { index, provider ->
-                if (index > 0) SettingsDivider()
-                EnumRadioItem(
-                    label = provider.label,
-                    selected = lyricsProvider == provider,
-                    onSelect = { prefs.setString(PrefKeys.LyricsProvider, provider.name) },
-                )
             }
         }
 
-        SettingsSection("Player") {
+        SettingsSection("Layout & controls") {
             LivePlayerLayoutHeroPreview(framed = prefs.getBoolean(PrefKeys.UsePlayerV2, false))
             SwitchItem(
                 icon = Icons.Outlined.SmartDisplay,
-                title = "Framed player controls",
-                subtitle = "A rounded translucent panel in Now Playing",
+                title = "Framed controls",
+                subtitle = "Put the controls on a translucent panel",
                 checked = prefs.getBoolean(PrefKeys.UsePlayerV2, false),
                 onChecked = { prefs.setBoolean(PrefKeys.UsePlayerV2, it) },
             )
             SettingsDivider()
             SwitchItem(
                 icon = Icons.Outlined.Contrast,
-                title = "Hide player thumbnail",
+                title = "Hide cover art",
                 subtitle = null,
                 checked = prefs.getBoolean(PrefKeys.HidePlayerThumbnail, false),
                 onChecked = { prefs.setBoolean(PrefKeys.HidePlayerThumbnail, it) },
             )
             SettingsDivider()
-            SwitchItem(
-                icon = Icons.Outlined.SmartDisplay,
-                title = "Canvas video",
-                subtitle = "Apple Music motion backgrounds when available",
-                checked = prefs.getBoolean(PrefKeys.EnableCanvas, true),
-                onChecked = { prefs.setBoolean(PrefKeys.EnableCanvas, it) },
+            val buttons = prefs.enumPref(PrefKeys.PlayerButtonsStyle, PlayerButtonsStyle.DEFAULT)
+            ChoiceRow(
+                icon = Icons.Outlined.PlayCircle,
+                title = "Button color",
+                options = PlayerButtonsStyle.entries.map { it to it.titleLabel() },
+                selected = buttons,
+                onSelect = { prefs.setString(PrefKeys.PlayerButtonsStyle, it.name) },
+            )
+            SettingsDivider()
+            val slider = prefs.enumPref(PrefKeys.SliderStyle, SliderStyle.DEFAULT)
+            LiveSliderStyleHeroPreview(style = slider, squiggly = prefs.getBoolean(PrefKeys.SquigglySlider, false))
+            ChipChoiceRow(
+                icon = Icons.Outlined.GraphicEq,
+                title = "Seek bar",
+                options = SliderStyle.entries.map {
+                    it to if (it == SliderStyle.M3_EXPRESSIVE) "M3 Expressive" else it.titleLabel()
+                },
+                selected = slider,
+                onSelect = { prefs.setString(PrefKeys.SliderStyle, it.name) },
+            )
+            SettingsDivider()
+            ChoiceRow(
+                icon = Icons.AutoMirrored.Outlined.VolumeUp,
+                title = "Volume control",
+                options = listOf(VolumeControlStyle.SLIDER to "Slider", VolumeControlStyle.COMPACT_PILL to "Pill"),
+                selected = prefs.enumPref(PrefKeys.VolumeControlStyle, VolumeControlStyle.SLIDER),
+                onSelect = { prefs.setString(PrefKeys.VolumeControlStyle, it.name) },
+            )
+        }
+
+        SettingsSection("Lyrics") {
+            ChoiceRow(
+                icon = Icons.Outlined.Lyrics,
+                title = "Alignment",
+                options = listOf(LyricsTextAlign.LEFT to "Left", LyricsTextAlign.CENTER to "Center", LyricsTextAlign.RIGHT to "Right"),
+                selected = prefs.enumPref(PrefKeys.LyricsTextAlign, LyricsTextAlign.CENTER),
+                onSelect = { prefs.setString(PrefKeys.LyricsTextAlign, it.name) },
+            )
+            SettingsDivider()
+            ChipChoiceRow(
+                icon = Icons.Outlined.AutoAwesome,
+                title = "Provider",
+                options = LyricsProvider.entries.map { it to it.label },
+                selected = prefs.enumPref(PrefKeys.LyricsProvider, LyricsProvider.LRCLIB),
+                onSelect = { prefs.setString(PrefKeys.LyricsProvider, it.name) },
             )
         }
 
         SettingsSection("Queue") {
-            val queueMode = runCatching {
-                QueuePanelMode.valueOf(
-                    prefs.getString(PrefKeys.QueuePanelMode, QueuePanelMode.FULLSCREEN.name),
-                )
-            }.getOrDefault(QueuePanelMode.FULLSCREEN)
-            EnumRadioItem(
-                label = "Fullscreen queue",
-                selected = queueMode == QueuePanelMode.FULLSCREEN,
-                onSelect = { prefs.setString(PrefKeys.QueuePanelMode, QueuePanelMode.FULLSCREEN.name) },
-            )
-            SettingsDivider()
-            EnumRadioItem(
-                label = "Pin to right",
-                selected = queueMode == QueuePanelMode.PINNED_RIGHT,
-                onSelect = { prefs.setString(PrefKeys.QueuePanelMode, QueuePanelMode.PINNED_RIGHT.name) },
-            )
-            SettingsDivider()
-            EnumRadioItem(
-                label = "Queue under playbar",
-                selected = queueMode == QueuePanelMode.UNDER_PLAYBAR,
-                onSelect = { prefs.setString(PrefKeys.QueuePanelMode, QueuePanelMode.UNDER_PLAYBAR.name) },
+            ChoiceRow(
+                icon = Icons.AutoMirrored.Outlined.QueueMusic,
+                title = "Open queue as",
+                options = listOf(
+                    QueuePanelMode.FULLSCREEN to "Sheet",
+                    QueuePanelMode.PINNED_RIGHT to "Side panel",
+                    QueuePanelMode.UNDER_PLAYBAR to "Inline",
+                ),
+                selected = prefs.enumPref(PrefKeys.QueuePanelMode, QueuePanelMode.FULLSCREEN),
+                onSelect = { prefs.setString(PrefKeys.QueuePanelMode, it.name) },
             )
             SettingsDivider()
             SwitchItem(
-                icon = Icons.Outlined.SmartDisplay,
-                title = "Persistent queue",
-                subtitle = "Restore your queue and position at startup; press Play to resume",
+                icon = Icons.Outlined.Restore,
+                title = "Remember queue",
+                subtitle = "Restore the queue and position at startup",
                 checked = prefs.getBoolean(PrefKeys.PersistentQueue, true),
                 onChecked = { prefs.setBoolean(PrefKeys.PersistentQueue, it) },
             )
         }
-
-        SettingsSection("Player background") {
-            val playerBg = runCatching {
-                PlayerBackgroundStyle.valueOf(
-                    prefs.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name),
-                )
-            }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
-            LivePlayerBackgroundHeroPreview(style = playerBg)
-            SettingsDivider()
-            PlayerBackgroundStyle.entries.forEachIndexed { index, style ->
-                if (index > 0) SettingsDivider()
-                EnumRadioItem(
-                    label = when (style) {
-                        PlayerBackgroundStyle.LEGACY -> "Legacy"
-                        else -> style.name.lowercase().replace('_', ' ')
-                    },
-                    selected = playerBg == style,
-                    onSelect = { prefs.setString(PrefKeys.PlayerBackgroundStyle, style.name) },
-                )
-            }
-        }
-
-        
-        SettingsSection("Volume control style") {
-            val volumeStyle = runCatching {
-                VolumeControlStyle.valueOf(
-                    prefs.getString(PrefKeys.VolumeControlStyle, VolumeControlStyle.SLIDER.name),
-                )
-            }.getOrDefault(VolumeControlStyle.SLIDER)
-            
-            VolumeControlStyle.entries.forEachIndexed { index, style ->
-                if (index > 0) SettingsDivider()
-                EnumRadioItem(
-                    label = style.name.lowercase().replace("_", " ").replaceFirstChar { it.titlecase() },
-                    selected = volumeStyle == style,
-                    onSelect = { prefs.setString(PrefKeys.VolumeControlStyle, style.name) },
-                )
-            }
-        }
-
-        SettingsSection("Slider style") {
-            val squiggly = prefs.getBoolean(PrefKeys.SquigglySlider, false)
-            val sliderStyle = runCatching {
-                SliderStyle.valueOf(
-                    prefs.getString(PrefKeys.SliderStyle, SliderStyle.DEFAULT.name),
-                )
-            }.getOrDefault(SliderStyle.DEFAULT)
-            LiveSliderStyleHeroPreview(style = sliderStyle, squiggly = squiggly)
-            SettingsDivider()
-            SliderStyle.entries.forEachIndexed { index, style ->
-                if (index > 0) SettingsDivider()
-                EnumRadioItem(
-                    label = when (style) {
-                        SliderStyle.M3_EXPRESSIVE -> "M3 Expressive"
-                        else -> style.name.lowercase().replaceFirstChar { it.titlecase() }
-                    },
-                    selected = sliderStyle == style,
-                    onSelect = { prefs.setString(PrefKeys.SliderStyle, style.name) },
-                )
-            }
-        }
-
-        SettingsSection("Buttons") {
-            val buttonsStyle = runCatching {
-                PlayerButtonsStyle.valueOf(
-                    prefs.getString(PrefKeys.PlayerButtonsStyle, PlayerButtonsStyle.DEFAULT.name),
-                )
-            }.getOrDefault(PlayerButtonsStyle.DEFAULT)
-            LivePlayerButtonsHeroPreview(style = buttonsStyle)
-            SettingsDivider()
-            PlayerButtonsStyle.entries.forEachIndexed { index, style ->
-                if (index > 0) SettingsDivider()
-                EnumRadioItem(
-                    label = style.name.lowercase().replaceFirstChar { it.titlecase() },
-                    selected = buttonsStyle == style,
-                    onSelect = { prefs.setString(PrefKeys.PlayerButtonsStyle, style.name) },
-                )
-            }
-        }
     }
 }
+
+// —— Playback ——————————————————————————————————————————————————
 
 @Composable
 fun PlayerSettingsScreen(navController: NavController) {
     val prefs = koinInject<DesktopPrefs>()
-    val prefsVersion = rememberPrefsVersion(prefs)
     @Suppress("UNUSED_VARIABLE")
-    val observe = prefsVersion
-    val envSaavn = System.getenv("VIVI_SAAVN") != "0"
-    val saavn = prefs.getBoolean(PrefKeys.SaavnEnabled, envSaavn)
+    val observe = rememberPrefsVersion(prefs)
+    val saavn = prefs.getBoolean(PrefKeys.SaavnEnabled, System.getenv("VIVI_SAAVN") != "0")
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 96.dp),
-    ) {
-        SettingsBackHeader(title = "Player and audio", onBack = { navController.navigateUp() })
-
-                SettingsSection("Integrations") {
-            SwitchItem(
-                icon = Icons.Outlined.Groups,
-                title = "Discord Rich Presence",
-                subtitle = "Show what you're listening to on Discord",
-                checked = prefs.getBoolean(PrefKeys.DiscordRpcEnabled, true),
-                onChecked = { prefs.setBoolean(PrefKeys.DiscordRpcEnabled, it) },
-            )
-        }
-
+    SettingsPage(title = "Playback & audio", onBack = { navController.navigateUp() }) {
         SettingsSection("Stream") {
+            ChoiceRow(
+                icon = Icons.Outlined.HighQuality,
+                title = "Audio quality",
+                options = AudioQuality.entries.map { it to it.titleLabel() },
+                selected = prefs.enumPref(PrefKeys.AudioQuality, AudioQuality.AUTO),
+                onSelect = { prefs.setString(PrefKeys.AudioQuality, it.name) },
+            )
+            SettingsDivider()
             SwitchItem(
                 icon = Icons.AutoMirrored.Outlined.VolumeUp,
-                title = "Prefer JioSaavn when available",
-                subtitle = "Use a matching JioSaavn stream for the next song",
+                title = "Prefer JioSaavn",
+                subtitle = "Use a matching JioSaavn stream when one exists",
                 checked = saavn,
                 onChecked = { prefs.setBoolean(PrefKeys.SaavnEnabled, it) },
             )
         }
 
-        SettingsSection("Audio quality") {
-            AudioQuality.entries.forEachIndexed { index, q ->
-                if (index > 0) SettingsDivider()
-                EnumRadioItem(
-                    label = q.name.lowercase().replaceFirstChar { it.titlecase() },
-                    selected = prefs.getString(PrefKeys.AudioQuality, AudioQuality.AUTO.name) == q.name,
-                    onSelect = { prefs.setString(PrefKeys.AudioQuality, q.name) },
-                )
-            }
-        }
-
-        SettingsSection("Playback fades") {
+        SettingsSection("Transitions") {
             val crossfade = prefs.getBoolean(PrefKeys.CrossfadeEnabled, false)
             SwitchItem(
                 icon = Icons.Outlined.GraphicEq,
-                title = "Crossfade on skip / next",
-                subtitle = "Blend songs when skipping and near the end of a track",
+                title = "Crossfade",
+                subtitle = "Blend into the next song",
                 checked = crossfade,
                 onChecked = { prefs.setBoolean(PrefKeys.CrossfadeEnabled, it) },
             )
-            AnimatedVisibility(visible = crossfade) {
-                Column {
-                    SettingsDivider()
-                    PrefSecondsSlider(
-                        title = "Crossfade length",
-                        valueLabel = { "${it.toInt()} s" },
-                        value = prefs.getInt(PrefKeys.CrossfadeSeconds, 3).toFloat(),
-                        valueRange = 1f..10f,
-                        steps = 8,
-                        onCommit = { prefs.setInt(PrefKeys.CrossfadeSeconds, it.toInt().coerceIn(1, 10)) },
-                    )
-                }
+            AnimatedVisibility(crossfade, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                PrefSecondsSlider(
+                    title = "Length",
+                    valueLabel = { "${it.toInt()} s" },
+                    value = prefs.getInt(PrefKeys.CrossfadeSeconds, 3).toFloat(),
+                    valueRange = 1f..10f,
+                    steps = 8,
+                    onCommit = { prefs.setInt(PrefKeys.CrossfadeSeconds, it.toInt().coerceIn(1, 10)) },
+                )
             }
             SettingsDivider()
             val playPauseFade = prefs.getBoolean(PrefKeys.PlayPauseFadeEnabled, true)
             SwitchItem(
-                icon = Icons.AutoMirrored.Outlined.VolumeUp,
+                icon = Icons.Outlined.Tune,
                 title = "Fade on play / pause",
-                subtitle = "Soft volume ramp before pause and after play",
+                subtitle = "Ramp volume instead of cutting",
                 checked = playPauseFade,
                 onChecked = { prefs.setBoolean(PrefKeys.PlayPauseFadeEnabled, it) },
             )
-            AnimatedVisibility(visible = playPauseFade) {
-                Column {
-                    SettingsDivider()
-                    PrefSecondsSlider(
-                        title = "Play/pause fade length",
-                        valueLabel = { String.format("%.1f s", it) },
-                        value = prefs.getFloat(PrefKeys.PlayPauseFadeSeconds, 0.5f),
-                        valueRange = 0.2f..3f,
-                        steps = 27,
-                        onCommit = {
-                            prefs.setFloat(
-                                PrefKeys.PlayPauseFadeSeconds,
-                                (kotlin.math.round(it * 10f) / 10f).coerceIn(0.2f, 3f),
-                            )
-                        },
-                    )
-                }
+            AnimatedVisibility(playPauseFade, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                PrefSecondsSlider(
+                    title = "Length",
+                    valueLabel = { String.format("%.1f s", it) },
+                    value = prefs.getFloat(PrefKeys.PlayPauseFadeSeconds, 0.5f),
+                    valueRange = 0.2f..3f,
+                    steps = 27,
+                    onCommit = {
+                        prefs.setFloat(PrefKeys.PlayPauseFadeSeconds, (kotlin.math.round(it * 10f) / 10f).coerceIn(0.2f, 3f))
+                    },
+                )
             }
         }
 
-        SettingsSection("Look") {
-            SettingsNavItem(
-                icon = Icons.Outlined.Palette,
-                title = "Appearance",
-                subtitle = "Player / mini designs, slider, backgrounds",
-                onClick = { navController.navigate(Routes.SETTINGS_APPEARANCE) },
+        SettingsSection("Integrations") {
+            SwitchItem(
+                icon = Icons.Outlined.Groups,
+                title = "Discord Rich Presence",
+                subtitle = "Show what you're listening to",
+                checked = prefs.getBoolean(PrefKeys.DiscordRpcEnabled, true),
+                onChecked = { prefs.setBoolean(PrefKeys.DiscordRpcEnabled, it) },
             )
         }
     }
 }
 
+// —— Downloads ————————————————————————————————————————————————
+
 @Composable
 fun DownloadsSettingsScreen(navController: NavController) {
     val prefs = koinInject<DesktopPrefs>()
-    val prefsVersion = rememberPrefsVersion(prefs)
     @Suppress("UNUSED_VARIABLE")
-    val observe = prefsVersion
+    val observe = rememberPrefsVersion(prefs)
     val managedOffline = remember { DatabaseFactory.offlineDir().absolutePath }
     val storedPath = prefs.getString(PrefKeys.DownloadPath, "")
-    var pathDraft by remember(storedPath, managedOffline) {
-        mutableStateOf(storedPath.ifBlank { managedOffline })
-    }
-    val format = runCatching {
-        DownloadAudioFormat.valueOf(
-            prefs.getString(PrefKeys.DownloadFormat, DownloadAudioFormat.OPUS.name),
-        )
-    }.getOrDefault(DownloadAudioFormat.OPUS)
-    val quality = runCatching {
-        DownloadAudioQuality.valueOf(
-            prefs.getString(PrefKeys.DownloadQuality, DownloadAudioQuality.BEST.name),
-        )
-    }.getOrDefault(DownloadAudioQuality.BEST)
-    val embed = prefs.getBoolean(PrefKeys.DownloadEmbedMetadata, true)
+    var pathDraft by remember(storedPath, managedOffline) { mutableStateOf(storedPath.ifBlank { managedOffline }) }
     val ytdlpOk = remember { YtDlpBinary.available() }
 
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 96.dp),
-    ) {
-        SettingsBackHeader(title = "Downloads", onBack = { navController.navigateUp() })
+    SettingsPage(title = "Downloads", onBack = { navController.navigateUp() }) {
+        if (!ytdlpOk) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.errorContainer,
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+            ) {
+                Text(
+                    "yt-dlp wasn't found. Install it or set VIVI_YTDLP to enable downloads.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onErrorContainer,
+                    modifier = Modifier.padding(16.dp),
+                )
+            }
+        }
 
-        SettingsSection("Folder") {
+        SettingsSection("Save to") {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        Icons.Outlined.Folder,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.size(24.dp),
-                    )
-                    Spacer(Modifier.width(20.dp))
-                    Text(
-                        "Save downloads to",
-                        style = MaterialTheme.typography.bodyLarge,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                Spacer(Modifier.height(10.dp))
                 OutlinedTextField(
                     value = pathDraft,
                     onValueChange = { pathDraft = it },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
-                    label = { Text("Folder path") },
+                    label = { Text("Folder") },
                 )
-                Row(
-                    Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                ) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = {
+                        pathDraft = managedOffline
+                        prefs.setString(PrefKeys.DownloadPath, "")
+                    }) { Text("Reset") }
                     TextButton(
-                        onClick = {
-                            pathDraft = managedOffline
-                            prefs.setString(PrefKeys.DownloadPath, "")
-                        },
-                    ) {
-                        Text("Use managed offline folder")
-                    }
-                    TextButton(
+                        enabled = pathDraft.trim() != storedPath.ifBlank { managedOffline },
                         onClick = {
                             val trimmed = pathDraft.trim()
-                            prefs.setString(
-                                PrefKeys.DownloadPath,
-                                if (trimmed.isEmpty() || trimmed == managedOffline) "" else trimmed,
-                            )
+                            prefs.setString(PrefKeys.DownloadPath, if (trimmed.isEmpty() || trimmed == managedOffline) "" else trimmed)
                         },
-                    ) {
-                        Text("Save path")
-                    }
+                    ) { Text("Save") }
                 }
-                Text(
-                    "Default: $managedOffline (app-managed offline library)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
             }
         }
 
-        SettingsSection("Format") {
-            DownloadAudioFormat.entries.forEachIndexed { index, f ->
-                if (index > 0) SettingsDivider()
-                EnumRadioItem(
-                    label = f.label,
-                    selected = format == f,
-                    onSelect = { prefs.setString(PrefKeys.DownloadFormat, f.name) },
-                )
-            }
-        }
-
-        SettingsSection("Quality") {
-            DownloadAudioQuality.entries.forEachIndexed { index, q ->
-                if (index > 0) SettingsDivider()
-                EnumRadioItem(
-                    label = q.label,
-                    selected = quality == q,
-                    onSelect = { prefs.setString(PrefKeys.DownloadQuality, q.name) },
-                )
-            }
-        }
-
-        SettingsSection("Metadata") {
-            SwitchItem(
+        SettingsSection("File") {
+            ChoiceRow(
                 icon = Icons.Outlined.Download,
+                title = "Format",
+                options = DownloadAudioFormat.entries.map { it to it.label },
+                selected = prefs.enumPref(PrefKeys.DownloadFormat, DownloadAudioFormat.OPUS),
+                onSelect = { prefs.setString(PrefKeys.DownloadFormat, it.name) },
+            )
+            SettingsDivider()
+            ChoiceRow(
+                icon = Icons.Outlined.HighQuality,
+                title = "Quality",
+                options = DownloadAudioQuality.entries.map { it to it.label },
+                selected = prefs.enumPref(PrefKeys.DownloadQuality, DownloadAudioQuality.BEST),
+                onSelect = { prefs.setString(PrefKeys.DownloadQuality, it.name) },
+            )
+            SettingsDivider()
+            SwitchItem(
+                icon = Icons.Outlined.Palette,
                 title = "Embed cover and tags",
-                subtitle = "Requires ffmpeg for some formats",
-                checked = embed,
+                subtitle = "Some formats need ffmpeg",
+                checked = prefs.getBoolean(PrefKeys.DownloadEmbedMetadata, true),
                 onChecked = { prefs.setBoolean(PrefKeys.DownloadEmbedMetadata, it) },
             )
         }
-
-        SettingsSection("Engine") {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
-                Text(
-                    if (ytdlpOk) "yt-dlp found on PATH"
-                    else "yt-dlp not found — install it or set VIVI_YTDLP",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = if (ytdlpOk) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        MaterialTheme.colorScheme.error
-                    },
-                )
-            }
-        }
     }
 }
+
+// —— Account ——————————————————————————————————————————————————
 
 @Composable
 fun AccountSettingsScreen(navController: NavController) {
     val yt = koinInject<YouTubeMusicService>()
     var account by remember { mutableStateOf<AccountInfo?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     LaunchedEffect(Unit) {
         yt.accountInfo()
             .onSuccess { account = it }
             .onFailure { error = it.message ?: it.toString() }
     }
-    Column(
-        Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp)
-            .padding(bottom = 96.dp),
-    ) {
-        SettingsBackHeader(title = "Account", onBack = { navController.navigateUp() })
-        SettingsGroupCard {
-            Column(Modifier.padding(16.dp)) {
-                Text(
-                    account?.name ?: "—",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                )
-                Spacer(Modifier.height(4.dp))
-                Text(
-                    account?.email ?: error ?: "Loading…",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    "Session lives in the system keyring. Re-run login from the gate if needed.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-        }
+    SettingsPage(title = "Account", onBack = { navController.navigateUp() }) {
+        AccountCard(account, error) {}
+        Text(
+            "Your session is stored in the system keyring. Sign in again below if it expires.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp),
+        )
+        com.music.vivi.compose.ui.YtLoginPanel(
+            modifier = Modifier.padding(horizontal = 4.dp),
+            onLoggedIn = {
+                scope.launch {
+                    error = null
+                    yt.accountInfo().onSuccess { account = it }.onFailure { error = it.message ?: it.toString() }
+                }
+            },
+        )
     }
 }
 
 // —— shared building blocks ————————————————————————————————
 
+/** Scrolling settings page, centered at a readable width on wide windows. */
 @Composable
-private fun SettingsGroupCard(content: @Composable () -> Unit) {
-    Surface(
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Column(Modifier.fillMaxWidth()) {
+internal fun SettingsPage(
+    title: String,
+    onBack: (() -> Unit)?,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val scroll = rememberScrollState()
+    Box(Modifier.fillMaxSize().smoothWheelScroll(scroll).verticalScroll(scroll), contentAlignment = Alignment.TopCenter) {
+        Column(
+            Modifier
+                .widthIn(max = 760.dp)
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(top = 8.dp, bottom = 120.dp),
+        ) {
+            SettingsBackHeader(title = title, onBack = onBack)
             content()
         }
     }
 }
 
 @Composable
-internal fun SettingsSection(
-    title: String,
-    initiallyExpanded: Boolean = true,
-    content: @Composable () -> Unit,
-) {
-    var expanded by remember { mutableStateOf(initiallyExpanded) }
-    Column(Modifier.fillMaxWidth()) {
-        Surface(
-            onClick = { expanded = !expanded },
-            shape = RoundedCornerShape(InteractionCornerRadius),
-            color = Color.Transparent,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(start = 4.dp, end = 4.dp, top = 20.dp, bottom = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    title,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.weight(1f),
-                )
-                Icon(
-                    imageVector = if (expanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp),
-                )
-            }
-        }
-        AnimatedVisibility(
-            visible = expanded,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut(),
-        ) {
-            SettingsGroupCard {
-                content()
-            }
-        }
+private fun SettingsGroupCard(content: @Composable ColumnScope.() -> Unit) {
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), content = content)
     }
 }
 
 @Composable
-private fun SettingsDivider() {
+internal fun SettingsSection(
+    title: String,
+    @Suppress("UNUSED_PARAMETER") initiallyExpanded: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Column(Modifier.fillMaxWidth()) {
+        Text(
+            title,
+            style = MaterialTheme.typography.titleSmall,
+            color = MaterialTheme.colorScheme.primary,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 8.dp, top = 24.dp, bottom = 8.dp),
+        )
+        SettingsGroupCard(content)
+    }
+}
+
+@Composable
+internal fun SettingsDivider() {
     HorizontalDivider(
-        modifier = Modifier.padding(start = 72.dp, end = 16.dp),
-        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+        modifier = Modifier.padding(start = 60.dp, end = 16.dp),
+        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f),
     )
 }
 
 @Composable
-internal fun SettingsBackHeader(title: String, onBack: () -> Unit) {
+internal fun SettingsBackHeader(title: String, onBack: (() -> Unit)?) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp),
+        modifier = Modifier.padding(top = 8.dp, bottom = 4.dp).height(48.dp),
     ) {
-        IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
+        if (onBack != null) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
+            }
+            Spacer(Modifier.width(4.dp))
         }
         Text(
             title,
-            style = MaterialTheme.typography.headlineSmall,
+            style = if (onBack == null) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
+            modifier = if (onBack == null) Modifier.padding(start = 4.dp) else Modifier,
         )
+    }
+}
+
+@Composable
+private fun SettingsRowFrame(
+    icon: ImageVector?,
+    title: String,
+    subtitle: String?,
+    onClick: (() -> Unit)?,
+    trailing: @Composable () -> Unit = {},
+) {
+    val rowContent: @Composable () -> Unit = {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) {
+                Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(18.dp))
+            }
+            Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                Text(title, style = MaterialTheme.typography.bodyLarge)
+                if (!subtitle.isNullOrBlank()) {
+                    Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+            trailing()
+        }
+    }
+    val mod = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 1.dp)
+    if (onClick != null) {
+        Surface(onClick = onClick, shape = RoundedCornerShape(InteractionCornerRadius), color = Color.Transparent, modifier = mod) { rowContent() }
+    } else {
+        Box(mod) { rowContent() }
     }
 }
 
@@ -1146,46 +959,93 @@ private fun SettingsNavItem(
     title: String,
     subtitle: String?,
     onClick: () -> Unit,
-    trailing: (@Composable () -> Unit)? = null,
-    showChevron: Boolean = true,
 ) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(InteractionCornerRadius),
-        color = Color.Transparent,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(24.dp),
-            )
-            Spacer(Modifier.width(20.dp))
-            Column(Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge)
-                if (!subtitle.isNullOrBlank()) {
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    SettingsRowFrame(icon, title, subtitle, onClick) {
+        Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+internal fun SwitchItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String?,
+    checked: Boolean,
+    onChecked: (Boolean) -> Unit,
+) {
+    // Optimistic UI — don't wait for prefs listener round-trip.
+    var local by remember(checked) { mutableStateOf(checked) }
+    SettingsRowFrame(icon, title, subtitle, onClick = { local = !local; onChecked(local) }) {
+        Switch(checked = local, onCheckedChange = { local = it; onChecked(it) })
+    }
+}
+
+/**
+ * A setting with a handful of short options: segmented buttons beside the title on wide
+ * rows, wrapping under the title when space is tight.
+ */
+@Composable
+private fun <T> ChoiceRow(
+    icon: ImageVector?,
+    title: String,
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+) {
+    var local by remember(selected) { mutableStateOf(selected) }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val inline = maxWidth >= 560.dp
+        val segmented: @Composable (Modifier) -> Unit = { modifier ->
+            SingleChoiceSegmentedButtonRow(modifier) {
+                options.forEachIndexed { index, (value, label) ->
+                    SegmentedButton(
+                        selected = local == value,
+                        onClick = { local = value; onSelect(value) },
+                        shape = SegmentedButtonDefaults.itemShape(index, options.size),
+                        icon = {},
+                        label = { Text(label, maxLines = 1, style = MaterialTheme.typography.labelLarge) },
                     )
                 }
             }
-            trailing?.invoke()
-            if (showChevron) {
-                Icon(
-                    Icons.Outlined.ChevronRight,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        }
+        if (inline) {
+            SettingsRowFrame(icon, title, null, onClick = null) { segmented(Modifier.widthIn(max = 380.dp)) }
+        } else {
+            Column {
+                SettingsRowFrame(icon, title, null, onClick = null)
+                segmented(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
+            }
+        }
+    }
+}
+
+/** A setting with many options: title row plus a wrapping set of chips. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun <T> ChipChoiceRow(
+    icon: ImageVector?,
+    title: String,
+    options: List<Pair<T, String>>,
+    selected: T,
+    onSelect: (T) -> Unit,
+) {
+    var local by remember(selected) { mutableStateOf(selected) }
+    Column(Modifier.fillMaxWidth()) {
+        SettingsRowFrame(icon, title, null, onClick = null)
+        FlowRow(
+            Modifier.fillMaxWidth().padding(start = if (icon != null) 56.dp else 16.dp, end = 16.dp, bottom = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            options.forEach { (value, label) ->
+                FilterChip(
+                    selected = local == value,
+                    onClick = { local = value; onSelect(value) },
+                    label = { Text(label) },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = FilterChipDefaults.filterChipColors(
+                        selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    ),
                 )
             }
         }
@@ -1202,135 +1062,23 @@ private fun PrefSecondsSlider(
     onCommit: (Float) -> Unit,
 ) {
     var local by remember(value) { mutableFloatStateOf(value) }
-    LaunchedEffect(value) { local = value }
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
+    Row(
+        Modifier.fillMaxWidth().padding(start = 56.dp, end = 16.dp, bottom = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Row(
-            Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(
-                title,
-                style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f),
-            )
-            Text(
-                valueLabel(local),
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Slider(
             value = local.coerceIn(valueRange.start, valueRange.endInclusive),
             onValueChange = { local = it },
             onValueChangeFinished = { onCommit(local) },
             valueRange = valueRange,
             steps = steps,
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
         )
-    }
-}
-
-@Composable
-internal fun SwitchItem(
-    icon: ImageVector,
-    title: String,
-    subtitle: String?,
-    checked: Boolean,
-    onChecked: (Boolean) -> Unit,
-) {
-    // Optimistic UI — don't wait for prefs listener round-trip.
-    var local by remember(checked) { mutableStateOf(checked) }
-    LaunchedEffect(checked) { local = checked }
-
-    Surface(
-        onClick = {
-            val next = !local
-            local = next
-            onChecked(next)
-        },
-        shape = RoundedCornerShape(InteractionCornerRadius),
-        color = Color.Transparent,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.size(24.dp),
-            )
-            Spacer(Modifier.width(20.dp))
-            Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge)
-                if (!subtitle.isNullOrBlank()) {
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            Switch(
-                checked = local,
-                onCheckedChange = {
-                    local = it
-                    onChecked(it)
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun EnumRadioItem(
-    label: String,
-    selected: Boolean,
-    onSelect: () -> Unit,
-    subtitle: String? = null,
-    trailing: @Composable (() -> Unit)? = null,
-) {
-    Surface(
-        onClick = onSelect,
-        shape = RoundedCornerShape(InteractionCornerRadius),
-        color = if (selected) {
-            MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.45f)
-        } else {
-            Color.Transparent
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 4.dp, vertical = 2.dp),
-    ) {
-        Row(
-            Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            RadioButton(selected = selected, onClick = null)
-            Spacer(Modifier.width(8.dp))
-            Column(Modifier.weight(1f).padding(end = 10.dp)) {
-                Text(label, style = MaterialTheme.typography.bodyLarge)
-                if (!subtitle.isNullOrBlank()) {
-                    Text(
-                        subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-            trailing?.invoke()
-        }
+        Text(
+            valueLabel(local),
+            style = MaterialTheme.typography.labelLarge,
+            modifier = Modifier.widthIn(min = 40.dp),
+        )
     }
 }

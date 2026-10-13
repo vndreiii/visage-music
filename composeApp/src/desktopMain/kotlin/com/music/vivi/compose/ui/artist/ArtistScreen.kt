@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.artist
 
+import com.music.vivi.compose.ui.component.smoothWheelScroll
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -127,8 +129,11 @@ fun ArtistScreen(
         else -> {
             val artistPage = page ?: return
             val artist = artistPage.artist
+            val smoothScroll1 = androidx.compose.foundation.lazy.rememberLazyListState()
             LazyColumn(
-                modifier = Modifier.fillMaxSize(),
+                state = smoothScroll1,
+                modifier = Modifier.fillMaxSize()
+                    .smoothWheelScroll(smoothScroll1),
                 contentPadding = PaddingValues(bottom = 24.dp),
             ) {
                 item(key = "toolbar") {
@@ -163,8 +168,8 @@ fun ArtistScreen(
                     item(key = "section_title_$index") {
                         NavigationTitle(
                             title = section.title.ifBlank { "More" },
-                            onClick = section.moreEndpoint?.browseId?.let { id ->
-                                { navController.navigate(Routes.browse(id)) }
+                            onClick = section.moreEndpoint?.let { ep ->
+                                { navController.navigate(Routes.forBrowse(ep.browseId, ep.params, artistId)) }
                             },
                         )
                     }

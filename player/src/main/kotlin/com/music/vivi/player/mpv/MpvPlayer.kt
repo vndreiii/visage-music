@@ -93,11 +93,26 @@ class MpvPlayer(
         ready = CompletableDeferred()
         lastEndError.set(null)
         if (httpHeaders.isNotEmpty()) {
-            // mpv accepts newline- or comma-separated headers; prefer newlines (cookies may contain commas).
-            val headerField = httpHeaders.entries.joinToString("\n") { (k, v) -> "$k: $v" }
-            val code = lib.mpv_set_property_string(handle, "http-header-fields", headerField)
-            if (code < 0) {
-                onError("http-header-fields: ${lib.mpv_error_string(code)}")
+            val ua = httpHeaders.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value
+            if (ua != null) lib.mpv_set_property_string(handle, "user-agent", ua)
+            
+            val ref = httpHeaders.entries.firstOrNull { it.key.equals("Referer", ignoreCase = true) }?.value
+            if (ref != null) lib.mpv_set_property_string(handle, "referrer", ref)
+
+            val others = httpHeaders.filterKeys { 
+                !it.equals("User-Agent", ignoreCase = true) && !it.equals("Referer", ignoreCase = true) 
+            }
+            if (others.isNotEmpty()) {
+                val headerField = others.entries.joinToString(",") { (k, v) -> 
+                    val escapedV = v.replace(",", "\\,")
+                    "$k: $escapedV" 
+                }
+                val code = lib.mpv_set_property_string(handle, "http-header-fields", headerField)
+                if (code < 0) {
+                    onError("http-header-fields: ${lib.mpv_error_string(code)}")
+                }
+            } else {
+                lib.mpv_set_property_string(handle, "http-header-fields", "")
             }
         } else {
             lib.mpv_set_property_string(handle, "http-header-fields", "")
@@ -109,7 +124,7 @@ class MpvPlayer(
     }
 
     override suspend fun awaitReady() {
-        withTimeout(30_000) { ready.await() }
+        withTimeout(15_000) { ready.await() }
     }
 
     override fun play() {

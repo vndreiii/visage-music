@@ -46,7 +46,7 @@ fun YouTubeHeroCard(
     height: Dp = HeroCardHeight,
     caption: String? = null,
     /** Parent list scroll offset for subtle parallax on the artwork. */
-    parallaxPx: Float = 0f,
+    parallaxPx: () -> Float = { 0f },
 ) {
     val subtitle = when (item) {
         is SongItem -> item.artists.joinToString { it.name }
@@ -81,7 +81,7 @@ fun YouTubeHeroCard(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer {
-                        translationY = parallaxPx * 0.35f
+                        translationY = parallaxPx() * 0.35f
                         scaleX = 1.08f
                         scaleY = 1.08f
                     },

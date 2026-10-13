@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.player.queue
 
+import com.music.vivi.compose.ui.component.smoothWheelScroll
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -341,7 +343,7 @@ private fun QueuePanelBody(
                 }
                 
                 LazyColumn(
-                    Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).smoothWheelScroll(listState),
                     state = listState,
                     contentPadding = PaddingValues(bottom = 24.dp),
                 ) {
@@ -386,7 +388,7 @@ private fun QueuePanelBody(
                 }
                 
                 LazyColumn(
-                    Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).smoothWheelScroll(listState),
                     state = listState,
                     contentPadding = PaddingValues(bottom = 24.dp),
                 ) {

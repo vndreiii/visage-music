@@ -152,6 +152,11 @@ class LocalMusicScanner(
         val artistId = stableId("artist", artist)
         val albumId = stableId("album", file.parentFile.canonicalPath, album)
         val trackId = stableId("track", file.absolutePath)
+        val folderArt = listOf("cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png")
+            .map { File(file.parentFile, it) }
+            .firstOrNull { it.isFile }?.absolutePath
+        val coverPath = folderArt ?: if (ext == "opus") "opus-lazy://${file.absolutePath}" else null
+
         repo.inTransaction {
             upsertArtist(artistId, artist)
             upsertAlbum(
@@ -160,7 +165,7 @@ class LocalMusicScanner(
                 artistId = artistId,
                 artistName = artist,
                 releaseYear = null,
-                coverPath = null,
+                coverPath = coverPath,
                 addedAtMs = existing?.added_at_ms ?: nowMs,
             )
             upsertTrack(
@@ -173,7 +178,7 @@ class LocalMusicScanner(
                 durationSec = null,
                 filePath = file.absolutePath,
                 trackNumber = null,
-                coverPath = null,
+                coverPath = coverPath,
                 lyricsPath = File(file.parentFile, file.nameWithoutExtension + ".lrc")
                     .takeIf { it.isFile }?.absolutePath,
                 embeddedLyrics = null,
@@ -233,7 +238,6 @@ class LocalMusicScanner(
         val existing = repo.trackByPath(file.absolutePath)
         val coverPath = extractOrFindCover(
             file = file,
-            albumId = albumId,
             coversRoot = coversRoot,
             tagArtwork = tag?.firstArtwork?.binaryData,
         )
@@ -277,12 +281,13 @@ class LocalMusicScanner(
 
     private fun extractOrFindCover(
         file: File,
-        albumId: String,
         coversRoot: File,
         tagArtwork: ByteArray?,
     ): String? {
-        val out = File(coversRoot, "$albumId.jpg")
         if (tagArtwork != null && tagArtwork.isNotEmpty()) {
+            val md = MessageDigest.getInstance("SHA-1")
+            val hash = md.digest(tagArtwork).joinToString("") { "%02x".format(it) }.take(24)
+            val out = File(coversRoot, "$hash.jpg")
             if (!out.exists() || out.length() != tagArtwork.size.toLong()) {
                 out.writeBytes(tagArtwork)
             }
@@ -292,12 +297,12 @@ class LocalMusicScanner(
             .map { File(file.parentFile, it) }
             .firstOrNull { it.isFile }
         if (folderArt != null) {
-            if (!out.exists()) {
-                folderArt.copyTo(out, overwrite = true)
-            }
-            return out.absolutePath
+            return folderArt.absolutePath
         }
-        return out.takeIf { it.isFile }?.absolutePath
+        if (file.extension.equals("opus", ignoreCase = true)) {
+            return "opus-lazy://${file.absolutePath}"
+        }
+        return null
     }
 
     companion object {

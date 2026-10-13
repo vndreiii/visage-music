@@ -1,4 +1,4 @@
-package com.music.vivi.desktop.login
+package com.music.vivi.player.login
 
 import java.nio.file.Files
 import java.nio.file.Path

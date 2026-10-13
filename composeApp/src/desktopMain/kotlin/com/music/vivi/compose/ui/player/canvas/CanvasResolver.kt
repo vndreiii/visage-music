@@ -33,24 +33,25 @@ object CanvasResolver {
         val storefront = Locale.getDefault().country.lowercase(Locale.ROOT)
             .takeIf { it.length == 2 } ?: "us"
         val albumTitle = album.orEmpty()
+        val cleanTitle = title.replace(Regex("(?i)\\s*[\\[\\(].*?[\\]\\)]"), "").split(" - ").first().trim()
         val fetched = when (source) {
             CanvasSource.AUTO -> {
-                AppleMusicCanvasProvider.getBySongArtist(title, artist, albumTitle, storefront)
-                    ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
-                    ?: TidalCanvasProvider.getBySongArtist(title, artist, albumTitle)
-                        ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
-                    ?: ViviMusicCanvasProvider.getBySongArtist(title, artist, albumTitle)
-                        ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
+                AppleMusicCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle, storefront)
+                    ?.takeIf { !videoUrl(it).isNullOrBlank() }
+                    ?: TidalCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle)
+                        ?.takeIf { !videoUrl(it).isNullOrBlank() }
+                    ?: ViviMusicCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle)
+                        ?.takeIf { !videoUrl(it).isNullOrBlank() }
             }
             CanvasSource.APPLE_MUSIC ->
-                AppleMusicCanvasProvider.getBySongArtist(title, artist, albumTitle, storefront)
-                    ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
+                AppleMusicCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle, storefront)
+                    ?.takeIf { !videoUrl(it).isNullOrBlank() }
             CanvasSource.VIVIMUSIC ->
-                ViviMusicCanvasProvider.getBySongArtist(title, artist, albumTitle)
-                    ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
+                ViviMusicCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle)
+                    ?.takeIf { !videoUrl(it).isNullOrBlank() }
             CanvasSource.TIDAL ->
-                TidalCanvasProvider.getBySongArtist(title, artist, albumTitle)
-                    ?.takeIf { !it.preferredAnimationUrl.isNullOrBlank() }
+                TidalCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle)
+                    ?.takeIf { !videoUrl(it).isNullOrBlank() }
         }
         if (fetched != null) cache[key] = fetched else misses.add(key)
         fetched
@@ -59,27 +60,19 @@ object CanvasResolver {
     }.getOrNull()
 
 
+    /** Square motion artwork — fits the cover slot. */
+    fun squareUrl(art: CanvasArtwork?): String? =
+        art?.animated?.takeIf { it.isNotBlank() }
+            ?: art?.videoUrl?.takeIf { it.isNotBlank() }
+            ?: art?.animatedTall?.takeIf { it.isNotBlank() }
+
+    /** Portrait motion artwork — fits tall panes and full-bleed backgrounds. */
+    fun tallUrl(art: CanvasArtwork?): String? =
+        art?.animatedTall?.takeIf { it.isNotBlank() } ?: squareUrl(art)
+
     fun videoUrl(art: CanvasArtwork?): String? =
         art?.animatedTall?.takeIf { it.isNotBlank() }
             ?: art?.animated?.takeIf { it.isNotBlank() }
             ?: art?.videoUrl?.takeIf { it.isNotBlank() }
             ?: art?.preferredAnimationUrl
-
-    private fun matches(
-        art: CanvasArtwork,
-        title: String,
-        artist: String,
-        album: String,
-    ): Boolean {
-        val aOk = art.artist.isNullOrBlank() ||
-            art.artist!!.trim().equals(artist.trim(), ignoreCase = true) ||
-            artist.contains(art.artist!!.trim(), ignoreCase = true) ||
-            art.artist!!.contains(artist.trim(), ignoreCase = true)
-        val tOk = art.name.isNullOrBlank() ||
-            art.name!!.trim().equals(title.trim(), ignoreCase = true) ||
-            title.contains(art.name!!.trim(), ignoreCase = true)
-        val alOk = album.isBlank() || art.albumName.isNullOrBlank() ||
-            art.albumName!!.trim().equals(album.trim(), ignoreCase = true)
-        return aOk && tOk && alOk
-    }
 }

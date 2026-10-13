@@ -60,6 +60,7 @@ import com.music.vivi.compose.ui.settings.AccountSettingsScreen
 import com.music.vivi.compose.ui.settings.AppearanceSettingsScreen
 import com.music.vivi.compose.ui.settings.DownloadsSettingsScreen
 import com.music.vivi.compose.ui.settings.LocalOfflineSettingsScreen
+import com.music.vivi.compose.ui.settings.NowPlayingSettingsScreen
 import com.music.vivi.compose.ui.settings.PlayerSettingsScreen
 import com.music.vivi.compose.ui.settings.SettingsHubScreen
 import com.music.vivi.compose.ui.settings.ThemeSettingsScreen
@@ -205,15 +206,21 @@ fun FrameWindowScope.AppScaffold(
 }
 
 
-/** Main tab / logo navigation — Home always clears nested playlist/album stacks. */
+/**
+ * Main tab / logo navigation. Tabs always land on their root page: nested detail
+ * stacks are dropped instead of saved, so a tab click never "restores" a stale album
+ * or playlist the user already left.
+ */
 fun navigateMain(navController: NavHostController, route: String) {
+    val start = navController.graph.findStartDestination()
     if (navController.currentDestination?.route == route) return
+    if (route == start.route) {
+        navController.popBackStack(start.id, inclusive = false)
+        return
+    }
     navController.navigate(route) {
-        // Keep one stable root. Removing Home left saved tab stacks pointing at a
-        // destroyed entry, so later Library clicks could restore the wrong page.
-        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+        popUpTo(start.id) { inclusive = false }
         launchSingleTop = true
-        restoreState = true
     }
 }
 
@@ -242,6 +249,7 @@ fun ViviNavHost(
         composable(Routes.SETTINGS_APPEARANCE) { AppearanceSettingsScreen(navController) }
         composable(Routes.SETTINGS_THEME) { ThemeSettingsScreen(navController) }
         composable(Routes.SETTINGS_PLAYER) { PlayerSettingsScreen(navController) }
+        composable(Routes.SETTINGS_NOW_PLAYING) { NowPlayingSettingsScreen(navController) }
         composable(Routes.SETTINGS_DOWNLOADS) { DownloadsSettingsScreen(navController) }
         composable(Routes.SETTINGS_LOCAL_OFFLINE) { LocalOfflineSettingsScreen(navController) }
         composable(Routes.SMOKE) { SmokePlaybackScreen() }
@@ -261,11 +269,8 @@ fun ViviNavHost(
             arguments = listOf(navArgument("albumId") { type = NavType.StringType }),
         ) { entry ->
             val albumId = entry.arguments?.read { getStringOrNull("albumId") }
-                ?: entry.savedStateHandle.get<String>("albumId")
-                ?: PendingNav.consumeAlbumId()
             if (albumId.isNullOrBlank()) PlaceholderScreen("Missing album id")
             else {
-                entry.savedStateHandle["albumId"] = albumId
                 OnlineAlbumScreen(albumId = albumId, navController = navController)
             }
         }
@@ -274,11 +279,8 @@ fun ViviNavHost(
             arguments = listOf(navArgument("artistId") { type = NavType.StringType }),
         ) { entry ->
             val artistId = entry.arguments?.read { getStringOrNull("artistId") }
-                ?: entry.savedStateHandle.get<String>("artistId")
-                ?: PendingNav.consumeArtistId()
             if (artistId.isNullOrBlank()) PlaceholderScreen("Missing artist id")
             else {
-                entry.savedStateHandle["artistId"] = artistId
                 ArtistScreen(artistId = artistId, navController = navController)
             }
         }
@@ -289,33 +291,54 @@ fun ViviNavHost(
             ),
         ) { entry ->
             val playlistId = entry.arguments?.read { getStringOrNull("playlistId") }
-                ?: entry.savedStateHandle.get<String>("playlistId")
-                ?: PendingNav.consumePlaylistId()
             if (playlistId.isNullOrBlank()) {
                 PlaceholderScreen("Missing playlist id")
             } else {
-                entry.savedStateHandle["playlistId"] = playlistId
                 OnlinePlaylistScreen(playlistId = playlistId, navController = navController)
             }
         }
-        composable(Routes.BROWSE) { PlaceholderScreen("Browse") }
+        composable(
+            route = Routes.BROWSE,
+            arguments = listOf(
+                navArgument("browseId") { type = NavType.StringType },
+                navArgument("params") { type = NavType.StringType; nullable = true; defaultValue = null },
+            ),
+        ) { entry ->
+            val browseId = entry.arguments?.read { getStringOrNull("browseId") }
+            if (browseId.isNullOrBlank()) {
+                PlaceholderScreen("Missing browse id")
+            } else {
+                com.music.vivi.compose.ui.browse.BrowseScreen(
+                    browseId = browseId,
+                    params = entry.arguments?.read { getStringOrNull("params") },
+                    navController = navController,
+                )
+            }
+        }
+        
+        composable(Routes.CHARTS) { com.music.vivi.compose.ui.charts.ChartsScreen(navController = navController) }
+        composable(Routes.MOOD_AND_GENRES) { com.music.vivi.compose.ui.moods.MoodAndGenresScreen(navController = navController) }
+        composable(Routes.HISTORY) { com.music.vivi.compose.ui.history.HistoryScreen(navController = navController) }
+        composable(Routes.NEW_RELEASE) { com.music.vivi.compose.ui.newrelease.NewReleaseScreen(navController = navController) }
+        
+        composable(
+            route = Routes.ARTIST_ITEMS,
+            arguments = listOf(
+                navArgument("artistId") { type = NavType.StringType },
+                navArgument("browseId") { type = NavType.StringType },
+                navArgument("params") { type = NavType.StringType; nullable = true; defaultValue = null },
+            )
+        ) { entry ->
+            val browseId = entry.arguments?.read { getStringOrNull("browseId") }
+            if (browseId.isNullOrBlank()) {
+                PlaceholderScreen("Missing browse id")
+            } else {
+                com.music.vivi.compose.ui.artist.ArtistItemsScreen(
+                    browseId = browseId,
+                    params = entry.arguments?.read { getStringOrNull("params") },
+                    navController = navController
+                )
+            }
+        }
     }
-}
-
-/**
- * Side channel for detail ids when Nav SavedState args are empty on desktop.
- */
-object PendingNav {
-    @Volatile private var playlistId: String? = null
-    @Volatile private var artistId: String? = null
-    @Volatile private var albumId: String? = null
-
-    fun setPlaylistId(id: String) { playlistId = id }
-    fun consumePlaylistId(): String? = playlistId
-
-    fun setArtistId(id: String) { artistId = id }
-    fun consumeArtistId(): String? = artistId
-
-    fun setAlbumId(id: String) { albumId = id }
-    fun consumeAlbumId(): String? = albumId
 }

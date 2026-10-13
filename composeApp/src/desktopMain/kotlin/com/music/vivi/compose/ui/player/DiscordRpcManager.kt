@@ -109,11 +109,11 @@ class DiscordRpcManager(
             val duration = controller.durationMs.value.takeIf { it > 0 } ?: track.durationMs
             
             val startTimestamp = System.currentTimeMillis() / 1000 - (position / 1000)
-            builder.setStartTimestamp(OffsetDateTime.ofEpochSecond(startTimestamp, 0, ZoneOffset.UTC))
+            builder.setStartTimestamp(OffsetDateTime.ofInstant(java.time.Instant.ofEpochSecond(startTimestamp), ZoneOffset.UTC))
             
             if (duration > 0) {
                 val endTimestamp = startTimestamp + (duration / 1000)
-                builder.setEndTimestamp(OffsetDateTime.ofEpochSecond(endTimestamp, 0, ZoneOffset.UTC))
+                builder.setEndTimestamp(OffsetDateTime.ofInstant(java.time.Instant.ofEpochSecond(endTimestamp), ZoneOffset.UTC))
             }
         }
 

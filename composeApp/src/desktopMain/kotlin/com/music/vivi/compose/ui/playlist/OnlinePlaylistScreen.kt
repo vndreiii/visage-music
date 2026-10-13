@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.playlist
 
+import com.music.vivi.compose.ui.component.smoothWheelScroll
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -147,7 +149,8 @@ fun OnlinePlaylistScreen(
             val playlist = vm.playlist
             LazyColumn(
                 state = listState,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize()
+                    .smoothWheelScroll(listState),
                 // Mini player floats over the list — keep last tracks reachable.
                 contentPadding = PaddingValues(bottom = 120.dp),
             ) {
