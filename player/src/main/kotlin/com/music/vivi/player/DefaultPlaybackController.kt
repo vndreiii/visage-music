@@ -54,6 +54,8 @@ class DefaultPlaybackController(
     private val _queueTracks = MutableStateFlow<List<QueueTrack>>(emptyList())
     private val _queueIds = MutableStateFlow<List<String>>(emptyList())
     private val _queueIndex = MutableStateFlow(-1)
+    private val _queueLoading = MutableStateFlow(false)
+    private val radioInFlight = AtomicInteger(0)
     private val _volume = MutableStateFlow(1f)
     private val _shuffleEnabled = MutableStateFlow(false)
     private val _repeatMode = MutableStateFlow(RepeatMode.Off)
@@ -67,6 +69,7 @@ class DefaultPlaybackController(
     override val queueIds: StateFlow<List<String>> = _queueIds.asStateFlow()
     override val queueTracks: StateFlow<List<QueueTrack>> = _queueTracks.asStateFlow()
     override val queueIndex: StateFlow<Int> = _queueIndex.asStateFlow()
+    override val queueLoading: StateFlow<Boolean> = _queueLoading.asStateFlow()
     override val volume: StateFlow<Float> = _volume.asStateFlow()
     override val shuffleEnabled: StateFlow<Boolean> = _shuffleEnabled.asStateFlow()
     override val repeatMode: StateFlow<RepeatMode> = _repeatMode.asStateFlow()
@@ -247,10 +250,11 @@ class DefaultPlaybackController(
                 setQueueLocked(listOf(track), 0)
             }
         }
+        // New seed (or in-queue jump): rebuild upcoming radio from this track. Started before
+        // the stream resolves so follow-ups load in parallel with the first audio.
+        expandQueueFromRadio(videoId, replaceUpcoming = true)
         loadAndPlay(videoId, generation = gen, dualCrossfade = dual)
         if (gen != loadGeneration.get()) return
-        // New seed (or in-queue jump): rebuild upcoming radio from this track.
-        expandQueueFromRadio(videoId, replaceUpcoming = true)
         schedulePrefetchAfterCurrent()
     }
 
@@ -270,6 +274,15 @@ class DefaultPlaybackController(
                 setQueueLocked(tracks, start)
             }
         }
+        if (track.localPath == null) {
+            // Follow-ups load in parallel with the stream so the queue fills straight away.
+            when {
+                sameQueue || tracks.size <= 1 ->
+                    expandQueueFromRadio(track.videoId, replaceUpcoming = true)
+                start >= tracks.lastIndex - 2 ->
+                    expandQueueFromRadio(track.videoId, replaceUpcoming = false)
+            }
+        }
         loadAndPlay(track.videoId, generation = gen, dualCrossfade = dual)
         if (gen != loadGeneration.get()) return
         if (track.localPath != null) return
@@ -280,12 +293,6 @@ class DefaultPlaybackController(
                         "${t::class.java.name}: ${t.message}",
                 )
             }
-        when {
-            sameQueue || tracks.size <= 1 ->
-                expandQueueFromRadio(track.videoId, replaceUpcoming = true)
-            start >= tracks.lastIndex - 2 ->
-                expandQueueFromRadio(track.videoId, replaceUpcoming = false)
-        }
         schedulePrefetchAfterCurrent()
     }
 
@@ -964,7 +971,17 @@ class DefaultPlaybackController(
     }
 
     private fun expandQueueFromRadio(seedId: String, replaceUpcoming: Boolean = false) {
-        scope.launch { expandQueueFromRadioAwait(seedId, replaceUpcoming) }
+        if (isFileTrack(seedId)) return
+        // Flag flips synchronously so the UI can show placeholders the moment a track is picked.
+        radioInFlight.incrementAndGet()
+        _queueLoading.value = true
+        scope.launch {
+            try {
+                expandQueueFromRadioInner(seedId, replaceUpcoming)
+            } finally {
+                if (radioInFlight.decrementAndGet() == 0) _queueLoading.value = false
+            }
+        }
     }
 
     /**
@@ -984,6 +1001,19 @@ class DefaultPlaybackController(
         replaceUpcoming: Boolean = false,
     ) {
         if (isFileTrack(seedId)) return
+        radioInFlight.incrementAndGet()
+        _queueLoading.value = true
+        try {
+            expandQueueFromRadioInner(seedId, replaceUpcoming)
+        } finally {
+            if (radioInFlight.decrementAndGet() == 0) _queueLoading.value = false
+        }
+    }
+
+    private suspend fun expandQueueFromRadioInner(
+        seedId: String,
+        replaceUpcoming: Boolean,
+    ) {
         val generation = loadGeneration.get()
         val result = withContext(Dispatchers.IO) {
             YouTube.next(

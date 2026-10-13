@@ -59,16 +59,28 @@ class LocalMusicScanner(
                 return@withContext 0
             }
             _progress.value = LocalScanProgress(running = true, message = "Looking for music…")
-            val files = roots.flatMap { root -> collectAudioFiles(root) }.distinctBy { it.canonicalPath }
+            val coversRoot = DatabaseFactory.coversDir()
+            // Rust fast path: parallel walk + tag read with an incremental cache. Files it
+            // could not read come back flagged and go through Jaudiotagger below.
+            val native = if (NativeHelpers.available) {
+                _progress.value = LocalScanProgress(running = true, message = "Scanning with native helper…")
+                NativeHelpers.scan(roots, coversRoot, File(DatabaseFactory.dataDir(), "scan-cache.json"))
+            } else null
+            val entries: List<Pair<File, NativeTrack?>> = if (native != null) {
+                native.tracks.map { File(it.path) to it.takeUnless { t -> t.unreadable } }
+            } else {
+                roots.flatMap { root -> collectAudioFiles(root) }.distinctBy { it.canonicalPath }.map { it to null }
+            }
+            val files = entries.map { it.first }
             _progress.value = LocalScanProgress(running = true, totalHint = files.size)
             val now = System.currentTimeMillis()
-            val coversRoot = DatabaseFactory.coversDir()
-            for ((index, file) in files.withIndex()) {
+            for ((index, entry) in entries.withIndex()) {
+                val (file, nativeTrack) = entry
                 coroutineContext.ensureActive()
                 if (cancel.get()) break
                 _progress.value = LocalScanProgress(true, index, files.size, file.name)
                 try {
-                    indexFile(file, now, coversRoot)
+                    if (nativeTrack != null) indexNative(file, nativeTrack, now) else indexFile(file, now, coversRoot)
                     ok++
                 } catch (e: CancellationException) {
                     throw e
@@ -201,6 +213,53 @@ class LocalMusicScanner(
             _progress.value = LocalScanProgress(message = "Local index cleared")
         } finally {
             scanMutex.unlock()
+        }
+    }
+
+    /** Upsert a track whose tags (and cover) were already extracted by the native helper. */
+    private fun indexNative(file: File, t: NativeTrack, nowMs: Long) {
+        val title = t.title ?: file.nameWithoutExtension
+        val artist = t.artist ?: "Unknown Artist"
+        val album = t.album ?: file.parentFile.name
+        val albumArtist = t.album_artist ?: artist
+        val artistId = stableId("artist", artist)
+        val albumArtistId = stableId("artist", albumArtist)
+        val albumId = stableId("album", file.parentFile.canonicalPath, album)
+        val trackId = stableId("track", file.absolutePath)
+        val existing = repo.trackByPath(file.absolutePath)
+        repo.inTransaction {
+            upsertArtist(artistId, artist)
+            upsertArtist(albumArtistId, albumArtist)
+            upsertAlbum(
+                id = albumId,
+                title = album,
+                artistId = albumArtistId,
+                artistName = albumArtist,
+                releaseYear = t.year,
+                coverPath = t.cover_path,
+                addedAtMs = existing?.added_at_ms ?: nowMs,
+            )
+            upsertTrack(
+                id = trackId,
+                title = title,
+                albumId = albumId,
+                artistId = artistId,
+                artistName = artist,
+                albumTitle = album,
+                durationSec = t.duration_sec,
+                filePath = file.absolutePath,
+                trackNumber = t.track_no,
+                coverPath = t.cover_path,
+                lyricsPath = t.lrc_path,
+                embeddedLyrics = t.lyrics,
+                bitrate = t.bitrate,
+                sampleRate = t.sample_rate,
+                bitDepth = t.bit_depth,
+                isLossless = t.lossless,
+                addedAtMs = existing?.added_at_ms ?: nowMs,
+                lastPlayedMs = existing?.last_played_ms,
+                playCount = existing?.play_count ?: 0L,
+            )
         }
     }
 

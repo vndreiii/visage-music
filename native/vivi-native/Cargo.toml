@@ -1,0 +1,18 @@
+[package]
+name = "vivi-native"
+version = "0.1.0"
+edition = "2021"
+description = "Native helpers for VIVI Desktop: parallel library scan, tag cache, fuzzy search"
+
+[lib]
+name = "vivi_native"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+jwalk = "0.8"
+lofty = "0.22"
+nucleo-matcher = "0.3"
+rayon = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha1 = "0.10"

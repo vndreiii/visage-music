@@ -3,6 +3,16 @@ package com.music.vivi.compose.ui.player.queue
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.delay
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
 import androidx.compose.ui.unit.IntOffset
@@ -335,19 +345,46 @@ private fun QueuePanelBody(
                     )
                 }
                 val listState = rememberLazyListState()
-                
-                LaunchedEffect(queueIndex) {
-                    if (queueIndex in queueTracks.indices) {
-                        listState.animateScrollToItem(queueIndex)
+                val queueLoading by controller.queueLoading.collectAsState()
+                // Only what comes after the current song; the current one lives in the header,
+                // so a picked track always sits directly under "Now playing".
+                // The header flips to the picked song a beat before the queue swaps; until the two
+                // agree, show placeholders instead of the previous song's follow-ups.
+                val inSync = nowPlaying == null || queueTracks.getOrNull(queueIndex)?.videoId == nowPlaying?.videoId
+                val upcoming = remember(queueTracks, queueIndex, inSync) {
+                    when {
+                        !inSync -> emptyList()
+                        queueIndex in queueTracks.indices -> queueTracks.drop(queueIndex + 1)
+                        else -> queueTracks
                     }
                 }
-                
+                // Follow-ups appear one by one as they arrive instead of popping in as a block.
+                var shown by remember { mutableIntStateOf(upcoming.size) }
+                var revealing by remember { mutableStateOf(false) }
+                LaunchedEffect(upcoming.size) {
+                    if (shown > upcoming.size) shown = upcoming.size
+                    if (shown < upcoming.size) {
+                        revealing = true
+                        while (shown < upcoming.size) {
+                            delay(55)
+                            shown++
+                        }
+                        revealing = false
+                    }
+                }
+                // New song picked: start from the top of its fresh follow-ups.
+                LaunchedEffect(nowPlaying?.videoId) { listState.animateScrollToItem(0) }
+                val placeholders = when {
+                    (queueLoading || !inSync) && shown >= upcoming.size -> SkeletonCount
+                    else -> (upcoming.size - shown).coerceAtMost(SkeletonCount)
+                }
+
                 LazyColumn(
                     modifier = Modifier.weight(1f).smoothWheelScroll(listState),
                     state = listState,
                     contentPadding = PaddingValues(bottom = 24.dp),
                 ) {
-                    if (queueTracks.isEmpty()) {
+                    if (upcoming.isEmpty() && placeholders == 0) {
                         item {
                             Text(
                                 "Queue is empty",
@@ -355,27 +392,24 @@ private fun QueuePanelBody(
                                 modifier = Modifier.padding(24.dp),
                             )
                         }
-                    } else {
-                        itemsIndexed(queueTracks, key = { i, t -> "${t.videoId}-$i" }) { index, track ->
-                            val active = index == queueIndex
+                    }
+                    itemsIndexed(upcoming.take(shown), key = { i, t -> "${t.videoId}-$i" }) { i, track ->
+                        val animate = remember { revealing }
+                        RevealRow(animate) {
                             QueueSongRow(
-                                title = track.title.ifBlank {
-                                    if (active) nowPlaying?.title ?: track.videoId else track.videoId
-                                },
-                                subtitle = track.artist.ifBlank {
-                                    if (active) nowPlaying?.artist.orEmpty() else "Queued track"
-                                }.ifBlank { "Queued track" },
-                                artworkUrl = track.artworkUrl
-                                    ?: if (active) nowPlaying?.artworkUrl else null,
-                                active = active,
+                                title = track.title.ifBlank { track.videoId },
+                                subtitle = track.artist.ifBlank { "Queued track" },
+                                artworkUrl = track.artworkUrl,
+                                active = false,
                                 onClick = {
                                     scope.launch(Dispatchers.IO) {
-                                        controller.playQueue(queueTracks, index)
+                                        controller.playQueue(queueTracks, queueIndex + 1 + i)
                                     }
                                 },
                             )
                         }
                     }
+                    items(placeholders, key = { "skeleton-$it" }) { QueueSkeletonRow(it) }
                 }
             }
             QueueTab.Recent -> {
@@ -569,6 +603,49 @@ private fun QueueSongRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        }
+    }
+}
+
+private const val SkeletonCount = 6
+
+/** Fades + lifts a freshly spawned row into place; rows that were already there skip the motion. */
+@Composable
+private fun RevealRow(animate: Boolean, content: @Composable () -> Unit) {
+    val progress = remember { Animatable(if (animate) 0f else 1f) }
+    LaunchedEffect(Unit) {
+        if (animate) progress.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+    }
+    Box(
+        Modifier.graphicsLayer {
+            alpha = progress.value
+            translationY = (1f - progress.value) * 14.dp.toPx()
+        },
+    ) { content() }
+}
+
+/** Preview card scaffold shown while follow-ups are fetched. */
+@Composable
+private fun QueueSkeletonRow(index: Int) {
+    val pulse = rememberInfiniteTransition(label = "queueSkeleton")
+    val alpha by pulse.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 0.8f,
+        animationSpec = infiniteRepeatable(
+            tween(900, delayMillis = index * 90, easing = FastOutSlowInEasing),
+            RepeatMode.Reverse,
+        ),
+        label = "alpha",
+    )
+    val bar = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.18f * alpha)
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)).background(bar))
+        Column(Modifier.padding(start = 12.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Box(Modifier.fillMaxWidth(0.6f - (index % 3) * 0.08f).height(12.dp).clip(RoundedCornerShape(6.dp)).background(bar))
+            Box(Modifier.fillMaxWidth(0.35f).height(9.dp).clip(RoundedCornerShape(5.dp)).background(bar))
         }
     }
 }

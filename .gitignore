@@ -35,3 +35,6 @@ review.diff
 .serena/
 hs_err_pid*.log
 *.log
+
+# Rust helpers
+native/target/

@@ -45,6 +45,7 @@ Prefs live at `~/.config/vivi-desktop/settings.properties`.
 | `:innertube` | YouTube Music Innertube API |
 | `:core` | DI / session / service facades |
 | `:database` | Local SQLDelight cache |
+| `native/` | Optional Rust helpers (parallel scan + tag cache, fuzzy search) via JNA — see [`native/README.md`](native/README.md) |
 | `:lyrics`, `:jiosaavn`, … | Lyrics backends, Saavn stream assist, other integrations |
 
 Deeper architecture notes: [`docs/architecture.md`](docs/architecture.md). Session changelog for agents: [`SUMMARY.md`](SUMMARY.md).

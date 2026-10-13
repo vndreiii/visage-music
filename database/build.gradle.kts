@@ -1,5 +1,6 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.sqldelight)
 }
 
@@ -22,6 +23,8 @@ dependencies {
     implementation(libs.sqldelight.runtime)
     implementation(libs.sqldelight.sqlite.driver)
     implementation(libs.kotlinx.coroutines.core)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.jna)
     // Innertube models for mapping helpers
     implementation(project(":innertube"))
     implementation("net.jthink:jaudiotagger:3.0.1")

@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import com.music.vivi.compose.local.toQueueTrack
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -135,6 +136,7 @@ fun SearchScreen(navController: NavController) {
 
     val listState = rememberLazyListState()
     val trimmed = query.trim()
+    val localHits = rememberLocalHits(koinInject<com.music.vivi.database.LocalMusicRepository>(), submittedQuery.orEmpty())
     val summaryItems = summaryPage?.summaries.orEmpty().flatMap { it.items }
     val showingTypingHints = trimmed.isNotEmpty() &&
         (submittedQuery == null || trimmed != submittedQuery) &&
@@ -439,6 +441,16 @@ fun SearchScreen(navController: NavController) {
                         contentPadding = PaddingValues(bottom = 96.dp),
                         modifier = Modifier.smoothWheelScroll(listState),
                     ) {
+                        if (filter == SearchFilterType.ALL) {
+                            renderLocalHits(localHits) { i ->
+                                scope.launch(Dispatchers.IO) {
+                                    controller.playLocalQueue(
+                                        localHits.map { it.toQueueTrack() },
+                                        i,
+                                    )
+                                }
+                            }
+                        }
                         when (filter) {
                             SearchFilterType.ALL -> renderSummary(
                                 summaryPage = summaryPage,

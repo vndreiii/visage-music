@@ -58,6 +58,9 @@ interface PlaybackController {
     val queueIds: StateFlow<List<String>>
     val queueTracks: StateFlow<List<QueueTrack>>
     val queueIndex: StateFlow<Int>
+
+    /** True while follow-up tracks (radio) for the current song are being fetched. */
+    val queueLoading: StateFlow<Boolean>
     /** Linear volume 0f..1f (UI); applied to mpv as 0–100. */
     val volume: StateFlow<Float>
     val shuffleEnabled: StateFlow<Boolean>
