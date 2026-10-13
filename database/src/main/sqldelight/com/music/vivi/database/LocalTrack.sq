@@ -62,3 +62,30 @@ DELETE FROM local_track WHERE id = ?;
 
 updateCoverPathByOld:
 UPDATE local_track SET cover_path = ? WHERE cover_path = ?;
+
+updateExtra:
+UPDATE local_track SET album_artist = ?, genre = ?, composer = ?, year = ?, disc_number = ?,
+ file_size = ?, file_mtime_ms = ? WHERE id = ?;
+
+selectKnownFiles:
+SELECT file_path, file_size, file_mtime_ms, cover_path FROM local_track
+WHERE file_size IS NOT NULL AND file_mtime_ms IS NOT NULL;
+
+selectGenres:
+SELECT genre, COUNT(*) AS track_count FROM local_track
+WHERE genre IS NOT NULL AND genre != ''
+GROUP BY genre COLLATE NOCASE
+ORDER BY track_count DESC, genre COLLATE NOCASE;
+
+selectByGenre:
+SELECT * FROM local_track WHERE genre = ? COLLATE NOCASE
+ORDER BY artist_name COLLATE NOCASE, album_title COLLATE NOCASE, disc_number ASC, track_number ASC;
+
+selectYears:
+SELECT year, COUNT(*) AS track_count FROM local_track
+WHERE year IS NOT NULL AND year > 0
+GROUP BY year ORDER BY year DESC;
+
+selectByYear:
+SELECT * FROM local_track WHERE year = ?
+ORDER BY artist_name COLLATE NOCASE, album_title COLLATE NOCASE, disc_number ASC, track_number ASC;

@@ -159,6 +159,102 @@ object DatabaseFactory {
             driver.execute(null, "CREATE INDEX IF NOT EXISTS local_track_by_album ON local_track(album_id, track_number)", 0)
             driver.execute(null, "CREATE INDEX IF NOT EXISTS local_track_by_artist ON local_track(artist_id)", 0)
         }
+        migrateLocalLibrary(driver)
+    }
+
+    private fun columnsOf(driver: SqlDriver, table: String): Set<String> =
+        driver.executeQuery(
+            null,
+            "PRAGMA table_info($table)",
+            { cursor ->
+                val names = mutableSetOf<String>()
+                while (cursor.next().value) cursor.getString(1)?.let(names::add)
+                app.cash.sqldelight.db.QueryResult.Value(names)
+            },
+            0,
+        ).value
+
+    /** Richer track metadata, multi-artist credits and the full-text index (installs from before v2). */
+    private fun migrateLocalLibrary(driver: SqlDriver) {
+        val have = columnsOf(driver, "local_track")
+        mapOf(
+            "album_artist" to "TEXT", "genre" to "TEXT", "composer" to "TEXT", "year" to "INTEGER",
+            "disc_number" to "INTEGER", "file_size" to "INTEGER", "file_mtime_ms" to "INTEGER",
+        ).forEach { (col, type) ->
+            if (col !in have) driver.execute(null, "ALTER TABLE local_track ADD COLUMN $col $type", 0)
+        }
+        driver.execute(
+            null,
+            """
+            CREATE TABLE IF NOT EXISTS local_track_artist (
+              track_id TEXT NOT NULL,
+              artist_id TEXT NOT NULL,
+              position INTEGER NOT NULL,
+              PRIMARY KEY (track_id, artist_id),
+              FOREIGN KEY (track_id) REFERENCES local_track(id) ON DELETE CASCADE,
+              FOREIGN KEY (artist_id) REFERENCES local_artist(id) ON DELETE CASCADE
+            )
+            """.trimIndent(),
+            0,
+        )
+        runCatching {
+            driver.execute(null, "CREATE INDEX IF NOT EXISTS local_track_artist_by_artist ON local_track_artist(artist_id)", 0)
+            driver.execute(null, "CREATE INDEX IF NOT EXISTS local_track_by_genre ON local_track(genre COLLATE NOCASE)", 0)
+            driver.execute(null, "CREATE INDEX IF NOT EXISTS local_track_by_year ON local_track(year)", 0)
+        }
+        // FTS5 can't be declared in .sq files (SQLDelight can't parse virtual tables), so it lives here.
+        val fresh = columnsOf(driver, "local_track_fts").isEmpty()
+        if (fresh) {
+            runCatching {
+                driver.execute(
+                    null,
+                    """
+                    CREATE VIRTUAL TABLE IF NOT EXISTS local_track_fts USING fts5(
+                      title, artist_name, album_title, genre,
+                      content='local_track', content_rowid='rowid',
+                      tokenize='unicode61 remove_diacritics 2'
+                    )
+                    """.trimIndent(),
+                    0,
+                )
+                driver.execute(null, "DROP TRIGGER IF EXISTS local_track_fts_ai", 0)
+                driver.execute(null, "DROP TRIGGER IF EXISTS local_track_fts_ad", 0)
+                driver.execute(null, "DROP TRIGGER IF EXISTS local_track_fts_au", 0)
+                driver.execute(
+                    null,
+                    """
+                    CREATE TRIGGER local_track_fts_ai AFTER INSERT ON local_track BEGIN
+                      INSERT INTO local_track_fts(rowid, title, artist_name, album_title, genre)
+                      VALUES (new.rowid, new.title, new.artist_name, new.album_title, new.genre);
+                    END
+                    """.trimIndent(),
+                    0,
+                )
+                driver.execute(
+                    null,
+                    """
+                    CREATE TRIGGER local_track_fts_ad AFTER DELETE ON local_track BEGIN
+                      INSERT INTO local_track_fts(local_track_fts, rowid, title, artist_name, album_title, genre)
+                      VALUES ('delete', old.rowid, old.title, old.artist_name, old.album_title, old.genre);
+                    END
+                    """.trimIndent(),
+                    0,
+                )
+                driver.execute(
+                    null,
+                    """
+                    CREATE TRIGGER local_track_fts_au AFTER UPDATE ON local_track BEGIN
+                      INSERT INTO local_track_fts(local_track_fts, rowid, title, artist_name, album_title, genre)
+                      VALUES ('delete', old.rowid, old.title, old.artist_name, old.album_title, old.genre);
+                      INSERT INTO local_track_fts(rowid, title, artist_name, album_title, genre)
+                      VALUES (new.rowid, new.title, new.artist_name, new.album_title, new.genre);
+                    END
+                    """.trimIndent(),
+                    0,
+                )
+                driver.execute(null, "INSERT INTO local_track_fts(local_track_fts) VALUES ('rebuild')", 0)
+            }.onFailure { System.err.println("FTS5 unavailable, local search falls back to LIKE: ${it.message}") }
+        }
     }
 
     fun create(dbFile: File = defaultDbFile()): ViviDatabase =

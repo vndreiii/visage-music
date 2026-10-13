@@ -5,7 +5,88 @@ package com.music.vivi.database
  */
 class LocalMusicRepository(
     private val db: ViviDatabase,
+    /** Needed for the FTS5 index (not expressible in .sq files); search degrades to LIKE without it. */
+    private val driver: app.cash.sqldelight.db.SqlDriver? = null,
 ) {
+    data class KnownFile(val path: String, val size: Long, val mtimeMs: Long, val coverPath: String?)
+    data class Counted<T>(val value: T, val trackCount: Long)
+
+    /** Files already indexed with their size/mtime, so a rescan can skip unchanged ones. */
+    fun knownFiles(): List<KnownFile> =
+        db.localTrackQueries.selectKnownFiles().executeAsList()
+            .map { KnownFile(it.file_path, it.file_size ?: 0, it.file_mtime_ms ?: 0, it.cover_path) }
+
+    fun setTrackExtra(
+        id: String,
+        albumArtist: String?,
+        genre: String?,
+        composer: String?,
+        year: Long?,
+        discNumber: Long?,
+        fileSize: Long?,
+        fileMtimeMs: Long?,
+    ) = db.localTrackQueries.updateExtra(albumArtist, genre, composer, year, discNumber, fileSize, fileMtimeMs, id)
+
+    /** Replace all artist credits of a track (ordered as in the tags). */
+    fun setTrackArtists(trackId: String, artists: List<Pair<String, String>>) {
+        db.localTrackArtistQueries.deleteForTrack(trackId)
+        artists.forEachIndexed { i, (artistId, name) ->
+            upsertArtist(artistId, name)
+            db.localTrackArtistQueries.insert(trackId, artistId, i.toLong())
+        }
+    }
+
+    fun artistsForTrack(trackId: String) = db.localTrackArtistQueries.selectArtistsForTrack(trackId).executeAsList()
+    fun tracksCreditedTo(artistId: String) = db.localTrackArtistQueries.selectTracksForArtist(artistId).executeAsList()
+
+    fun genres(): List<Counted<String>> =
+        db.localTrackQueries.selectGenres().executeAsList().map { Counted(it.genre.orEmpty(), it.track_count) }
+
+    fun tracksByGenre(genre: String) = db.localTrackQueries.selectByGenre(genre).executeAsList()
+
+    fun years(): List<Counted<Long>> =
+        db.localTrackQueries.selectYears().executeAsList().mapNotNull { r -> r.year?.let { Counted(it, r.track_count) } }
+
+    fun tracksByYear(year: Long) = db.localTrackQueries.selectByYear(year).executeAsList()
+
+    /**
+     * Ranked full-text search over title/artist/album/genre (prefix match per word).
+     * Falls back to LIKE when FTS5 isn't available.
+     */
+    fun search(query: String, limit: Int = 30): List<Local_track> {
+        val words = query.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotBlank() }
+        if (words.isEmpty()) return emptyList()
+        val ids = driver?.let { d ->
+            runCatching {
+                val match = words.joinToString(" ") { "\"${it.replace("\"", "")}\"*" }
+                d.executeQuery(
+                    null,
+                    """
+                    SELECT local_track.id FROM local_track_fts
+                    JOIN local_track ON local_track.rowid = local_track_fts.rowid
+                    WHERE local_track_fts MATCH ?
+                    ORDER BY bm25(local_track_fts, 8.0, 4.0, 2.0, 1.0)
+                    LIMIT ?
+                    """.trimIndent(),
+                    { cursor ->
+                        val out = ArrayList<String>()
+                        while (cursor.next().value) cursor.getString(0)?.let(out::add)
+                        app.cash.sqldelight.db.QueryResult.Value(out as List<String>)
+                    },
+                    2,
+                ) {
+                    bindString(0, match)
+                    bindLong(1, limit.toLong())
+                }.value
+            }.getOrNull()
+        }
+        if (ids != null) return ids.mapNotNull { trackById(it) }
+        return allTracks().filter { t ->
+            val hay = "${t.title} ${t.artist_name} ${t.album_title} ${t.genre.orEmpty()}".lowercase()
+            words.all { it in hay }
+        }.take(limit)
+    }
+
     fun upsertArtist(id: String, name: String) {
         db.localArtistQueries.upsert(id, name)
         db.localArtistQueries.updateName(name, id)

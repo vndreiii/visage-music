@@ -64,7 +64,11 @@ class LocalMusicScanner(
             // could not read come back flagged and go through Jaudiotagger below.
             val native = if (NativeHelpers.available) {
                 _progress.value = LocalScanProgress(running = true, message = "Scanning with native helper…")
-                NativeHelpers.scan(roots, coversRoot, File(DatabaseFactory.dataDir(), "scan-cache.json"))
+                NativeHelpers.scan(
+                    roots,
+                    coversRoot,
+                    repo.knownFiles().map { KnownFileEntry(it.path, it.size, it.mtimeMs, it.coverPath) },
+                )
             } else null
             val entries: List<Pair<File, NativeTrack?>> = if (native != null) {
                 native.tracks.map { File(it.path) to it.takeUnless { t -> t.unreadable } }
@@ -80,7 +84,11 @@ class LocalMusicScanner(
                 if (cancel.get()) break
                 _progress.value = LocalScanProgress(true, index, files.size, file.name)
                 try {
-                    if (nativeTrack != null) indexNative(file, nativeTrack, now) else indexFile(file, now, coversRoot)
+                    when {
+                        nativeTrack?.unchanged == true -> Unit // row already current
+                        nativeTrack != null -> indexNative(file, nativeTrack, now)
+                        else -> indexFile(file, now, coversRoot)
+                    }
                     ok++
                 } catch (e: CancellationException) {
                     throw e
@@ -227,6 +235,7 @@ class LocalMusicScanner(
         val albumId = stableId("album", file.parentFile.canonicalPath, album)
         val trackId = stableId("track", file.absolutePath)
         val existing = repo.trackByPath(file.absolutePath)
+        val credits = (t.artists.ifEmpty { listOf(artist) }).map { stableId("artist", it) to it }
         repo.inTransaction {
             upsertArtist(artistId, artist)
             upsertArtist(albumArtistId, albumArtist)
@@ -260,6 +269,8 @@ class LocalMusicScanner(
                 lastPlayedMs = existing?.last_played_ms,
                 playCount = existing?.play_count ?: 0L,
             )
+            setTrackExtra(trackId, t.album_artist, t.genre, t.composer, t.year, t.disc_no, t.size, t.mtime_ms)
+            setTrackArtists(trackId, credits)
         }
     }
 
@@ -284,6 +295,9 @@ class LocalMusicScanner(
             format.contains("alac") ||
             format.contains("wav") ||
             format.contains("aiff")
+        val genre = tag?.getFirst(FieldKey.GENRE)?.takeIf { it.isNotBlank() }
+        val composer = tag?.getFirst(FieldKey.COMPOSER)?.takeIf { it.isNotBlank() }
+        val discNo = tag?.getFirst(FieldKey.DISC_NO)?.substringBefore('/')?.toLongOrNull()
         val lyricsEmbedded = tag?.getFirst(FieldKey.LYRICS)?.takeIf { it.isNotBlank() }
         val lrcSibling = File(file.parentFile, file.nameWithoutExtension + ".lrc")
             .takeIf { it.isFile }
@@ -335,6 +349,8 @@ class LocalMusicScanner(
                 lastPlayedMs = existing?.last_played_ms,
                 playCount = existing?.play_count ?: 0L,
             )
+            setTrackExtra(trackId, albumArtist, genre, composer, year, discNo, file.length(), file.lastModified())
+            setTrackArtists(trackId, listOf(artistId to artist))
         }
     }
 

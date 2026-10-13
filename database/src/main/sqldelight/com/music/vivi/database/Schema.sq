@@ -102,9 +102,30 @@ CREATE TABLE local_track (
   added_at_ms INTEGER NOT NULL,
   last_played_ms INTEGER,
   play_count INTEGER NOT NULL DEFAULT 0,
+  album_artist TEXT,
+  genre TEXT,
+  composer TEXT,
+  year INTEGER,
+  disc_number INTEGER,
+  file_size INTEGER,
+  file_mtime_ms INTEGER,
   FOREIGN KEY (album_id) REFERENCES local_album(id) ON DELETE SET NULL,
   FOREIGN KEY (artist_id) REFERENCES local_artist(id) ON DELETE SET NULL
 );
+
+-- All artist credits of a track (multi-value tags / features), in tag order.
+CREATE TABLE local_track_artist (
+  track_id TEXT NOT NULL,
+  artist_id TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  PRIMARY KEY (track_id, artist_id),
+  FOREIGN KEY (track_id) REFERENCES local_track(id) ON DELETE CASCADE,
+  FOREIGN KEY (artist_id) REFERENCES local_artist(id) ON DELETE CASCADE
+);
+
+CREATE INDEX local_track_artist_by_artist ON local_track_artist(artist_id);
+CREATE INDEX local_track_by_genre ON local_track(genre COLLATE NOCASE);
+CREATE INDEX local_track_by_year ON local_track(year);
 
 CREATE INDEX local_track_by_added ON local_track(added_at_ms DESC);
 CREATE INDEX local_track_by_played ON local_track(last_played_ms DESC);

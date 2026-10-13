@@ -1,0 +1,17 @@
+insert:
+INSERT OR REPLACE INTO local_track_artist(track_id, artist_id, position) VALUES (?, ?, ?);
+
+deleteForTrack:
+DELETE FROM local_track_artist WHERE track_id = ?;
+
+selectArtistsForTrack:
+SELECT local_artist.* FROM local_track_artist
+JOIN local_artist ON local_artist.id = local_track_artist.artist_id
+WHERE local_track_artist.track_id = ?
+ORDER BY local_track_artist.position;
+
+selectTracksForArtist:
+SELECT local_track.* FROM local_track_artist
+JOIN local_track ON local_track.id = local_track_artist.track_id
+WHERE local_track_artist.artist_id = ?
+ORDER BY local_track.album_title COLLATE NOCASE, local_track.disc_number ASC, local_track.track_number ASC;

@@ -28,8 +28,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 /**
- * Fuzzy search over the user's indexed local files. Uses the Rust matcher when available
- * (typo tolerant, parallel) and a plain token match otherwise.
+ * Search over the user's indexed local files: the Rust fuzzy matcher when available (typo tolerant),
+ * otherwise the SQLite FTS5 index (prefix match, bm25 ranked).
  */
 @Composable
 fun rememberLocalHits(repo: LocalMusicRepository, query: String, limit: Int = 6): List<Local_track> {
@@ -53,11 +53,7 @@ fun rememberLocalHits(repo: LocalMusicRepository, query: String, limit: Int = 6)
             if (idx != null) {
                 idx.query(q, limit).mapNotNull(tracks::get)
             } else {
-                val tokens = q.lowercase().split(' ').filter { it.isNotBlank() }
-                tracks.values.filter { t ->
-                    val hay = "${t.title} ${t.artist_name} ${t.album_title}".lowercase()
-                    tokens.all { it in hay }
-                }.take(limit)
+                repo.search(q, limit)
             }
         }
     }

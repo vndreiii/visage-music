@@ -20,16 +20,25 @@ const SKIP_DIRS: &[&str] = &[
     "site-packages", "dist-packages", "test-data", "testdata", "fixtures",
 ];
 const COVER_NAMES: &[&str] = &["cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png"];
-const CACHE_VERSION: u32 = 1;
 
 #[derive(Deserialize)]
 struct Request {
     roots: Vec<String>,
     covers_dir: String,
+    /// Files the caller already has indexed; unchanged ones are not re-read.
     #[serde(default)]
-    cache_path: Option<String>,
+    known: Vec<Known>,
     #[serde(default = "default_min_bytes")]
     min_bytes: u64,
+}
+
+#[derive(Deserialize)]
+struct Known {
+    path: String,
+    size: u64,
+    mtime_ms: i64,
+    #[serde(default)]
+    cover_path: Option<String>,
 }
 
 fn default_min_bytes() -> u64 {
@@ -43,10 +52,16 @@ struct Track {
     mtime_ms: i64,
     title: Option<String>,
     artist: Option<String>,
+    /// Every artist credit on the file (multi-value tags), `artist` is the joined display form.
+    #[serde(default)]
+    artists: Vec<String>,
     album: Option<String>,
     album_artist: Option<String>,
+    genre: Option<String>,
+    composer: Option<String>,
     year: Option<u32>,
     track_no: Option<u32>,
+    disc_no: Option<u32>,
     duration_sec: Option<u64>,
     bitrate: Option<u32>,
     sample_rate: Option<u32>,
@@ -58,13 +73,9 @@ struct Track {
     /// Tags could not be read; the caller should use its own reader for this file.
     #[serde(default)]
     unreadable: bool,
-}
-
-#[derive(Serialize, Deserialize, Default)]
-struct Cache {
-    version: u32,
-    covers_dir: String,
-    entries: HashMap<String, Track>,
+    /// Same size/mtime as the caller's `known` entry: nothing was read, keep the stored row.
+    #[serde(default)]
+    unchanged: bool,
 }
 
 #[derive(Serialize)]
@@ -146,7 +157,16 @@ fn read_track(path: &Path, size: u64, mtime_ms: i64, covers_dir: &Path) -> Track
     }
     if let Some(tag) = tagged.primary_tag().or_else(|| tagged.first_tag()) {
         t.title = text(tag, &ItemKey::TrackTitle);
-        t.artist = text(tag, &ItemKey::TrackArtist);
+        t.artists = tag
+            .get_strings(&ItemKey::TrackArtist)
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .map(str::to_owned)
+            .collect();
+        t.artist = if t.artists.is_empty() { None } else { Some(t.artists.join(", ")) };
+        t.genre = tag.genre().map(|g| g.trim().to_owned()).filter(|g| !g.is_empty());
+        t.composer = text(tag, &ItemKey::Composer);
+        t.disc_no = tag.disk();
         t.album = text(tag, &ItemKey::AlbumTitle);
         t.album_artist = text(tag, &ItemKey::AlbumArtist);
         t.lyrics = text(tag, &ItemKey::Lyrics);
@@ -188,26 +208,6 @@ fn folder_cover(dir: &Path, ext: &str, file: &Path) -> Option<String> {
         .or_else(|| (ext == "opus").then(|| format!("opus-lazy://{}", file.display())))
 }
 
-fn load_cache(path: &Path, covers_dir: &str) -> Cache {
-    fs::read(path)
-        .ok()
-        .and_then(|b| serde_json::from_slice::<Cache>(&b).ok())
-        .filter(|c| c.version == CACHE_VERSION && c.covers_dir == covers_dir)
-        .unwrap_or_else(|| Cache { version: CACHE_VERSION, covers_dir: covers_dir.to_owned(), ..Default::default() })
-}
-
-fn save_cache(path: &Path, cache: &Cache) {
-    if let Some(parent) = path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-    let tmp = path.with_extension("tmp");
-    if let Ok(bytes) = serde_json::to_vec(cache) {
-        if fs::write(&tmp, bytes).is_ok() {
-            let _ = fs::rename(&tmp, path);
-        }
-    }
-}
-
 pub fn run(request: &str) -> Result<String, String> {
     let started = Instant::now();
     let req: Request = serde_json::from_str(request).map_err(|e| e.to_string())?;
@@ -223,37 +223,26 @@ pub fn run(request: &str) -> Result<String, String> {
     files.dedup_by(|a, b| a.0 == b.0);
     let walk_ms = started.elapsed().as_millis();
 
-    let cache_path = req.cache_path.as_deref().map(PathBuf::from);
-    let cache = cache_path.as_deref().map(|p| load_cache(p, &req.covers_dir)).unwrap_or_default();
+    let known: HashMap<&str, &Known> = req.known.iter().map(|k| (k.path.as_str(), k)).collect();
 
-    let tracks: Vec<(Track, bool)> = files
+    let tracks: Vec<Track> = files
         .par_iter()
         .map(|(path, size, mtime)| {
             let key = path.to_string_lossy();
-            match cache.entries.get(key.as_ref()) {
-                // A cached cover must still exist, otherwise re-read to regenerate it.
-                Some(c) if c.size == *size && c.mtime_ms == *mtime && !c.unreadable
-                    && c.cover_path.as_deref().map(|p| p.starts_with("opus-lazy://") || Path::new(p).exists()).unwrap_or(true) =>
+            match known.get(key.as_ref()) {
+                // An unchanged file whose stored cover still exists needs no re-read.
+                Some(k) if k.size == *size && k.mtime_ms == *mtime
+                    && k.cover_path.as_deref().map(|p| p.starts_with("opus-lazy://") || Path::new(p).exists()).unwrap_or(true) =>
                 {
-                    (c.clone(), true)
+                    Track { path: key.into_owned(), size: *size, mtime_ms: *mtime, unchanged: true, ..Default::default() }
                 }
-                _ => (read_track(path, *size, *mtime, &covers_dir), false),
+                _ => read_track(path, *size, *mtime, &covers_dir),
             }
         })
         .collect();
 
-    let cached = tracks.iter().filter(|(_, hit)| *hit).count();
-    let unreadable = tracks.iter().filter(|(t, _)| t.unreadable).count();
-    let tracks: Vec<Track> = tracks.into_iter().map(|(t, _)| t).collect();
-
-    if let Some(p) = &cache_path {
-        let fresh = Cache {
-            version: CACHE_VERSION,
-            covers_dir: req.covers_dir.clone(),
-            entries: tracks.iter().map(|t| (t.path.clone(), t.clone())).collect(),
-        };
-        save_cache(p, &fresh);
-    }
+    let cached = tracks.iter().filter(|t| t.unchanged).count();
+    let unreadable = tracks.iter().filter(|t| t.unreadable).count();
 
     let stats = Stats {
         files: tracks.len(),
@@ -285,7 +274,7 @@ mod tests {
         let found = walk(&dir, 8_192);
         assert_eq!(found.len(), 1, "{found:?}");
         let out = run(&format!(
-            r#"{{"roots":["{0}"],"covers_dir":"{0}/covers","cache_path":"{0}/cache.json"}}"#,
+            r#"{{"roots":["{0}"],"covers_dir":"{0}/covers"}}"#,
             dir.display()
         ))
         .unwrap();

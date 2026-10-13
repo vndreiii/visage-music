@@ -36,7 +36,7 @@ class NativeHelpersTest {
             File(dir, "venv").mkdirs()
             File(dir, "Artist/Album/broken.mp3").writeBytes(ByteArray(9000))
             File(dir, "venv/skip.mp3").writeBytes(ByteArray(9000))
-            val result = assertNotNull(NativeHelpers.scan(listOf(dir), File(dir, "covers"), File(dir, "cache.json")))
+            val result = assertNotNull(NativeHelpers.scan(listOf(dir), File(dir, "covers"), emptyList()))
             assertEquals(1, result.tracks.size)
             assertTrue(result.tracks.single().unreadable) // garbage bytes → caller falls back to Jaudiotagger
         } finally {

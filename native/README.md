@@ -5,7 +5,7 @@ Optional Rust helpers for VIVI Desktop, loaded by the JVM through JNA
 
 | Call | What it does |
 |------|--------------|
-| `vivi_scan` | Parallel directory walk (jwalk) + tag/cover extraction (lofty) with an incremental on-disk cache keyed by path/size/mtime. Re-scans of an unchanged library take ~0.2 s. Files whose tags can't be read are flagged so Kotlin falls back to Jaudiotagger. |
+| `vivi_scan` | Parallel directory walk (jwalk) + tag/cover extraction (lofty) Callers pass the files they already have (path/size/mtime from the SQLite library); unchanged files are not re-read, so re-scans of an unchanged library take ~0.2 s. There is no separate cache file: SQLite is the single source of truth. Files whose tags can't be read are flagged so Kotlin falls back to Jaudiotagger. |
 | `vivi_search_new/query/free` | In-memory fuzzy index (nucleo) over `(id, text)` pairs, used for "On this device" results in Search. |
 
 ```bash

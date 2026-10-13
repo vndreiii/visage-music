@@ -15,10 +15,11 @@ import org.koin.dsl.module
 val coreModule = module {
     single<SessionManager> { KeyringSessionManager() }
     single { YouTubeMusicService(get()) }
-    single<ViviDatabase> { DatabaseFactory.create() }
+    single<app.cash.sqldelight.db.SqlDriver> { DatabaseFactory.createDriver() }
+    single<ViviDatabase> { ViviDatabase(get()) }
     single { LibraryRepository(get()) }
     single { PlayHistoryRepository(get()) }
     single { DownloadedTrackRepository(get()) }
-    single { LocalMusicRepository(get()) }
+    single { LocalMusicRepository(get(), get()) }
     single { LocalMusicScanner(get()) }
 }

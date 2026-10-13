@@ -27,10 +27,14 @@ data class NativeTrack(
     val mtime_ms: Long = 0,
     val title: String? = null,
     val artist: String? = null,
+    val artists: List<String> = emptyList(),
     val album: String? = null,
     val album_artist: String? = null,
+    val genre: String? = null,
+    val composer: String? = null,
     val year: Long? = null,
     val track_no: Long? = null,
+    val disc_no: Long? = null,
     val duration_sec: Long? = null,
     val bitrate: Long? = null,
     val sample_rate: Long? = null,
@@ -40,6 +44,8 @@ data class NativeTrack(
     val lrc_path: String? = null,
     val cover_path: String? = null,
     val unreadable: Boolean = false,
+    /** Same size/mtime as the stored row: nothing was read, keep what the database has. */
+    val unchanged: Boolean = false,
 )
 
 @Serializable
@@ -60,7 +66,10 @@ data class NativeScanResult(
 )
 
 @Serializable
-private data class ScanRequest(val roots: List<String>, val covers_dir: String, val cache_path: String?)
+data class KnownFileEntry(val path: String, val size: Long, val mtime_ms: Long, val cover_path: String? = null)
+
+@Serializable
+private data class ScanRequest(val roots: List<String>, val covers_dir: String, val known: List<KnownFileEntry>)
 
 @Serializable
 private data class SearchItem(val id: String, val text: String)
@@ -117,12 +126,15 @@ object NativeHelpers {
         }
     }
 
-    /** Parallel walk + tag read with an incremental on-disk cache; null if unavailable or failed. */
-    fun scan(roots: List<File>, coversDir: File, cacheFile: File?): NativeScanResult? {
+    /**
+     * Parallel walk + tag read. Files matching an entry in [known] (same size and mtime) come back
+     * flagged `unchanged` without being read; null if the library is unavailable or failed.
+     */
+    fun scan(roots: List<File>, coversDir: File, known: List<KnownFileEntry>): NativeScanResult? {
         val l = lib ?: return null
         val request = json.encodeToString(
             ScanRequest.serializer(),
-            ScanRequest(roots.map { it.absolutePath }, coversDir.absolutePath, cacheFile?.absolutePath),
+            ScanRequest(roots.map { it.absolutePath }, coversDir.absolutePath, known),
         )
         val raw = take(l, l.vivi_scan(request)) ?: return null
         val result = runCatching { json.decodeFromString(NativeScanResult.serializer(), raw) }.getOrNull()
