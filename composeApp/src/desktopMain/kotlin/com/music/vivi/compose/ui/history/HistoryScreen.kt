@@ -55,7 +55,7 @@ fun HistoryScreen(
     fun onItemClick(event: Play_event) {
         scope.launch(Dispatchers.IO) {
             if (event.song_id == playingId) {
-                if (isPlaying) controller.pause() else controller.play()
+                controller.toggleFromList()
             } else {
                 controller.playVideo(event.song_id)
             }

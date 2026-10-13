@@ -80,7 +80,7 @@ fun BrowseScreen(
         when (item) {
             is SongItem -> scope.launch(Dispatchers.IO) {
                 if (item.id == playingId) {
-                    if (isPlaying) controller.pause() else controller.play()
+                    controller.toggleFromList()
                 } else {
                     val songs = context.filterIsInstance<SongItem>()
                     val idx = songs.indexOfFirst { it.id == item.id }

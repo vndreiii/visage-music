@@ -351,7 +351,7 @@ fun HomeScreen(navController: NavController) {
                     fun playSong(song: SongItem, context: List<SongItem> = emptyList()) {
                         scope.launch(Dispatchers.IO) {
                             if (song.id == playingId) {
-                                if (isPlaying) controller.pause() else controller.play()
+                                controller.toggleFromList()
                             } else if (context.isNotEmpty()) {
                                 val idx = context.indexOfFirst { it.id == song.id }.coerceAtLeast(0)
                                 controller.playQueue(context.map { it.toQueueTrack() }, idx)
@@ -508,7 +508,7 @@ fun HomeScreen(navController: NavController) {
                                                 )
                                             }
                                             if (recent[index].song_id == playingId) {
-                                                if (isPlaying) controller.pause() else controller.play()
+                                                controller.toggleFromList()
                                             } else {
                                                 controller.playQueue(tracks, index)
                                             }

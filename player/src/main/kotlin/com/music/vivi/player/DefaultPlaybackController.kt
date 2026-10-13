@@ -385,6 +385,7 @@ class DefaultPlaybackController(
         softUi: Boolean = false,
     ): Int {
         val gen = loadGeneration.incrementAndGet()
+        trackStartedAtMs = System.currentTimeMillis()
         pauseRequested.set(false)
         navigateJob?.cancel()
         cancelVolumeFade()
@@ -1132,6 +1133,13 @@ class DefaultPlaybackController(
         }
     }
 
+    @Volatile private var trackStartedAtMs = 0L
+
+    override fun toggleFromList() {
+        if (System.currentTimeMillis() - trackStartedAtMs < LIST_TOGGLE_GUARD_MS) return
+        if (_state.value == PlaybackState.Playing) pause() else play()
+    }
+
     override fun pause() {
         if (_state.value !in listOf(PlaybackState.Playing, PlaybackState.Loading)) return
         pauseRequested.set(true)
@@ -1289,6 +1297,9 @@ class DefaultPlaybackController(
     }
 
     companion object {
+        /** Window after a track starts in which a list-row toggle is treated as a double-click echo. */
+        private const val LIST_TOGGLE_GUARD_MS = 700L
+
         private const val MAX_GET_QUEUE = 20
 
         fun create(

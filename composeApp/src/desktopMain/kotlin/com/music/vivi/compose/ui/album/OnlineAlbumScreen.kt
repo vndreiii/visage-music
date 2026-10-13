@@ -91,7 +91,7 @@ fun OnlineAlbumScreen(
         val song = list.getOrNull(if (shuffled) 0 else index) ?: return
         scope.launch(Dispatchers.IO) {
             if (song.id == playingId) {
-                if (isPlaying) controller.pause() else controller.play()
+                controller.toggleFromList()
             } else {
                 val start = if (shuffled) 0 else index
                 controller.playQueue(list.map { it.toQueueTrack() }, start)
@@ -103,7 +103,7 @@ fun OnlineAlbumScreen(
         when (item) {
             is SongItem -> scope.launch(Dispatchers.IO) {
                 if (item.id == playingId) {
-                    if (isPlaying) controller.pause() else controller.play()
+                    controller.toggleFromList()
                 } else {
                     controller.playVideo(item.id)
                 }

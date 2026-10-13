@@ -365,7 +365,7 @@ fun LibraryScreen(navController: NavController) {
                     val idx = context.indexOfFirst { it.id == item.id }.coerceAtLeast(0)
                     controller.playQueue(context.map { it.toQueueTrack() }, idx)
                 } else if (item.id == playingId) {
-                    if (isPlaying) controller.pause() else controller.play()
+                    controller.toggleFromList()
                 } else {
                     controller.playVideo(item.id)
                 }

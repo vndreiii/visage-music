@@ -86,6 +86,13 @@ interface PlaybackController {
     fun addToQueue(track: QueueTrack)
     fun play()
     fun pause()
+
+    /**
+     * Row-click toggle for the track that is already current (lists, search results, cards).
+     * Ignored right after a track was started, so a double-click on a row doesn't play the song
+     * and immediately pause it again.
+     */
+    fun toggleFromList()
     fun stop()
     fun seekTo(positionMs: Long)
     fun next()

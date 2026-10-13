@@ -77,7 +77,7 @@ fun AutoPlaylistScreen(
     fun onItemClick(songId: String) {
         scope.launch(Dispatchers.IO) {
             if (songId == playingId) {
-                if (isPlaying) controller.pause() else controller.play()
+                controller.toggleFromList()
             } else {
                 controller.playVideo(songId)
             }

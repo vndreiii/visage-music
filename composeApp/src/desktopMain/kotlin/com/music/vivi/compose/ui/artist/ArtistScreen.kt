@@ -96,7 +96,7 @@ fun ArtistScreen(
         when (item) {
             is SongItem -> scope.launch(Dispatchers.IO) {
                 if (item.id == playingId) {
-                    if (isPlaying) controller.pause() else controller.play()
+                    controller.toggleFromList()
                 } else {
                     controller.playVideo(item.id)
                 }

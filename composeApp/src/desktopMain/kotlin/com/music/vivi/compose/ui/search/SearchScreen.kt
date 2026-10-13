@@ -146,7 +146,7 @@ fun SearchScreen(navController: NavController) {
     fun playSong(song: SongItem) {
         scope.launch(Dispatchers.IO) {
             if (song.id == playingId) {
-                if (isPlaying) controller.pause() else controller.play()
+                controller.toggleFromList()
             } else {
                 val context = songsPage?.items?.filterIsInstance<SongItem>().orEmpty().ifEmpty {
                     summaryItems.filterIsInstance<SongItem>()
