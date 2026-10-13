@@ -9,6 +9,7 @@ import org.freedesktop.dbus.exceptions.DBusException
 import org.freedesktop.dbus.interfaces.Properties
 import org.freedesktop.dbus.types.Variant
 import java.util.LinkedHashMap
+import kotlinx.serialization.json.put
 
 /**
  * Exports org.mpris.MediaPlayer2.vivi on the session bus.
@@ -27,8 +28,13 @@ class MprisService(
     private val onVolume: (Double) -> Unit = {},
     private val onShuffle: (Boolean) -> Unit = {},
 ) : AutoCloseable {
-    private val connection: DBusConnection? = runCatching {
+    // Preferred: Rust/zbus service (dbus-java never got its well-known name on some setups).
+    private val native: NativeMpris? = run {
         MprisDesktopIntegration.ensureInstalled()
+        NativeMpris.start(::onNativeCommand)
+    }?.also { System.err.println("MPRIS: native service on ${it.busName}") }
+
+    private val connection: DBusConnection? = if (native != null) null else runCatching {
         DBusConnectionBuilder.forSessionBus()
             .withShared(false)
             .build()
@@ -50,36 +56,81 @@ class MprisService(
     @Volatile private var shuffle = false
     @Volatile private var loopStatus = "None"
 
+    private fun onNativeCommand(cmd: Int, num: Double, text: String?) {
+        when (cmd) {
+            NativeMpris.PLAY -> onPlay()
+            NativeMpris.PAUSE -> onPause()
+            NativeMpris.PLAY_PAUSE -> if (playbackStatus == "Playing") onPause() else onPlay()
+            NativeMpris.STOP -> onStop()
+            NativeMpris.NEXT -> onNext()
+            NativeMpris.PREVIOUS -> onPrevious()
+            NativeMpris.SEEK_REL_US -> onSeekUs(positionUs + num.toLong())
+            NativeMpris.SET_POSITION_US -> onSeekUs(num.toLong())
+            NativeMpris.VOLUME -> { volume = num.coerceIn(0.0, 1.0); onVolume(volume) }
+            NativeMpris.SHUFFLE -> { shuffle = num > 0.5; onShuffle(shuffle) }
+            NativeMpris.LOOP -> loopStatus = text ?: "None"
+        }
+    }
+
+    private fun pushNative(build: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit) {
+        native?.update(kotlinx.serialization.json.buildJsonObject(build).toString())
+    }
+
+    private fun pushMetadata(track: NowPlaying?, artFileUrl: String?, rating: Double) = pushNative {
+        put("metadata", kotlinx.serialization.json.buildJsonObject {
+            put("track_id", track?.videoId ?: "none")
+            if (track != null) {
+                put("title", track.title)
+                put("artist", track.artist)
+                track.album?.let { put("album", it) }
+                put("length_us", track.durationMs * 1000L)
+                artFileUrl?.let { put("art_url", it) }
+                put("rating", rating)
+            }
+        })
+    }
+
+    private var lastArtUrl: String? = null
+    private var lastTrack: NowPlaying? = null
+
     fun updatePlaybackState(state: PlaybackState) {
         playbackStatus = when (state) {
             PlaybackState.Playing, PlaybackState.Loading -> "Playing"
             PlaybackState.Paused -> "Paused"
             PlaybackState.Idle, PlaybackState.Ended, PlaybackState.Error -> "Stopped"
         }
+        pushNative { put("status", playbackStatus) }
         emitPlayerChanged(mapOf("PlaybackStatus" to Variant(playbackStatus)))
     }
 
     fun updatePosition(positionMs: Long) {
         positionUs = positionMs * 1000L
+        pushNative { put("position_us", positionUs) }
     }
 
     fun updateVolume(vol: Float) {
         volume = vol.toDouble().coerceIn(0.0, 1.0)
+        pushNative { put("volume", volume) }
         emitPlayerChanged(mapOf("Volume" to Variant(volume)))
     }
 
     fun updateShuffle(enabled: Boolean) {
         shuffle = enabled
+        pushNative { put("shuffle", enabled) }
         emitPlayerChanged(mapOf("Shuffle" to Variant(shuffle)))
     }
 
     fun updateLoopStatus(status: String) {
         loopStatus = status
+        pushNative { put("loop_status", status) }
         emitPlayerChanged(mapOf("LoopStatus" to Variant(loopStatus)))
     }
 
     fun updateNowPlaying(track: NowPlaying?, artFileUrl: String?, favorite: Boolean) {
         userRating = if (favorite) 1.0 else 0.0
+        lastTrack = track
+        lastArtUrl = artFileUrl
+        pushMetadata(track, artFileUrl, userRating)
         metadata = if (track == null) {
             emptyMetadata()
         } else {
@@ -90,6 +141,7 @@ class MprisService(
 
     fun updateFavorite(favorite: Boolean) {
         userRating = if (favorite) 1.0 else 0.0
+        if (native != null) pushMetadata(lastTrack, lastArtUrl, userRating)
         if (metadata.isNotEmpty()) {
             val next = LinkedHashMap(metadata)
             next["xesam:userRating"] = Variant(userRating)
@@ -137,6 +189,7 @@ class MprisService(
     }
 
     override fun close() {
+        native?.close()
         connection?.let { conn ->
             runCatching { conn.unExportObject(OBJECT_PATH) }
             runCatching { conn.releaseBusName(BUS_NAME) }

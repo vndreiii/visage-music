@@ -2,6 +2,7 @@
 //! (`*mut c_char`, release with [`vivi_free_string`]) so the boundary stays tiny and the
 //! Kotlin side can fall back to its pure-JVM implementation when this library is absent.
 
+mod mpris;
 mod scan;
 mod search;
 
@@ -68,4 +69,33 @@ pub unsafe extern "C" fn vivi_search_query(handle: u64, query: *const c_char, li
 #[no_mangle]
 pub extern "C" fn vivi_search_free(handle: u64) {
     search::free(handle);
+}
+
+/// Start the MPRIS service. `callback(cmd, number, text)` receives remote commands
+/// (see `mpris::CMD_*`) on a D-Bus thread. Returns a handle, 0 on failure.
+#[no_mangle]
+pub extern "C" fn vivi_mpris_start(callback: mpris::Callback) -> u64 {
+    mpris::start(callback)
+}
+
+/// Bus name the service ended up with (release with `vivi_free_string`).
+#[no_mangle]
+pub extern "C" fn vivi_mpris_name(handle: u64) -> *mut c_char {
+    mpris::name(handle).map(into_c).unwrap_or(std::ptr::null_mut())
+}
+
+/// Push a partial state update: `{status, position_us, volume, shuffle, loop_status, metadata}`.
+///
+/// # Safety
+/// `json` must be a valid NUL-terminated string.
+#[no_mangle]
+pub unsafe extern "C" fn vivi_mpris_update(handle: u64, json: *const c_char) {
+    if let Some(j) = from_c(json) {
+        mpris::update(handle, j);
+    }
+}
+
+#[no_mangle]
+pub extern "C" fn vivi_mpris_stop(handle: u64) {
+    mpris::stop(handle);
 }
