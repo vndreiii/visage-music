@@ -3,7 +3,7 @@ package com.music.vivi.compose.ui.player
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
-import androidx.compose.animation.core.LinearOutSlowInEasing
+import com.music.vivi.compose.ui.motion.ViviMotion
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -176,16 +176,8 @@ fun TrackActionsMenu(
             AnimatedVisibility(
                 visibleState = visibleState,
                 // Same scale+fade from the anchor corner as Material's DropdownMenu (Settings menu).
-                enter = fadeIn(tween(30)) + scaleIn(
-                    initialScale = 0.8f,
-                    transformOrigin = MenuTransformOrigin,
-                    animationSpec = tween(120, easing = LinearOutSlowInEasing),
-                ),
-                exit = fadeOut(tween(75, delayMillis = 0)) + scaleOut(
-                    targetScale = 0.8f,
-                    transformOrigin = MenuTransformOrigin,
-                    animationSpec = tween(75),
-                ),
+                enter = ViviMotion.menuEnter(MenuTransformOrigin),
+                exit = ViviMotion.menuExit(MenuTransformOrigin),
             ) {
                 Surface(
                     shape = RoundedCornerShape(20.dp),

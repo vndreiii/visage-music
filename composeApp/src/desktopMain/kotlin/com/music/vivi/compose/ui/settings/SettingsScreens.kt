@@ -399,7 +399,7 @@ private fun PaletteGrid(
             val isSelected = entry == selected
             val container by animateColorAsState(
                 if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
-                spring(stiffness = Spring.StiffnessMediumLow),
+                com.music.vivi.compose.ui.motion.ViviMotion.settle(),
                 label = "paletteTile",
             )
             Surface(

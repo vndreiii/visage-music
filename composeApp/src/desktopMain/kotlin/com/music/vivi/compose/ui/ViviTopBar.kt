@@ -345,10 +345,7 @@ private fun TopNavChip(
     )
     val iconScale by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (selected) 1.1f else 1f,
-        animationSpec = androidx.compose.animation.core.spring(
-            dampingRatio = 0.55f,
-            stiffness = 400f,
-        ),
+        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.bounce(),
         label = "navIconBounce",
     )
     Row(

@@ -8,6 +8,8 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.animateFloatAsState
+import com.music.vivi.compose.ui.motion.ViviMotion
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.spring
@@ -305,10 +307,7 @@ fun NowPlayingScreen(
                 val lyricsContentW = maxWidth
                 val lyricsLeftW = (lyricsContentW - paneGap - lyricsStackW).coerceAtLeast(0.dp)
 
-                val layoutSpring = spring<Dp>(
-                    dampingRatio = 0.86f,
-                    stiffness = Spring.StiffnessMediumLow,
-                )
+                val layoutSpring = ViviMotion.glide<Dp>()
                 val contentW by animateDpAsState(
                     if (showLyrics) lyricsContentW else idleContentW,
                     layoutSpring,
@@ -444,34 +443,50 @@ fun NowPlayingScreen(
                         ) {
                             val rightCanvasUrl = canvasTallUrl ?: canvasSquareUrl
                             val showCanvasOnRight = showLyrics && rightCanvasUrl != null
-                            if (showCanvasOnRight && rightCanvasUrl != null) {
-                                com.music.vivi.compose.ui.player.background.CanvasVideoSurface(
-                                    videoUrl = rightCanvasUrl,
-                                    playing = playing,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .weight(1f)
-                                        .padding(bottom = 16.dp)
-                                        .clip(RoundedCornerShape(24.dp))
-                                        .graphicsLayer {
-                                            compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
-                                        }
-                                        .drawWithContent {
-                                            drawContent()
-                                            drawRect(
-                                                brush = Brush.verticalGradient(
-                                                    0f to Color.Black,
-                                                    0.75f to Color.Black,
-                                                    1f to Color.Transparent,
-                                                ),
-                                                blendMode = androidx.compose.ui.graphics.BlendMode.DstIn
+                            // Free space above the controls: half of it when idle (controls centred), all of it
+                            // with lyrics (controls at the bottom, canvas fills the rest). Animated so the
+                            // controls glide between the two instead of snapping.
+                            val controlsBias by animateFloatAsState(
+                                if (showLyrics) 1f else 0.5f,
+                                ViviMotion.settle(),
+                                label = "npControlsBias",
+                            )
+                            if (!underQueue) {
+                                Box(Modifier.fillMaxWidth().weight(controlsBias.coerceIn(0.001f, 1f))) {
+                                    if (rightCanvasUrl != null) {
+                                        PlainAnimatedVisibility(
+                                            visible = showCanvasOnRight,
+                                            enter = fadeIn(),
+                                            exit = fadeOut(),
+                                            label = "npRightCanvas",
+                                        ) {
+                                            com.music.vivi.compose.ui.player.background.CanvasVideoSurface(
+                                                videoUrl = rightCanvasUrl,
+                                                playing = playing,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(bottom = 16.dp)
+                                                    .clip(RoundedCornerShape(24.dp))
+                                                    .graphicsLayer {
+                                                        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                                                    }
+                                                    .drawWithContent {
+                                                        drawContent()
+                                                        drawRect(
+                                                            brush = Brush.verticalGradient(
+                                                                0f to Color.Black,
+                                                                0.75f to Color.Black,
+                                                                1f to Color.Transparent,
+                                                            ),
+                                                            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                                                        )
+                                                    },
                                             )
                                         }
-                                )
-                            } else if (!underQueue) {
-                                Spacer(Modifier.weight(1f))
+                                    }
+                                }
                             }
-                            
+
                             Column(
                                 Modifier.fillMaxWidth().then(if (underQueue && !showCanvasOnRight) Modifier.weight(1f) else Modifier).playerControlsSurface(framedControls)
                             ) {
@@ -569,8 +584,8 @@ fun NowPlayingScreen(
                                 )
                             }
                             } // Close inner Column
-                            if (!underQueue && !showLyrics) {
-                                Spacer(Modifier.weight(1f))
+                            if (!underQueue) {
+                                Spacer(Modifier.weight((1f - controlsBias).coerceIn(0.001f, 1f)))
                             }
                         }
                     }

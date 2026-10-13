@@ -205,10 +205,7 @@ fun LyricsPanel(
             val delta = placed.offset + placed.size / 2f - fresh.viewportSize.height / 2f
             listState.animateScrollBy(
                 delta,
-                androidx.compose.animation.core.spring(
-                    dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
-                    stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
-                ),
+                com.music.vivi.compose.ui.motion.ViviMotion.rail(),
             )
         } finally {
             autoScrolling = false
@@ -526,10 +523,7 @@ private fun LyricLineItem(
     }
     val scale by androidx.compose.animation.core.animateFloatAsState(
         targetValue = targetScale,
-        animationSpec = androidx.compose.animation.core.spring(
-            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
-            stiffness = androidx.compose.animation.core.Spring.StiffnessMediumLow,
-        ),
+        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.settle(),
         label = "lyricScale",
     )
     val alpha by androidx.compose.animation.core.animateFloatAsState(

@@ -14,10 +14,11 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.navigation.NavBackStackEntry
+import com.music.vivi.compose.ui.motion.ViviMotion
 
 // M3 emphasized easing curves.
-private val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1f)
-private val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0f, 0.8f, 0.15f)
+private val EmphasizedDecelerate = ViviMotion.EmphasizedDecelerate
+private val EmphasizedAccelerate = ViviMotion.EmphasizedAccelerate
 
 private const val EnterMs = 340
 private const val ExitMs = 160

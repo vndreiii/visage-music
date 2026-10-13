@@ -82,6 +82,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.music.vivi.compose.LocalPlaybackController
 import com.music.vivi.compose.ui.component.InteractionCornerRadius
+import com.music.vivi.compose.ui.motion.ViviMotion
 import com.music.vivi.database.PlayHistoryRepository
 import com.music.vivi.database.Play_event
 import com.music.vivi.player.NowPlaying
@@ -92,18 +93,9 @@ import org.koin.compose.koinInject
 
 private enum class QueueTab { Queue, Recent }
 
-private val PinOffsetSpring = spring<IntOffset>(
-    dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = Spring.StiffnessLow,
-)
-private val PinSizeSpring = spring<IntSize>(
-    dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = Spring.StiffnessLow,
-)
-private val TrayOffsetSpring = spring<IntOffset>(
-    dampingRatio = Spring.DampingRatioNoBouncy,
-    stiffness = Spring.StiffnessMediumLow,
-)
+private val PinOffsetSpring = ViviMotion.rail<IntOffset>()
+private val PinSizeSpring = ViviMotion.rail<IntSize>()
+private val TrayOffsetSpring = ViviMotion.settle<IntOffset>()
 
 /**
  * Right-rail queue: slides in from the trailing edge and expands width so the
@@ -614,7 +606,7 @@ private const val SkeletonCount = 6
 private fun RevealRow(animate: Boolean, content: @Composable () -> Unit) {
     val progress = remember { Animatable(if (animate) 0f else 1f) }
     LaunchedEffect(Unit) {
-        if (animate) progress.animateTo(1f, tween(320, easing = FastOutSlowInEasing))
+        if (animate) progress.animateTo(1f, ViviMotion.settle())
     }
     Box(
         Modifier.graphicsLayer {
