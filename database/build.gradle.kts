@@ -30,4 +30,8 @@ dependencies {
     implementation("net.jthink:jaudiotagger:3.0.1")
 }
 
-tasks.test { useJUnitPlatform() }
+tasks.test {
+    useJUnitPlatform()
+    // Native helper tests run only when `cargo build --release --manifest-path native/Cargo.toml` was done.
+    environment("VIVI_NATIVE_LIB", rootProject.file("native/target/release/libvivi_native.so").absolutePath)
+}

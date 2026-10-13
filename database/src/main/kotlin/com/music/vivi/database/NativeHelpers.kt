@@ -69,8 +69,8 @@ private data class SearchItem(val id: String, val text: String)
  * Optional Rust acceleration. Everything here returns null / false when the shared library
  * is missing so callers keep their pure-JVM path.
  *
- * Lookup order: `$VIVI_NATIVE_LIB`, `native/target/release/libvivi_native.so` next to the
- * working directory (or a parent), then the system library path.
+ * Lookup order: `$VIVI_NATIVE_LIB` (absolute path), the packaged app's resources dir, then the
+ * system library path. The working directory is deliberately never searched.
  */
 object NativeHelpers {
     private val json = Json { ignoreUnknownKeys = true }
@@ -78,20 +78,30 @@ object NativeHelpers {
     private val lib: ViviNativeLib? by lazy {
         if (System.getenv("VIVI_NATIVE_DISABLE") == "1") return@lazy null
         val candidates = buildList {
+            // Explicit absolute path (run-dev.sh and the Gradle test task set this).
             System.getenv("VIVI_NATIVE_LIB")?.takeIf { it.isNotBlank() }?.let(::add)
-            generateSequence(File("").absoluteFile) { it.parentFile }.take(4).forEach {
-                add(File(it, "native/target/release/libvivi_native.so").path)
-            }
-            add("vivi_native")
+            // Packaged app: next to the bundled resources.
+            System.getProperty("compose.application.resources.dir")?.let { add(File(it, "libvivi_native.so").path) }
+            add("vivi_native") // system library path
         }
         for (name in candidates) {
-            if (name.contains('/') && !File(name).isFile) continue
+            if (name.contains('/') && !isTrusted(File(name))) continue
             try {
                 return@lazy Native.load(name, ViviNativeLib::class.java)
             } catch (_: Throwable) {
             }
         }
         null
+    }
+
+    /** An absolute, existing file that other users can't have swapped out. */
+    private fun isTrusted(f: File): Boolean {
+        if (!f.isAbsolute || !f.isFile) return false
+        return runCatching {
+            val perms = java.nio.file.Files.getPosixFilePermissions(f.toPath())
+            java.nio.file.attribute.PosixFilePermission.GROUP_WRITE !in perms &&
+                java.nio.file.attribute.PosixFilePermission.OTHERS_WRITE !in perms
+        }.getOrDefault(false)
     }
 
     val available: Boolean get() = lib != null

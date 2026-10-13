@@ -13,5 +13,5 @@ cargo build --release --manifest-path native/Cargo.toml   # run-dev.sh does this
 cargo test --manifest-path native/Cargo.toml
 ```
 
-Library lookup order: `$VIVI_NATIVE_LIB`, `native/target/release/libvivi_native.so`, system path.
+Library lookup order: `$VIVI_NATIVE_LIB` (absolute path; run-dev.sh sets it), the packaged resources dir, then the system path. The working directory is never searched.
 Set `VIVI_NATIVE_DISABLE=1` to force the JVM fallback. Cover files use the same SHA-1 naming as the Kotlin scanner.
