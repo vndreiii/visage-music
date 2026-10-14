@@ -137,7 +137,7 @@ jobs:
           mv latest.json artifacts/
           [[ -f latest.json.sig ]] && mv latest.json.sig artifacts/ || true
           cd artifacts && sha256sum * | grep -v SHA256SUMS > SHA256SUMS && ls -lh
-      - uses: softprops/action-gh-release@3bb12739c298ab8a4eeaf626c5b8d85266b0e65 # v2
+      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           tag_name: ${{ env.TAG }}
           name: VIsage ${{ env.TAG }}
