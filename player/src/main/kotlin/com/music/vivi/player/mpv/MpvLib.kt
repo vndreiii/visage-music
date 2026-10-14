@@ -6,6 +6,7 @@ import com.sun.jna.Pointer
 import com.sun.jna.StringArray
 import com.sun.jna.Structure
 import com.sun.jna.ptr.DoubleByReference
+import com.sun.jna.ptr.IntByReference
 
 /**
  * Minimal JNA binding to libmpv (client API).
@@ -26,6 +27,7 @@ interface MpvLib : Library {
     ): Int
 
     fun mpv_observe_property(ctx: Pointer, replyUserdata: Long, name: String, format: Int): Int
+    fun mpv_get_property(ctx: Pointer, name: String, format: Int, data: IntByReference): Int
     fun mpv_wait_event(ctx: Pointer, timeout: Double): Pointer?
     fun mpv_error_string(error: Int): String?
 

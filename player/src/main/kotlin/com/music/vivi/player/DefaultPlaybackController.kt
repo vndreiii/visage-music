@@ -216,11 +216,15 @@ class DefaultPlaybackController(
             if (_queueTracks.value.isNotEmpty()) return
             val index = startIndex.coerceIn(0, tracks.lastIndex)
             setQueueLocked(tracks, index)
-            applyOptimisticNowPlaying(tracks[index])
-            _state.value = PlaybackState.Idle
+            val generation = beginTrackChange(tracks[index])
+            pauseRequested.set(true)
+            _state.value = PlaybackState.Loading
             _positionMs.value = positionMs.coerceAtLeast(0)
             restoredPosition = tracks[index].videoId to _positionMs.value
-            mpris?.updatePlaybackState(PlaybackState.Idle)
+            mpris?.updatePlaybackState(PlaybackState.Loading)
+            navigateJob = scope.launch {
+                if (generation == loadGeneration.get()) advanceToIndex(index, generation = generation)
+            }
         }
     }
 

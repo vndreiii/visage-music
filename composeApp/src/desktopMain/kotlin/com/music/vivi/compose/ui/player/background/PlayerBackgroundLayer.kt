@@ -81,9 +81,16 @@ fun PlayerBackgroundLayer(
     showClearArtwork: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
+    val prefs = org.koin.compose.koinInject<com.music.vivi.compose.prefs.DesktopPrefs>()
+    @Suppress("UNUSED_VARIABLE")
+    val prefsVersion = com.music.vivi.compose.ui.settings.rememberPrefsVersion(prefs)
+    val darkness = prefs.getInt(com.music.vivi.compose.prefs.PrefKeys.PlayerBackgroundDarkness, 0).coerceIn(0, 100) / 100f
     val palette = LocalArtworkPalette.current
     val themeSurface = MaterialTheme.colorScheme.surface
-    Box(modifier.fillMaxSize().clipToBounds()) {
+    Box(modifier.fillMaxSize().clipToBounds().drawWithContent {
+        drawContent()
+        if (darkness > 0f) drawRect(Color.Black.copy(alpha = darkness))
+    }) {
         when (style) {
             PlayerBackgroundStyle.DEFAULT -> Box(Modifier.fillMaxSize().background(themeSurface))
             PlayerBackgroundStyle.GRADIENT -> ShaderBackground(BackgroundShader.AURORA, palette, artworkUrl)
@@ -326,9 +333,16 @@ fun MiniPlayerBackgroundLayer(
     artworkUrl: String?,
     modifier: Modifier = Modifier,
 ) {
+    val prefs = org.koin.compose.koinInject<com.music.vivi.compose.prefs.DesktopPrefs>()
+    @Suppress("UNUSED_VARIABLE")
+    val prefsVersion = com.music.vivi.compose.ui.settings.rememberPrefsVersion(prefs)
+    val darkness = prefs.getInt(com.music.vivi.compose.prefs.PrefKeys.MiniPlayerBackgroundDarkness, 0).coerceIn(0, 100) / 100f
     val palette = LocalArtworkPalette.current
     val themeSurface = MaterialTheme.colorScheme.surfaceContainerHigh
-    Box(modifier.clipToBounds()) {
+    Box(modifier.clipToBounds().drawWithContent {
+        drawContent()
+        if (darkness > 0f) drawRect(Color.Black.copy(alpha = darkness))
+    }) {
         when (style) {
             PlayerBackgroundStyle.DEFAULT -> Box(Modifier.fillMaxSize().background(themeSurface))
             PlayerBackgroundStyle.GRADIENT -> ShaderBackground(BackgroundShader.AURORA, palette, artworkUrl)

@@ -1,12 +1,12 @@
 package com.music.vivi.player.login
 
-import com.music.innertube.auth.YtMusicSession
 import com.music.vivi.player.session.SessionSecretStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -23,12 +23,15 @@ private const val LOGIN_URL =
 private const val MUSIC_HOST_PREFIX = "https://music.youtube.com"
 
 /**
- * YouTube Music sign-in. Google rejects embedded WebViews, so this opens a real Chromium
- * app window and reads the session (cookies + visitor data) over CDP. UI-toolkit agnostic.
+ * YouTube Music sign-in in the UI-provided embedded Chromium browser.
+ * Reads HttpOnly cookies and page configuration over the loopback CDP connection.
  */
-class YtLoginFlow(private val onLoggedIn: (accountName: String) -> Unit = {}) {
+class YtLoginFlow(
+    private val browserHost: LoginBrowserHost,
+    private val onLoggedIn: (accountName: String) -> Unit = {},
+) {
     data class State(
-        val status: String = "Sign in with Google in a Chromium window.",
+        val status: String = "Sign in with Google inside VIsage.",
         val browserOpen: Boolean = false,
         val canConfirm: Boolean = false,
         val busy: Boolean = false,
@@ -40,41 +43,39 @@ class YtLoginFlow(private val onLoggedIn: (accountName: String) -> Unit = {}) {
     val state: StateFlow<State> = _state.asStateFlow()
 
     private var pollJob: Job? = null
-    private var browserProcess: Process? = null
+    private var openJob: Job? = null
     private var cdp: CdpClient? = null
     @Volatile private var readyToConfirm = false
 
     private fun set(transform: State.() -> State) = _state.update { it.transform() }
 
     fun open() {
-        val browser = ChromiumLauncher.findBrowser()
-        if (browser == null) {
-            set { copy(status = "No Chromium/Chrome found. Install chromium and retry.") }
-            return
-        }
-        runCatching { browserProcess?.destroy() }
-        runCatching { cdp?.close() }
-        cdp = null
-        pollJob?.cancel()
+        if (openJob?.isActive == true || _state.value.busy) return
         readyToConfirm = false
-
-        val port = ChromiumLauncher.pickFreePort()
-        set { copy(status = "Launching $browser…", browserOpen = true, canConfirm = false) }
-        browserProcess = ChromiumLauncher.launch(browser, LOGIN_URL, port, ChromiumLauncher.profileDir())
-
-        scope.launch {
-            val client = CdpClient(port)
+        set { copy(status = "Opening embedded sign-in…", busy = true, browserOpen = true, canConfirm = false) }
+        openJob = scope.launch {
+            pollJob?.cancelAndJoin()
+            cdp?.close()
+            cdp = null
+            val client = CdpClient(browserHost.debugPort)
             try {
+                browserHost.open(LOGIN_URL)
                 withContext(Dispatchers.IO) {
                     client.waitUntilReady()
                     client.reconnectLoop()
+                    // The browser must be attached to SwingPanel before its native
+                    // page exists. Restore cookies only after CDP is ready.
+                    SessionSecretStore.loadSession()?.let { saved ->
+                        client.restoreSession(saved.cookie)
+                        client.navigate("https://music.youtube.com/")
+                    }
                 }
                 cdp = client
-                set { copy(status = "Sign in inside the Chromium window…") }
+                set { copy(status = "Sign in below, then press Confirm.", busy = false) }
                 startReadyPoll(client)
             } catch (t: Throwable) {
                 client.close()
-                set { copy(status = "Could not attach to Chromium: ${t.message}", browserOpen = false) }
+                set { copy(status = "Could not open embedded sign-in: ${t.message}", busy = false, browserOpen = false) }
             }
         }
     }
@@ -109,29 +110,19 @@ class YtLoginFlow(private val onLoggedIn: (accountName: String) -> Unit = {}) {
 
         scope.launch {
             try {
-                val (cookie, visitorData, dataSyncId) = withContext(Dispatchers.IO) {
+                pollJob?.cancelAndJoin()
+                val session = withContext(Dispatchers.IO) {
                     client.reconnectLoop()
-                    val cookie = client.cookieHeader()
-                    val visitor = client.evaluateString(
-                        "(function(){try{return (window.yt&&window.yt.config_&&window.yt.config_.VISITOR_DATA)||" +
-                            "(window.ytcfg&&window.ytcfg.get&&window.ytcfg.get('VISITOR_DATA'))||'';}catch(e){return '';}})()",
-                    )
-                    val dataSyncRaw = client.evaluateString(
-                        "(function(){try{" +
-                            "var a=(window.yt&&window.yt.config_&&window.yt.config_.DATASYNC_ID)||'';" +
-                            "var b=(window.ytcfg&&window.ytcfg.get&&window.ytcfg.get('DELEGATED_SESSION_ID'))||'';" +
-                            "var c=(window.ytcfg&&window.ytcfg.get&&window.ytcfg.get('DATASYNC_ID'))||'';" +
-                            "return b||a||c||'';}catch(e){return '';}})()",
-                    )
-                    Triple(cookie, visitor, normalizeDataSyncId(dataSyncRaw))
+                    client.captureSession()
                 }
+                val cookie = session.cookie
+                val visitorData = session.visitorData
                 if (cookie.isBlank() || !cookie.contains("SAPISID")) {
                     return@launch fail("Cookies incomplete (missing SAPISID). Finish sign-in on YouTube Music, then retry.")
                 }
                 if (visitorData.isBlank()) {
                     return@launch fail("Missing VISITOR_DATA — wait for YouTube Music to finish loading, then retry.")
                 }
-                val session = YtMusicSession(cookie = cookie, visitorData = visitorData, dataSyncId = dataSyncId)
                 val result = withTimeoutOrNull(20.seconds) {
                     withContext(Dispatchers.IO) {
                         var attempt = session.validate()
@@ -147,10 +138,10 @@ class YtLoginFlow(private val onLoggedIn: (accountName: String) -> Unit = {}) {
                     withContext(Dispatchers.IO) { SessionSecretStore.save(session, account) }
                     session.applyToYouTube()
                     pollJob?.cancel()
-                    runCatching { browserProcess?.destroy() }
+                    browserHost.close()
                     set { copy(busy = false, browserOpen = false, signedInAs = account.name, status = "Signed in as ${account.name}.") }
                     onLoggedIn(account.name)
-                }.onFailure { fail("Login failed: ${it.message ?: it::class.simpleName}") }
+                }.onFailure { fail("Login failed: ${it.message?.substringBefore(". Text:")?.take(180) ?: it::class.simpleName}") }
             } catch (t: Throwable) {
                 fail("Confirm failed: ${t.message}")
             }
@@ -162,7 +153,8 @@ class YtLoginFlow(private val onLoggedIn: (accountName: String) -> Unit = {}) {
 
     fun close() {
         pollJob?.cancel()
-        runCatching { browserProcess?.destroy() }
+        openJob?.cancel()
+        browserHost.close()
         runCatching { cdp?.close() }
         scope.cancel()
     }

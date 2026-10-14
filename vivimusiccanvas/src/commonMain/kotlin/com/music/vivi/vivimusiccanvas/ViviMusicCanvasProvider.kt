@@ -103,6 +103,7 @@ object ViviMusicCanvasProvider {
 
         if (target != null) {
             return CanvasArtwork(
+                canvasKey = "vivi:${target.song.normalizeForComparison()}:${target.artist.normalizeForComparison()}:${target.album.normalizeForComparison()}",
                 name = target.song,
                 artist = target.artist,
                 albumName = target.album.takeIf { it.isNotBlank() },

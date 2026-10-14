@@ -221,6 +221,7 @@ object TidalCanvasProvider {
                             name = resultTitle ?: songValidation ?: albumValidation ?: "",
                             artist = combinedArtistStr.ifBlank { artistValidation ?: "" },
                             videoUrl = videoUrl,
+                            canvasKey = "tidal:album:$videoCover",
                             albumName = albumTitle
                         )
                     }

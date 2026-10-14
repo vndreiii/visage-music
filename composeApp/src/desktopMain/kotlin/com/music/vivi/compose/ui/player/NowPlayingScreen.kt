@@ -187,6 +187,9 @@ fun NowPlayingScreen(
     }
     @Suppress("UNUSED_VARIABLE")
     val observePrefs = prefsTick
+    val limitControlsWidth = prefs.getBoolean(PrefKeys.LimitPlayerControlsWidth, prefs.getBoolean(PrefKeys.AdwaitaInspired, false))
+    val controlsMaxWidth = prefs.getInt(PrefKeys.PlayerControlsWidth, 600).coerceIn(400, 600).dp
+    val playPauseHeight = prefs.getInt(PrefKeys.PlayPauseHeight, 56).coerceIn(48, 96).dp
     val queueMode = runCatching {
         QueuePanelMode.valueOf(
             prefs.getString(PrefKeys.QueuePanelMode, QueuePanelMode.FULLSCREEN.name),
@@ -303,7 +306,8 @@ fun NowPlayingScreen(
                 val mainH = (maxHeight - bottomChromeH).coerceAtLeast(200.dp)
                 // Cover from height, then stack takes the rest so the row is wide and stack isn't skinny.
                 val idleArtSize = minOf(mainH * 0.92f, maxWidth * 0.40f)
-                val idleStackW = (maxWidth - paneGap - idleArtSize).coerceAtLeast(0.dp)
+                val availableStackW = (maxWidth - paneGap - idleArtSize).coerceAtLeast(0.dp)
+                val idleStackW = if (limitControlsWidth) adwaitaClampWidth(availableStackW, controlsMaxWidth) else availableStackW
                 val idleContentW = (idleArtSize + paneGap + idleStackW).coerceAtMost(maxWidth)
                 val lyricsStackW = (maxWidth * 0.44f).coerceAtMost(440.dp)
                 val lyricsContentW = maxWidth
@@ -366,7 +370,8 @@ fun NowPlayingScreen(
                             ) {
                                 val coverVisibility = this
                                 val coverShape = RoundedCornerShape(28.dp)
-                                Box(
+                                AlbumGestureCard(
+                                    controller = controller,
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .sharedBounds(
@@ -376,9 +381,7 @@ fun NowPlayingScreen(
                                                 ContentScale.Crop,
                                                 Alignment.Center,
                                             ),
-                                        )
-                                        .shadow(28.dp, coverShape, clip = false)
-                                        .clip(coverShape),
+                                        ),
                                 ) {
                                     AnimatedContent(
                                         targetState = artTarget,
@@ -495,7 +498,7 @@ fun NowPlayingScreen(
                             }
 
                             Column(
-                                Modifier.fillMaxWidth().then(if (underQueue && !showCanvasOnRight) Modifier.weight(1f) else Modifier).playerControlsSurface(framedControls)
+                                Modifier.align(Alignment.CenterHorizontally).then(if (limitControlsWidth) Modifier.widthIn(max = if (showLyrics) adwaitaClampWidth(stackW, controlsMaxWidth) else controlsMaxWidth) else Modifier).fillMaxWidth().then(if (underQueue && !showCanvasOnRight) Modifier.weight(1f) else Modifier).playerControlsSurface(framedControls)
                             ) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                                 PlainAnimatedVisibility(
@@ -571,6 +574,7 @@ fun NowPlayingScreen(
                                 canNext = canNext,
                                 enabledPlay = track != null || state != PlaybackState.Idle,
                                 style = buttonsStyle,
+                                playPauseHeight = playPauseHeight,
                                 onPrev = { if (canPrev) controller.previous() },
                                 onPlayPause = { if (playing) controller.pause() else controller.play() },
                                 onNext = { controller.next() },
@@ -756,6 +760,7 @@ internal fun TransportRow(
     canNext: Boolean,
     enabledPlay: Boolean,
     style: PlayerButtonsStyle = PlayerButtonsStyle.DEFAULT,
+    playPauseHeight: androidx.compose.ui.unit.Dp = 56.dp,
     onPrev: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
@@ -813,7 +818,7 @@ internal fun TransportRow(
             shape = RoundedCornerShape(playRadius),
             color = playBg,
             interactionSource = playInteraction,
-            modifier = Modifier.weight(1f).height(56.dp),
+            modifier = Modifier.weight(1f).height(playPauseHeight),
         ) {
             Row(
                 Modifier.fillMaxSize(),
@@ -1066,4 +1071,14 @@ fun VolumePillControl(
             }
         }
     }
+}
+
+/** Ease out toward the width limit while preserving the available width on small panes. */
+internal fun adwaitaClampWidth(available: Dp, maximum: Dp): Dp {
+    val threshold = maximum * 0.75f
+    if (available <= threshold) return available
+    val span = maximum - threshold
+    val progress = ((available - threshold).value / (3f * span.value)).coerceIn(0f, 1f)
+    val remaining = 1f - progress
+    return threshold + span * (1f - remaining * remaining * remaining)
 }

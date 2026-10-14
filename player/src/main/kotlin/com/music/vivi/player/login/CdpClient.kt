@@ -95,6 +95,10 @@ class CdpClient(
         return result.resultValueString().orEmpty()
     }
 
+    suspend fun navigate(url: String) {
+        call("Page.navigate", buildJsonObject { put("url", url) })
+    }
+
     suspend fun cookieHeader(
         urls: List<String> = listOf("https://music.youtube.com", "https://www.youtube.com"),
     ): String {
@@ -123,6 +127,24 @@ class CdpClient(
             },
         )
         return result.resultValueString().orEmpty()
+    }
+
+    /** Restore the app's keyring session into its embedded browser, in memory. */
+    suspend fun restoreSession(cookieHeader: String) {
+        val cookies = cookieHeader.split(';').mapNotNull { entry ->
+            val name = entry.substringBefore('=').trim()
+            val value = entry.substringAfter('=', "")
+            if (name.isBlank() || !entry.contains('=')) return@mapNotNull null
+            buildJsonObject {
+                put("name", name)
+                put("value", value)
+                put("domain", ".youtube.com")
+                put("path", "/")
+                put("secure", true)
+                put("httpOnly", name in setOf("SID", "HSID", "SSID", "LOGIN_INFO", "__Secure-1PSID", "__Secure-3PSID") || name.endsWith("SIDTS") || name.endsWith("SIDCC"))
+            }
+        }
+        call("Network.setCookies", buildJsonObject { put("cookies", JsonArray(cookies)) })
     }
 
     private suspend fun call(method: String, params: JsonObject? = null): JsonObject {

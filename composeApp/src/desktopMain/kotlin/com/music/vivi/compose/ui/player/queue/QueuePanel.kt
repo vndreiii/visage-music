@@ -235,8 +235,8 @@ private fun QueuePanelBody(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             TabLabel("Queue", selected = tab == QueueTab.Queue) { tab = QueueTab.Queue }
-            Spacer(Modifier.width(16.dp))
-            TabLabel("Recently played", selected = tab == QueueTab.Recent) { tab = QueueTab.Recent }
+            Spacer(Modifier.width(4.dp))
+            TabLabel("History", selected = tab == QueueTab.Recent) { tab = QueueTab.Recent }
             Spacer(Modifier.weight(1f))
             IconButton(onClick = onSwitchMode) {
                 Icon(
@@ -368,7 +368,7 @@ private fun QueuePanelBody(
                 LaunchedEffect(nowPlaying?.videoId) { listState.animateScrollToItem(0) }
                 val placeholders = when {
                     (queueLoading || !inSync) && shown >= upcoming.size -> SkeletonCount
-                    else -> (upcoming.size - shown).coerceAtMost(SkeletonCount)
+                    else -> queuePlaceholderCount(upcoming.size, shown, SkeletonCount)
                 }
 
                 LazyColumn(
@@ -451,29 +451,16 @@ private fun QueuePanelBody(
 private fun TabLabel(text: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(InteractionCornerRadius),
-        color = Color.Transparent,
+        shape = RoundedCornerShape(24.dp),
+        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
     ) {
-        Column(Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+        Box(Modifier.height(40.dp).padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
             Text(
                 text,
-                style = MaterialTheme.typography.titleMedium,
-                // Same weight always — bold↔normal also nudges intrinsic size.
-                fontWeight = FontWeight.SemiBold,
-                color = if (selected) MaterialTheme.colorScheme.onSurface
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            // Always reserve indicator height so maximize/close don't jump on tab change.
-            Box(
-                Modifier
-                    .padding(top = 4.dp)
-                    .height(3.dp)
-                    .width(28.dp)
-                    .background(
-                        if (selected) MaterialTheme.colorScheme.primary
-                        else Color.Transparent,
-                        RoundedCornerShape(2.dp),
-                    ),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
@@ -641,3 +628,7 @@ private fun QueueSkeletonRow(index: Int) {
         }
     }
 }
+
+/** Reveal state can lag a shrinking queue by a composition frame. */
+internal fun queuePlaceholderCount(upcomingSize: Int, shown: Int, maximum: Int): Int =
+    (upcomingSize - shown).coerceIn(0, maximum)

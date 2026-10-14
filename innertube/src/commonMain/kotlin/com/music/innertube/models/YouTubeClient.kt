@@ -36,12 +36,14 @@ data class YouTubeClient(
             deviceMake = deviceMake,
             deviceModel = deviceModel,
             androidSdkVersion = androidSdkVersion,
-            gl = locale.gl,
-            hl = locale.hl,
+            // A language-only JVM locale (e.g. "en") has no country. YouTube
+            // rejects an empty gl with HTTP 400, including during login validation.
+            gl = locale.gl.ifBlank { "US" },
+            hl = locale.hl.ifBlank { "en" },
             visitorData = visitorData
         ),
         user = Context.User(
-            onBehalfOfUser = if (loginSupported) dataSyncId else null
+            onBehalfOfUser = if (loginSupported) dataSyncId?.takeIf { it.isNotBlank() } else null
         ),
     )
 

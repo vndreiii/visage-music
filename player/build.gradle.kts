@@ -35,3 +35,9 @@ tasks.register<JavaExec>("runMprisTest") {
     mainClass.set("com.music.vivi.player.mpris.TestMprisKt")
     classpath = sourceSets["main"].runtimeClasspath
 }
+
+tasks.register<JavaExec>("recoverBrowserSession") {
+    mainClass.set("com.music.vivi.player.login.RecoverBrowserSessionKt")
+    classpath = sourceSets["main"].runtimeClasspath
+    javaLauncher.set(javaToolchains.launcherFor { languageVersion.set(JavaLanguageVersion.of(21)) })
+}

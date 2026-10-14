@@ -48,6 +48,20 @@ class LocalPlaybackTest {
 
     private suspend fun eventually(predicate: () -> Boolean) = withTimeout(3000) { while (!predicate()) delay(10) }
 
+    @Test fun `restored track warms paused and resumes without another load`() = runBlocking {
+        fixture { controller, engines, tracks ->
+            controller.restoreQueue(tracks, 1, 12_000)
+            eventually { controller.state.value == PlaybackState.Paused }
+            assertEquals(tracks[1].localPath, engines[0].loaded)
+            assertTrue(engines[0].paused)
+            assertEquals(12.0, engines[0].seekSeconds)
+            engines[0].holdReady = true // A second load would block, instead Play resumes the prepared file.
+            controller.play()
+            eventually { controller.state.value == PlaybackState.Playing && !engines[0].paused }
+            assertEquals(tracks[1].localPath, engines[0].loaded)
+        }
+    }
+
     @Test fun `queue row clicks retain the remaining local files`() = runBlocking {
         fixture { controller, _, tracks ->
             controller.playLocalQueue(tracks)
@@ -117,8 +131,8 @@ class LocalPlaybackTest {
     @Test fun `restored queue stays silent until play and restores position`() = runBlocking {
         fixture { controller, engines, tracks ->
             controller.restoreQueue(tracks, 1, 15_000)
-            assertTrue(engines.all { it.loaded == null })
-            assertEquals(PlaybackState.Idle, controller.state.value)
+            eventually { controller.state.value == PlaybackState.Paused }
+            assertTrue(engines.all { it.paused })
             controller.play()
             eventually { controller.state.value == PlaybackState.Playing }
             assertEquals(tracks[1].localPath, engines[0].loaded)

@@ -1,5 +1,8 @@
 package com.music.vivi.player.session
 
+import com.github.javakeyring.KeyringStorageType
+import com.github.javakeyring.BackendNotSupportedException
+import java.util.concurrent.TimeUnit
 import com.github.javakeyring.Keyring
 import com.github.javakeyring.PasswordAccessException
 import com.music.innertube.auth.YtMusicSession
@@ -79,18 +82,48 @@ object SessionSecretStore {
 
     private fun readSecret(account: String): String? = try {
         withKeyring { keyring ->
-            keyring.getPassword(SERVICE, account) ?: keyring.getPassword(LEGACY_SERVICE, account)?.also { legacy ->
+            runCatching { keyring.getPassword(SERVICE, account) }.getOrNull() ?: runCatching { keyring.getPassword(LEGACY_SERVICE, account) }.getOrNull()?.also { legacy ->
                 // Copy (don't move) so an older build on the same keyring keeps working.
                 runCatching { keyring.setPassword(SERVICE, account, legacy) }
             }
         }
     } catch (_: PasswordAccessException) {
         null
+    } catch (_: BackendNotSupportedException) {
+        null
     }
 
-    private inline fun <T> withKeyring(block: (Keyring) -> T): T {
-        Keyring.create().use { keyring ->
-            return block(keyring)
+    private val keyringLock = Any()
+    // Cache success or failure: repeated UI reads must not keep activating wallet daemons.
+    private val keyringResult by lazy {
+        runCatching {
+            if (!System.getProperty("os.name").startsWith("Linux", ignoreCase = true)) {
+                Keyring.create()
+            } else {
+                try {
+                    Keyring.create(KeyringStorageType.GNOME_KEYRING)
+                } catch (secretServiceUnavailable: BackendNotSupportedException) {
+                    // Legacy KDE support without starting an unused KWallet on other desktops.
+                    if (walletAlreadyRunning()) Keyring.create(KeyringStorageType.KWALLET)
+                    else throw secretServiceUnavailable
+                }
+            }
         }
+    }
+
+    private fun walletAlreadyRunning(): Boolean = listOf("org.kde.kwalletd6", "org.kde.kwalletd5").any { name ->
+        runCatching {
+            val process = ProcessBuilder("busctl", "--user", "--timeout=1", "call",
+                "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
+                "NameHasOwner", "s", name).redirectError(ProcessBuilder.Redirect.DISCARD).start()
+            if (!process.waitFor(2, TimeUnit.SECONDS)) {
+                process.destroyForcibly()
+                false
+            } else process.exitValue() == 0 && process.inputStream.bufferedReader().use { it.readText().trim() } == "b true"
+        }.getOrDefault(false)
+    }
+
+    private fun <T> withKeyring(block: (Keyring) -> T): T = synchronized(keyringLock) {
+        block(keyringResult.getOrThrow())
     }
 }

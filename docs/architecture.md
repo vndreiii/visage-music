@@ -65,7 +65,7 @@ Gradle: Kotlin **2.3.10**, JVM **21**, Compose Multiplatform **1.10.2**, Koin (n
 4. `YtMusicSession.applyToYouTube()` sets the global `YouTube` singleton used by Innertube.
 5. `:core`’s `KeyringSessionManager` reloads that session for Compose / player.
 
-Login runs in `:player` (`YtLoginFlow`: real Chromium window + CDP → keyring); Compose hosts it in Settings → Account.
+Login runs in `:player` (`YtLoginFlow`: embedded JCEF/Chromium + CDP → keyring); Compose hosts the browser panel in Settings → Account. The AppImage includes the native CEF runtime; existing keyring sessions are restored into the browser.
 
 ---
 

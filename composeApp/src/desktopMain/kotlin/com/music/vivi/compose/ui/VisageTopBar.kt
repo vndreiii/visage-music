@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.window.WindowDraggableArea
+import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.Home
@@ -295,6 +296,11 @@ private fun SettingsDropdownMenu(
             text = { Text("Theme") },
             leadingIcon = { Icon(Icons.Outlined.Palette, contentDescription = null) },
             onClick = { onOpen(Routes.SETTINGS_THEME) },
+        )
+        DropdownMenuItem(
+            text = { Text("Interface") },
+            leadingIcon = { Icon(Icons.Outlined.Tune, contentDescription = null) },
+            onClick = { onOpen(Routes.SETTINGS_APPEARANCE) },
         )
         DropdownMenuItem(
             text = { Text("Now Playing") },

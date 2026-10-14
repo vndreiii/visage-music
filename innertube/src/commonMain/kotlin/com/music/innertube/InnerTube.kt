@@ -111,9 +111,11 @@ class InnerTube {
             append("X-YouTube-Client-Name", client.clientId /* Not a typo. The Client-Name header does contain the client id. */)
             append("X-YouTube-Client-Version", client.clientVersion)
             append("X-Origin", YouTubeClient.ORIGIN_YOUTUBE_MUSIC)
+            append("Origin", YouTubeClient.ORIGIN_YOUTUBE_MUSIC)
             append("Referer", YouTubeClient.REFERER_YOUTUBE_MUSIC)
             visitorData?.let { append("X-Goog-Visitor-Id", it) }
             if (setLogin && client.loginSupported) {
+                append("X-Goog-AuthUser", "0")
                 cookie?.let { cookie ->
                     append("cookie", cookie)
                     if ("SAPISID" !in cookieMap) return@let

@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChangedBy
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import com.music.vivi.compose.ui.player.background.CanvasVideo
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
@@ -30,6 +33,17 @@ enum class CanvasSource {
 object CanvasResolver {
     private val cache = ConcurrentHashMap<String, CanvasArtwork>()
     private val misses = ConcurrentHashMap.newKeySet<String>()
+    private val assetIdentities = ConcurrentHashMap<String, String>()
+
+    fun playbackCacheKey(url: String): String = assetIdentities[url] ?: url
+
+    private fun register(art: CanvasArtwork?) {
+        val identity = art?.canvasKey ?: return
+        listOfNotNull(art.animated, art.animatedTall, art.videoUrl).forEach { url ->
+            // Signed query parameters can rotate without changing the canvas.
+            assetIdentities[url] = "$identity|${url.substringBefore('?')}"
+        }
+    }
 
     suspend fun resolve(
         title: String,
@@ -90,16 +104,16 @@ object CanvasResolver {
 
     /** Square motion artwork — fits the cover slot. */
     fun squareUrl(art: CanvasArtwork?): String? =
-        art?.animated?.takeIf { it.isNotBlank() }
+        art.also { register(it) }?.animated?.takeIf { it.isNotBlank() }
             ?: art?.videoUrl?.takeIf { it.isNotBlank() }
             ?: art?.animatedTall?.takeIf { it.isNotBlank() }
 
     /** Portrait motion artwork — fits tall panes and full-bleed backgrounds. */
     fun tallUrl(art: CanvasArtwork?): String? =
-        art?.animatedTall?.takeIf { it.isNotBlank() } ?: squareUrl(art)
+        art.also { register(it) }?.animatedTall?.takeIf { it.isNotBlank() } ?: squareUrl(art)
 
     fun videoUrl(art: CanvasArtwork?): String? =
-        art?.animatedTall?.takeIf { it.isNotBlank() }
+        art.also { register(it) }?.animatedTall?.takeIf { it.isNotBlank() }
             ?: art?.animated?.takeIf { it.isNotBlank() }
             ?: art?.videoUrl?.takeIf { it.isNotBlank() }
             ?: art?.preferredAnimationUrl
@@ -121,13 +135,20 @@ object CanvasPrefetcher {
                 val source = runCatching {
                     CanvasSource.valueOf(prefs.getString(PrefKeys.CanvasSource, CanvasSource.AUTO.name))
                 }.getOrDefault(CanvasSource.AUTO)
-                withContext(Dispatchers.IO) {
+                coroutineScope {
+                    val useGpu = prefs.getBoolean(PrefKeys.CanvasUseGpu, false)
+                    val pingPong = prefs.getBoolean(PrefKeys.CanvasPingPong, false)
+                    fun warm(art: CanvasArtwork?) {
+                        listOfNotNull(CanvasResolver.squareUrl(art), CanvasResolver.tallUrl(art)).distinct().forEach { url ->
+                            launch { CanvasVideo.warm(url, useGpu, pingPong) }
+                        }
+                    }
                     if (np != null && np.title.isNotBlank()) {
-                        CanvasResolver.resolve(np.title, np.artist, np.album, source)
+                        warm(withContext(Dispatchers.IO) { CanvasResolver.resolve(np.title, np.artist, np.album, source) })
                     }
                     delay(1_500) // the playing track first, then warm the next one quietly
                     if (next != null && next.title.isNotBlank() && next.artist.isNotBlank()) {
-                        CanvasResolver.resolve(next.title, next.artist, next.album, source)
+                        warm(withContext(Dispatchers.IO) { CanvasResolver.resolve(next.title, next.artist, next.album, source) })
                     }
                 }
             }

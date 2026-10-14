@@ -445,6 +445,28 @@ fun AppearanceSettingsScreen(navController: NavController) {
     val topNav = prefs.enumPref(PrefKeys.TopNavStyle, TopNavStyle.ICON_ONLY)
 
     SettingsPage(title = "Interface", onBack = { navController.navigateUp() }) {
+        SettingsSection("Typography") {
+            ChipChoiceRow(
+                icon = Icons.Outlined.Tune,
+                title = "Font pairing",
+                options = listOf("expressive" to "Manrope + Roboto", "dm-sans" to "DM Sans + Roboto", "roboto" to "Roboto", "system" to "System"),
+                selected = prefs.getString(PrefKeys.InterfaceFont, "expressive"),
+                onSelect = { prefs.setString(PrefKeys.InterfaceFont, it) },
+            )
+            Text("Make room for your music", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            Text("Readable details, expressive headings", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+        }
+
+        SettingsSection("Layout") {
+            SwitchItem(
+                icon = Icons.Outlined.Tune,
+                title = "Adwaita-Inspired",
+                subtitle = "Centered, compact settings and player controls. Keeps your colors and style.",
+                checked = prefs.getBoolean(PrefKeys.AdwaitaInspired, false),
+                onChecked = { prefs.setBoolean(PrefKeys.AdwaitaInspired, it) },
+            )
+        }
+
         SettingsSection("Top bar") {
             LiveTopNavHeroPreview(style = topNav)
             ChoiceRow(
@@ -495,6 +517,14 @@ fun AppearanceSettingsScreen(navController: NavController) {
                 selected = miniBg,
                 onSelect = { prefs.setString(PrefKeys.MiniPlayerBackgroundStyle, it.name) },
             )
+            PrefSecondsSlider(
+                title = "Darkness",
+                value = prefs.getInt(PrefKeys.MiniPlayerBackgroundDarkness, 0).coerceIn(0, 100).toFloat(),
+                valueRange = 0f..100f,
+                steps = 19,
+                valueLabel = { "${it.toInt()}%" },
+                onCommit = { prefs.setInt(PrefKeys.MiniPlayerBackgroundDarkness, it.toInt()) },
+            )
             SettingsDivider()
             SwitchItem(
                 icon = Icons.Outlined.Contrast,
@@ -520,6 +550,14 @@ fun NowPlayingSettingsScreen(navController: NavController) {
     SettingsPage(title = "Now Playing", onBack = { navController.navigateUp() }) {
         SettingsSection("Background") {
             LivePlayerBackgroundHeroPreview(style = playerBg)
+            PrefSecondsSlider(
+                title = "Darkness",
+                value = prefs.getInt(PrefKeys.PlayerBackgroundDarkness, 0).coerceIn(0, 100).toFloat(),
+                valueRange = 0f..100f,
+                steps = 19,
+                valueLabel = { "${it.toInt()}%" },
+                onCommit = { prefs.setInt(PrefKeys.PlayerBackgroundDarkness, it.toInt()) },
+            )
             ChipChoiceRow(
                 icon = Icons.Outlined.Wallpaper,
                 title = "Style",
@@ -538,6 +576,22 @@ fun NowPlayingSettingsScreen(navController: NavController) {
             AnimatedVisibility(canvasOn, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                 Column {
                     SettingsDivider()
+                    SwitchItem(
+                        icon = Icons.Outlined.SmartDisplay,
+                        title = "Use GPU for canvas",
+                        subtitle = "Off uses CPU decoding. GPU decoding may crash on incompatible drivers.",
+                        checked = prefs.getBoolean(PrefKeys.CanvasUseGpu, false),
+                        onChecked = { prefs.setBoolean(PrefKeys.CanvasUseGpu, it) },
+                    )
+                    SettingsDivider()
+                    SwitchItem(
+                        icon = Icons.Outlined.MovieFilter,
+                        title = "Ping-pong canvas",
+                        subtitle = "Play forward, then backward. Off uses a smooth forward loop.",
+                        checked = prefs.getBoolean(PrefKeys.CanvasPingPong, false),
+                        onChecked = { prefs.setBoolean(PrefKeys.CanvasPingPong, it) },
+                    )
+                    SettingsDivider()
                     ChoiceRow(
                         icon = Icons.Outlined.AutoAwesome,
                         title = "Canvas source",
@@ -552,6 +606,35 @@ fun NowPlayingSettingsScreen(navController: NavController) {
                     )
                 }
             }
+        }
+
+        SettingsSection("Play bar") {
+            val limitWidth = prefs.getBoolean(PrefKeys.LimitPlayerControlsWidth, prefs.getBoolean(PrefKeys.AdwaitaInspired, false))
+            SwitchItem(
+                icon = Icons.Outlined.Tune,
+                title = "Limit controls width",
+                subtitle = "Center the controls and limit their width; shrink to fit smaller windows",
+                checked = limitWidth,
+                onChecked = { prefs.setBoolean(PrefKeys.LimitPlayerControlsWidth, it) },
+            )
+            if (limitWidth) {
+                PrefSecondsSlider(
+                    title = "Maximum width",
+                    value = prefs.getInt(PrefKeys.PlayerControlsWidth, 600).toFloat(),
+                    valueRange = 400f..600f,
+                    steps = 9,
+                    valueLabel = { "${it.toInt()} dp" },
+                    onCommit = { prefs.setInt(PrefKeys.PlayerControlsWidth, it.toInt()) },
+                )
+            }
+            PrefSecondsSlider(
+                title = "Play / pause height",
+                value = prefs.getInt(PrefKeys.PlayPauseHeight, 56).toFloat(),
+                valueRange = 48f..96f,
+                steps = 5,
+                valueLabel = { "${it.toInt()} dp" },
+                onCommit = { prefs.setInt(PrefKeys.PlayPauseHeight, it.toInt()) },
+            )
         }
 
         SettingsSection("Layout & controls") {
@@ -849,14 +932,18 @@ internal fun SettingsPage(
     onBack: (() -> Unit)?,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val prefs = koinInject<DesktopPrefs>()
+    @Suppress("UNUSED_VARIABLE")
+    val observe = rememberPrefsVersion(prefs)
+    val adwaita = prefs.getBoolean(PrefKeys.AdwaitaInspired, false)
     val scroll = rememberScrollState()
     Box(Modifier.fillMaxSize().smoothWheelScroll(scroll).verticalScroll(scroll), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier
-                .widthIn(max = 760.dp)
+                .widthIn(max = if (adwaita) 600.dp else 760.dp)
                 .fillMaxWidth()
-                .padding(horizontal = 24.dp)
-                .padding(top = 8.dp, bottom = 120.dp),
+                .padding(horizontal = if (adwaita) 12.dp else 24.dp)
+                .padding(top = if (adwaita) 24.dp else 8.dp, bottom = 120.dp),
         ) {
             SettingsBackHeader(title = title, onBack = onBack)
             content()

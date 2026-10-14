@@ -19,6 +19,13 @@ kotlin {
         val desktopMain by getting {
             dependencies {
                 implementation("com.github.jagrosh:DiscordIPC:master-SNAPSHOT")
+                implementation("me.friwi:jcefmaven:152.0.6")
+                val cefArch = when (System.getProperty("os.arch")) {
+                    "amd64", "x86_64" -> "amd64"
+                    "aarch64" -> "arm64"
+                    else -> error("Unsupported embedded browser architecture")
+                }
+                runtimeOnly("me.friwi:jcef-natives-linux-$cefArch:jcef-17e805a+cef-152.0.6+g708dc14+chromium-152.0.7977.83")
                 implementation(project(":core"))
                 implementation(project(":nativelib"))
                 implementation(project(":lyrics"))
@@ -51,7 +58,13 @@ kotlin {
 compose.desktop {
     application {
         mainClass = "com.music.vivi.alex"
+        javaHome = javaToolchains.launcherFor {
+            languageVersion.set(JavaLanguageVersion.of(21))
+        }.get().metadata.installationPath.asFile.absolutePath
         nativeDistributions {
+            // Keyring/D-Bus and Discord load JDK classes dynamically; jlink's
+            // inferred module set misses jdk.security.auth and java.management.
+            includeAllModules = true
             packageName = "visage"
             description = "VIsage"
             copyright = ""
@@ -74,6 +87,7 @@ afterEvaluate {
     tasks.findByName("run")?.let { task ->
         (task as? JavaExec)?.apply {
             environment("LC_NUMERIC", "C")
+            environment("DISABLE_LSFGVK", "1")
             jvmArgs(
                 "--add-opens=java.desktop/java.awt=ALL-UNNAMED",
                 "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
@@ -82,4 +96,9 @@ afterEvaluate {
             )
         }
     }
+}
+
+tasks.withType<Test>().configureEach {
+    environment("DISABLE_LSFGVK", "1")
+    jvmArgs("--add-opens=java.desktop/sun.awt=ALL-UNNAMED", "--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED")
 }

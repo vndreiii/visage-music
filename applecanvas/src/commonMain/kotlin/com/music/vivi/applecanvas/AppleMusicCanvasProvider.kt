@@ -420,6 +420,7 @@ object AppleMusicCanvasProvider {
                                     name = name,
                                     artist = resultArtistName,
                                     albumId = targetAlbumId,
+                                    canvasKey = "apple:album:$targetAlbumId",
                                     albumName = resolvedAlbumName,
                                     animated = hlsUrl,
                                     animatedTall = tallHlsUrl
@@ -522,6 +523,7 @@ object AppleMusicCanvasProvider {
                         name = finalTitle,
                         artist = finalArtist,
                         albumId = albumId,
+                        canvasKey = "apple:album:$albumId",
                         albumName = albumName,
                         animated = url,
                         animatedTall = tallUrl
@@ -552,6 +554,7 @@ object AppleMusicCanvasProvider {
                                     name = finalTitle,
                                     artist = finalArtist,
                                     albumId = albumId,
+                                    canvasKey = "apple:album:$albumId",
                                     albumName = albumName,
                                     animated = if (!isTall) hlsUrl else null,
                                     animatedTall = if (isTall) hlsUrl else null

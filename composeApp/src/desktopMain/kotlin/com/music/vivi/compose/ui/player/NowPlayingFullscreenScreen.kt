@@ -81,6 +81,8 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
     val controller = LocalPlaybackController.current
     val windowState = LocalWindowState.current
     val prefs = koinInject<DesktopPrefs>()
+    @Suppress("UNUSED_VARIABLE")
+    val prefsVersion = com.music.vivi.compose.ui.settings.rememberPrefsVersion(prefs)
     val scope = rememberCoroutineScope()
 
     DisposableEffect(windowState) {
@@ -172,22 +174,24 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                 ) {
                     val size = minOf(maxWidth, maxHeight).coerceAtMost(600.dp)
                     val coverShape = RoundedCornerShape(20.dp)
+                    AlbumGestureCard(controller, Modifier.size(size)) {
                     AsyncImage(
                         model = track?.artworkUrl,
                         contentDescription = track?.title,
                         contentScale = ContentScale.Crop,
                         modifier = Modifier
-                            .size(size)
+                            .fillMaxSize()
                             .shadow(28.dp, coverShape, clip = false)
                             .clip(coverShape),
                     )
+                    }
                 }
             }
 
             Column(
                 Modifier
                     .weight(1f)
-                    .widthIn(max = 520.dp)
+                    .widthIn(max = if (prefs.getBoolean(PrefKeys.LimitPlayerControlsWidth, prefs.getBoolean(PrefKeys.AdwaitaInspired, false))) prefs.getInt(PrefKeys.PlayerControlsWidth, 600).coerceIn(400, 600).dp else 520.dp)
                     .fillMaxHeight(),
                 verticalArrangement = Arrangement.Center,
             ) {
@@ -257,7 +261,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                         enabled = track != null || state != PlaybackState.Idle,
                         shape = RoundedCornerShape(50),
                         color = Color.White,
-                        modifier = Modifier.weight(1f).height(56.dp),
+                        modifier = Modifier.weight(1f).height(prefs.getInt(PrefKeys.PlayPauseHeight, 56).coerceIn(48, 96).dp),
                     ) {
                         Row(
                             Modifier.fillMaxSize(),

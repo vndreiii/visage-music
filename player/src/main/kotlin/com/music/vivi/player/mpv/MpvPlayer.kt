@@ -117,10 +117,9 @@ class MpvPlayer(
         } else {
             lib.mpv_set_property_string(handle, "http-header-fields", "")
         }
+        // Keep startup warming and normal loads silent until the controller is ready.
+        command("set", "pause", "yes")
         command("loadfile", url, "replace")
-        // Always start unmuted/unpaused after a skip — FILE_LOADED also fires Playing,
-        // but some CDNs delay that event and left the UI stuck needing a manual Play.
-        command("set", "pause", "no")
     }
 
     override suspend fun awaitReady() {

@@ -25,51 +25,78 @@ import androidx.compose.ui.unit.IntSize
 import com.music.vivi.player.mpv.FrameSink
 import com.music.vivi.player.mpv.MpvVideoRenderer
 import com.music.vivi.player.mpv.PixelTarget
+import com.music.vivi.compose.ui.player.canvas.CanvasResolver
+import com.music.vivi.compose.prefs.DesktopPrefs
+import com.music.vivi.compose.prefs.PrefKeys
+import com.music.vivi.compose.ui.settings.rememberPrefsVersion
+import org.koin.compose.koinInject
 import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.ImageInfo
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.swing.Swing
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.ScheduledFuture
 import kotlin.math.roundToInt
 
 /** Latest decoded canvas frame; [generation] changes on every new frame so draws invalidate. */
 @Stable
 class CanvasFrame(val image: ImageBitmap, val generation: Long)
 
-/**
- * One muted looping canvas video, shared by every composable showing the same URL
- * (cover slot, lyrics pane and blurred background decode once).
- *
- * Looping is gapless: two decoders alternate. [CROSSFADE_SEC] before the end of the active clip
- * the standby one (parked on frame 0) starts and is dissolved in over it, so the picture never
- * freezes or waits on a seek. The fade is driven by elapsed time, not by the clip reporting its
- * exact end (clips often stop a few frames short), and a watchdog guarantees the swap happens.
- */
-class CanvasVideo private constructor(val url: String) {
-    /** Frame currently on screen (the outgoing clip during a crossfade). */
-    val frame: CanvasFrame? get() = slots[active].frame
+/** A coherent frame pair: the draw pass never sees a half-finished decoder handoff. */
+@Stable
+class CanvasPresentation(val frame: CanvasFrame?, val incoming: CanvasFrame?, val blend: Float)
 
-    /** Incoming clip while crossfading, drawn over [frame] at [blend]; null otherwise. */
-    val incoming: CanvasFrame? get() = if (crossing) slots[1 - active].frame else null
-
-    var blend by mutableFloatStateOf(0f)
+/** Shared dual-decoder canvas loop. The next clip is primed before a short dissolve. */
+class CanvasVideo private constructor(val url: String, private val useGpu: Boolean, private val pingPong: Boolean) {
+    var presentation by mutableStateOf(CanvasPresentation(null, null, 0f))
         private set
-    private var crossing by mutableStateOf(false)
+    val frame: CanvasFrame? get() = presentation.frame
+    val incoming: CanvasFrame? get() = presentation.incoming
+    val blend: Float get() = presentation.blend
 
     private val lock = Any()
     private var active = 0
     private var refs = 0
     private var pauseVotes = 0
-    private val slots = arrayOf(Slot(0), Slot(1))
-
-    private var crossEpoch = 0
+    private var paused = false
+    private var crossing = false
     private var crossElapsed = 0.0
-    private var crossDuration = 0.0
+    private var crossDuration = CROSSFADE_SEC
     private var lastTickNs = 0L
+    private var ticker: ScheduledFuture<*>? = null
+    private val slots = arrayOf(Slot(0), Slot(1))
+    @Volatile internal var completedLoops = 0
+        private set
+    internal val cachedFrameCount: Int get() = synchronized(lock) { cached?.frames?.size ?: 0 }
+
+    private val cacheKey = CanvasResolver.playbackCacheKey(url)
+    private var cached = CanvasFrameCache.get(cacheKey)
+    private var timeline: CanvasFrameTimeline? = cached?.let { CanvasFrameTimeline(it.frames.size, it.interval, pingPong) }
+    private var cachePosition = 0.0
+    private val recorded = ArrayList<CanvasFrame>()
+    private val positions = ArrayList<Double>()
+    private var recordedBytes = 0L
+    private var cacheTooLarge = false
+
+    init {
+        // A cache hit must have a drawable frame during the first composition,
+        // rather than waiting for the ticker and starting a 450 ms fade-in.
+        cached?.let { clip ->
+            val sample = requireNotNull(timeline).sample(0.0)
+            presentation = CanvasPresentation(clip.frames[sample.first], clip.frames[sample.second], sample.blend)
+        }
+    }
 
     private inner class Slot(val index: Int) : FrameSink {
-        var frame by mutableStateOf<CanvasFrame?>(null)
+        var frame: CanvasFrame? = null
+        var ended = false
+        var latestBitmap: Bitmap? = null
         private val ring = arrayOfNulls<Bitmap>(3)
         private var ringW = 0
         private var ringH = 0
@@ -99,102 +126,188 @@ class CanvasVideo private constructor(val url: String) {
             val bmp = ring[writeIndex] ?: return
             bmp.notifyPixelsChanged()
             writeIndex = (writeIndex + 1) % ring.size
-            frame = CanvasFrame(bmp.asComposeImageBitmap(), ++generation)
+            synchronized(this@CanvasVideo.lock) {
+                latestBitmap = bmp
+                frame = CanvasFrame(bmp.asComposeImageBitmap(), ++generation)
+                if (cached == null) publish()
+            }
         }
 
         override fun onPosition(positionSec: Double, durationSec: Double) =
             onSlotFrame(index, positionSec, durationSec)
+
+        override fun onPlaybackEnd() = synchronized(this@CanvasVideo.lock) {
+            ended = true
+            if (index == active && !crossing) startCrossfade(CROSSFADE_SEC)
+        }
+    }
+
+    private fun publish() {
+        if (cached != null) return
+        val t = (crossElapsed / crossDuration).coerceIn(0.0, 1.0).toFloat()
+        presentation = CanvasPresentation(
+            slots[active].frame,
+            if (crossing) slots[1 - active].frame else null,
+            if (crossing) t * t * (3f - 2f * t) else 0f,
+        )
     }
 
     private fun onSlotFrame(slot: Int, pos: Double, length: Double) = synchronized(lock) {
-        if (!crossing) {
-            if (slot != active || length < 1.5) return@synchronized
-            val fade = minOf(CROSSFADE_SEC, length / 3)
-            if (pos < length - fade) return@synchronized
-            // Fade for exactly the time the outgoing clip has left.
-            crossDuration = maxOf(0.4, length - pos)
-            crossElapsed = 0.0
-            lastTickNs = System.nanoTime()
-            val epoch = ++crossEpoch
-            crossing = true
-            slots[1 - active].renderer?.setHeld(false)
-            watchdog.schedule(
-                { synchronized(lock) { if (crossing && crossEpoch == epoch) finishCrossfade() } },
-                (crossDuration * 1000).toLong() + WATCHDOG_GRACE_MS,
-                TimeUnit.MILLISECONDS,
-            )
-            return@synchronized
+        if (cached != null) return@synchronized
+        if (slot == 0 && completedLoops == 0 && !cacheTooLarge &&
+            (positions.isEmpty() || pos > positions.last() + 0.001)
+        ) {
+            slots[slot].latestBitmap?.let { bitmap ->
+                val size = bitmap.rowBytes.toLong() * bitmap.height
+                if (recordedBytes + size <= 256L * 1024 * 1024) {
+                    val copy = Bitmap().apply {
+                        check(installPixels(bitmap.imageInfo, requireNotNull(bitmap.readPixels()), bitmap.rowBytes))
+                        setImmutable()
+                    }
+                    recorded += CanvasFrame(copy.asComposeImageBitmap(), recorded.size.toLong())
+                    positions += pos
+                    recordedBytes += size
+                } else {
+                    cacheTooLarge = true
+                    recorded.clear()
+                    positions.clear()
+                    recordedBytes = 0
+                }
+            }
         }
-        // Both decoders tick us; wall time between ticks (capped, so pauses and stalls don't eat
-        // the fade) drives the dissolve.
-        val now = System.nanoTime()
-        crossElapsed += minOf((now - lastTickNs) / 1e9, 0.1)
-        lastTickNs = now
-        val t = (crossElapsed / crossDuration).coerceIn(0.0, 1.0).toFloat()
-        blend = t * t * (3f - 2f * t)
-        if (t >= 1f) finishCrossfade()
+        if (!crossing && slot == active && length.isFinite() && length > 0) {
+            val fade = minOf(CROSSFADE_SEC, length / 4)
+            if (pos >= length - fade) startCrossfade(fade)
+        }
     }
 
-    /** Caller holds [lock]. Swaps roles, or, if the standby never produced a frame, restarts in place. */
+    private fun startCrossfade(duration: Double) {
+        if (paused || refs <= 0 || slots[1 - active].frame == null) return
+        crossing = true
+        crossDuration = duration.coerceAtLeast(0.08)
+        crossElapsed = 0.0
+        lastTickNs = System.nanoTime()
+        slots[1 - active].renderer?.setHeld(false)
+        publish()
+    }
+
+    private fun tick() = synchronized(lock) {
+        val now = System.nanoTime()
+        if (!paused && refs > 0) {
+            val clip = cached
+            val clock = timeline
+            if (clip != null && clock != null) {
+                val before = kotlin.math.floor(cachePosition / clock.period).toInt()
+                cachePosition += ((now - lastTickNs) / 1e9).coerceIn(0.0, 0.1) / clip.interval
+                completedLoops += kotlin.math.floor(cachePosition / clock.period).toInt() - before
+                val sample = clock.sample(cachePosition)
+                presentation = CanvasPresentation(clip.frames[sample.first], clip.frames[sample.second], sample.blend)
+                lastTickNs = now
+                return@synchronized
+            }
+            if (!crossing && slots[active].ended) startCrossfade(CROSSFADE_SEC)
+            if (crossing) {
+                crossElapsed += ((now - lastTickNs) / 1e9).coerceIn(0.0, 0.1)
+                if (crossElapsed >= crossDuration) finishCrossfade() else publish()
+            }
+        }
+        lastTickNs = now
+    }
+
     private fun finishCrossfade() {
         val old = slots[active]
-        val next = slots[1 - active]
+        active = 1 - active
         crossing = false
-        blend = 0f
-        if (next.frame == null) {
-            old.renderer?.apply { rewind(); setHeld(false) }
-            next.renderer?.setHeld(true)
+        crossElapsed = 0.0
+        completedLoops++
+        // Publish the fully visible incoming frame before preparing the retired
+        // decoder. Its old last frame must never be used for the next dissolve.
+        publish()
+        if (!cacheTooLarge && recorded.size >= 2) {
+            val intervals = positions.zipWithNext { a, b -> b - a }.filter { it > 0.001 }.sorted()
+            val interval = (intervals.getOrNull(intervals.size / 2) ?: (1.0 / 24)).coerceIn(1.0 / 120, 0.1)
+            val clip = CachedCanvasFrames(recorded.toList(), interval, recordedBytes)
+            CanvasFrameCache.put(cacheKey, clip)
+            cached = clip
+            timeline = CanvasFrameTimeline(clip.frames.size, clip.interval, pingPong)
+            cachePosition = if (pingPong) minOf(clip.frames.lastIndex.toDouble(), CROSSFADE_SEC / interval) else 0.0
+            for (slot in slots) { slot.renderer?.close(); slot.renderer = null }
+            recorded.clear()
+            positions.clear()
             return
         }
-        active = 1 - active
+        old.frame = null
+        old.ended = false
         old.renderer?.apply { setHeld(true); rewind() }
     }
 
-    private fun acquire() {
+    private fun acquire() = synchronized(lock) {
         refs++
-        if (slots[0].renderer == null) {
-            for (slot in slots) {
-                slot.renderer = runCatching { MpvVideoRenderer(url, slot, startHeld = slot.index != active) }
+        if (ticker == null) {
+            if (cached == null) for (slot in slots) {
+                slot.renderer = runCatching { MpvVideoRenderer(url, slot, maxEdge = 512, startHeld = slot.index != active, useGpu = useGpu) }
                     .onFailure { System.err.println("CanvasVideo: ${it.message}") }
                     .getOrNull()
             }
+            lastTickNs = System.nanoTime()
+            ticker = watchdog.scheduleAtFixedRate({ tick() }, 0, 16, TimeUnit.MILLISECONDS)
         }
     }
 
-    private fun release() {
+    private fun release() = synchronized(lock) {
         refs--
         if (refs <= 0) {
+            ticker?.cancel(false)
+            ticker = null
             for (slot in slots) { slot.renderer?.close(); slot.renderer = null }
-            registry.remove(url)
+            registry.remove(DecoderKey(cacheKey, useGpu, pingPong))
         }
     }
 
-    internal fun votePaused(paused: Boolean, delta: Int) {
+    internal fun votePaused(paused: Boolean, delta: Int) = synchronized(lock) {
         if (paused) pauseVotes += delta
-        val pause = pauseVotes > 0 && pauseVotes >= refs
-        for (slot in slots) slot.renderer?.setPaused(pause)
+        this.paused = pauseVotes > 0 && pauseVotes >= refs
+        lastTickNs = System.nanoTime()
+        for (slot in slots) slot.renderer?.setPaused(this.paused)
     }
 
     companion object {
         /** How long before the end the next loop starts fading in. */
-        private const val CROSSFADE_SEC = 3.0
-        private const val WATCHDOG_GRACE_MS = 3_000L
+        private const val CROSSFADE_SEC = 0.35
         private val watchdog = Executors.newSingleThreadScheduledExecutor { r ->
             Thread(r, "canvas-loop-watchdog").apply { isDaemon = true }
         }
-        private val registry = HashMap<String, CanvasVideo>()
+        private data class DecoderKey(val identity: String, val useGpu: Boolean, val pingPong: Boolean)
+        private val registry = HashMap<DecoderKey, CanvasVideo>()
 
-        internal fun obtain(url: String): CanvasVideo =
-            registry.getOrPut(url) { CanvasVideo(url) }.also { it.acquire() }
+        internal fun obtain(url: String, useGpu: Boolean = false, pingPong: Boolean = false): CanvasVideo =
+            registry.getOrPut(DecoderKey(CanvasResolver.playbackCacheKey(url), useGpu, pingPong)) { CanvasVideo(url, useGpu, pingPong) }.also { it.acquire() }
 
         internal fun dispose(video: CanvasVideo) = video.release()
+
+        /** Predecode a pass into the same bounded cache used by visible surfaces. */
+        internal suspend fun warm(url: String, useGpu: Boolean, pingPong: Boolean) {
+            if (CanvasFrameCache.get(CanvasResolver.playbackCacheKey(url)) != null) return
+            val video = withContext(Dispatchers.Swing) { obtain(url, useGpu, pingPong) }
+            try {
+                withTimeoutOrNull(30_000) {
+                    while (video.cachedFrameCount == 0 && !video.cacheTooLarge) delay(50)
+                }
+            } finally {
+                withContext(kotlinx.coroutines.NonCancellable + Dispatchers.Swing) { dispose(video) }
+            }
+        }
     }
 }
 
 /** Subscribe to the shared canvas decoder for [url] for as long as this is composed. */
 @Composable
 fun rememberCanvasVideo(url: String, playing: Boolean): CanvasVideo {
-    val video = remember(url) { CanvasVideo.obtain(url) }
+    val prefs = koinInject<DesktopPrefs>()
+    rememberPrefsVersion(prefs)
+    val useGpu = prefs.getBoolean(PrefKeys.CanvasUseGpu, false)
+    val pingPong = prefs.getBoolean(PrefKeys.CanvasPingPong, false)
+    val video = remember(url, useGpu, pingPong) { CanvasVideo.obtain(url, useGpu, pingPong) }
     DisposableEffect(video) { onDispose { CanvasVideo.dispose(video) } }
     DisposableEffect(video, playing) {
         video.votePaused(!playing, +1)
@@ -221,16 +334,17 @@ fun CanvasVideoSurface(
     val hasFrame = video.frame != null
     val alpha by animateFloatAsState(if (hasFrame) 1f else 0f, com.music.vivi.compose.ui.motion.VisageMotion.fade(fadeInMillis), label = "canvasFade")
     if (onFirstFrame != null) {
-        LaunchedEffect(hasFrame) { if (hasFrame) onFirstFrame() }
+        LaunchedEffect(video, hasFrame) { if (hasFrame) onFirstFrame() }
     }
     Box(
         modifier
             .graphicsLayer { this.alpha = alpha }
             .drawBehind {
-                val f = video.frame ?: return@drawBehind
+                val display = video.presentation
+                val f = display.frame ?: return@drawBehind
                 drawCropped(f.image, contentScale, 1f)
-                val next = video.incoming
-                if (next != null && video.blend > 0.001f) drawCropped(next.image, contentScale, video.blend)
+                val next = display.incoming
+                if (next != null && display.blend > 0.001f) drawCropped(next.image, contentScale, display.blend)
             },
     )
 }

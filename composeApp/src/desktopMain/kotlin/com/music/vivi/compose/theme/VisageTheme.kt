@@ -34,6 +34,7 @@ data class VisageThemeState(
     val paletteStyle: M3PaletteStyle,
     /** Material contrastLevel in [-1.0, 1.0]; 0 = standard. */
     val contrastLevel: Double,
+    val fontPreset: String = "expressive",
 ) {
     fun useDarkTheme(systemDark: Boolean): Boolean = when (darkMode) {
         DarkMode.ON -> true
@@ -53,6 +54,7 @@ fun DesktopPrefs.readThemeState(): VisageThemeState = VisageThemeState(
     paletteStyle = runCatching {
         M3PaletteStyle.valueOf(getString(PrefKeys.PaletteStyle, M3PaletteStyle.TONAL_SPOT.name))
     }.getOrDefault(M3PaletteStyle.TONAL_SPOT),
+    fontPreset = getString(PrefKeys.InterfaceFont, "expressive"),
     contrastLevel = getFloat(PrefKeys.ContrastLevel, 0f).toDouble().coerceIn(-1.0, 1.0),
 )
 
@@ -209,7 +211,7 @@ fun VisageTheme(
         MaterialTheme(
             colorScheme = scheme,
             shapes = VisageExpressiveShapes,
-            typography = VisageEmphasizedTypography,
+            typography = remember(theme.fontPreset) { visageTypography(theme.fontPreset) },
             content = content,
         )
     }

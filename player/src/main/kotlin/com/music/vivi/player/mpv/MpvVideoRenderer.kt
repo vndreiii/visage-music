@@ -8,6 +8,7 @@ import com.sun.jna.Pointer
 import com.sun.jna.StringArray
 import com.sun.jna.ptr.DoubleByReference
 import com.sun.jna.ptr.PointerByReference
+import com.sun.jna.ptr.IntByReference
 import java.util.concurrent.Semaphore
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -33,6 +34,7 @@ interface FrameSink {
      * looping by cross-fading into a second renderer, so this one never seeks itself.
      */
     fun onPosition(positionSec: Double, durationSec: Double) {}
+    fun onPlaybackEnd() {}
 }
 
 /**
@@ -48,6 +50,8 @@ class MpvVideoRenderer(
     httpHeaders: Map<String, String> = emptyMap(),
     /** Start parked on the first frame until [setHeld] releases it (standby loop slot). */
     startHeld: Boolean = false,
+    /** Opt-in GPU decoding; software is the default to avoid native driver crashes. */
+    useGpu: Boolean = false,
 ) : AutoCloseable {
     private val lib = MpvLib.INSTANCE
     private val render = MpvRenderLib.INSTANCE
@@ -78,7 +82,12 @@ class MpvVideoRenderer(
         opt("loop-file", "no")
         opt("pause", if (startHeld) "yes" else "no")
         opt("keep-open", "yes")
-        opt("hwdec", "auto-copy-safe")
+        // Canvas uses mpv's software render API. Automatic hardware decoding
+        // probes Vulkan for HEVC clips and can crash the whole JVM in the driver;
+        // Java exceptions cannot catch that native SIGSEGV. Keep decoding on CPU.
+        check(lib.mpv_set_option_string(handle, "hwdec", if (useGpu) "auto-copy-safe" else "no") == 0) {
+            "Could not configure canvas decoding"
+        }
         opt("cache", "yes")
         opt("demuxer-max-bytes", "48MiB")
         // Keep the whole clip behind the playhead so the loop seek is served from memory
@@ -143,6 +152,8 @@ class MpvVideoRenderer(
         val dh = DoubleByReference()
         val tp = DoubleByReference()
         val dur = DoubleByReference()
+        val eof = IntByReference()
+        var endReported = false
         try {
             while (running.get()) {
                 wake.tryAcquire(250, TimeUnit.MILLISECONDS)
@@ -150,7 +161,18 @@ class MpvVideoRenderer(
                 wake.drainPermits()
                 if (seekToStart) {
                     seekToStart = false
-                    lib.mpv_command(handle, StringArray(arrayOf("seek", "0", "absolute", "exact")))
+                    endReported = false
+                    if (lib.mpv_command(handle, StringArray(arrayOf("seek", "0", "absolute", "exact"))) < 0) {
+                        lib.mpv_command(handle, StringArray(arrayOf("loadfile", url, "replace")))
+                    }
+                }
+                // EOF produces no more render callbacks. Poll it even when there
+                // is no new frame, so short clips / unknown-duration HLS still loop.
+                if (!held && !paused && !endReported &&
+                    lib.mpv_get_property(handle, "eof-reached", MpvLib.MPV_FORMAT_FLAG, eof) >= 0 && eof.value != 0
+                ) {
+                    endReported = true
+                    sink.onPlaybackEnd()
                 }
                 val flags = render.mpv_render_context_update(ctx)
                 if (flags and MPV_RENDER_UPDATE_FRAME == 0L) continue
@@ -175,10 +197,9 @@ class MpvVideoRenderer(
                 val rc = render.mpv_render_context_render(ctx, renderParams)
                 sink.unlock(target, rc >= 0)
 
-                if (rc >= 0 && lib.mpv_get_property(handle, "time-pos", MpvLib.MPV_FORMAT_DOUBLE, tp) >= 0 &&
-                    lib.mpv_get_property(handle, "duration", MpvLib.MPV_FORMAT_DOUBLE, dur) >= 0
-                ) {
-                    sink.onPosition(tp.value, dur.value)
+                if (rc >= 0 && lib.mpv_get_property(handle, "time-pos", MpvLib.MPV_FORMAT_DOUBLE, tp) >= 0) {
+                    val duration = if (lib.mpv_get_property(handle, "duration", MpvLib.MPV_FORMAT_DOUBLE, dur) >= 0) dur.value else 0.0
+                    sink.onPosition(tp.value, duration)
                 }
             }
         } catch (t: Throwable) {
