@@ -571,9 +571,9 @@ internal fun LikedTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    com.music.vivi.compose.ui.expressive.ExpressiveCard(
         onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
+        restRadius = 20.dp,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = modifier,
     ) {
@@ -609,9 +609,9 @@ internal fun OfflineTile(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
+    com.music.vivi.compose.ui.expressive.ExpressiveCard(
         onClick = onClick,
-        shape = RoundedCornerShape(20.dp),
+        restRadius = 20.dp,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
         modifier = modifier,
     ) {
@@ -798,9 +798,10 @@ internal fun LocalCoverCard(
     active: Boolean = false,
     onClick: () -> Unit,
 ) {
-    Surface(
+    com.music.vivi.compose.ui.expressive.ExpressiveCard(
         onClick = onClick,
-        shape = RoundedCornerShape(14.dp),
+        restRadius = 16.dp,
+        pressedRadius = 10.dp,
         color = if (active) {
             MaterialTheme.colorScheme.secondaryContainer
         } else {

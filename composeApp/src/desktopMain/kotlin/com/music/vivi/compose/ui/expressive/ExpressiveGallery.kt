@@ -59,6 +59,20 @@ fun ExpressiveGallery() {
                     ExpressiveSplitButton("Play all", {}, expanded = false, onExpandedChange = {}, leadingIcon = Icons.Filled.PlayArrow)
                     ExpressiveSplitButton("Open", {}, expanded = true, onExpandedChange = {}, style = ExpressiveStyle.Tonal, size = ExpressiveSize.Medium)
                 }
+
+        Text("Chips row (toggle buttons) and card", style = MaterialTheme.typography.titleMedium)
+        com.music.vivi.compose.ui.component.ChipsRow(
+            chips = listOf(1 to "Home", 2 to "Songs", 3 to "Albums", 4 to "Local"),
+            currentValue = 2,
+            onValueUpdate = {},
+            gutter = 0.dp,
+        )
+        ExpressiveCard(onClick = {}, modifier = Modifier.width(220.dp)) {
+            Column(Modifier.padding(16.dp)) {
+                Text("Expressive card", style = MaterialTheme.typography.titleMedium)
+                Text("Corners tighten while pressed", style = MaterialTheme.typography.bodySmall)
+            }
+        }
             }
         }
     }

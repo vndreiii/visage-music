@@ -21,6 +21,8 @@ Compose Multiplatform doesn't expose the official Expressive components on deskt
 - `ExpressiveButton(...)` — 5 sizes (`ExpressiveSize.XSmall…XLarge`), 5 styles (`ExpressiveStyle.Filled/Tonal/Outlined/Elevated/Text`), round or `square`, `selected = true/false` makes it a toggle, shape morphs on press and when toggled.
 - `ConnectedButtonGroup(options, selected, onSelect)` — replaces segmented buttons; outer corners round, inner tight, selected item is a full pill.
 - `ExpressiveSplitButton(...)` — action + chevron menu trigger.
+- `ExpressiveCard(onClick, restRadius, pressedRadius, ...)` — tappable container whose corners tighten while pressed (Library cards/tiles use it).
+- `ChipsRow` (ui/component) — filter rows built from `ExpressiveButton` toggles; the top nav chips use the same press morph.
 - Existing Expressive-style pieces: `ViviLoadingIndicator` (morphing shapes via graphics-shapes), `PlayerSeekBar` (wavy/squiggly), `ShaderBackground`.
 
 `ExpressiveGallery()` shows everything. **Adding or changing a component:** edit it, add it to the gallery, then render and look:

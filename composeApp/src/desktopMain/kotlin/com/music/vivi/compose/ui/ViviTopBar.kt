@@ -3,6 +3,7 @@ package com.music.vivi.compose.ui
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
@@ -272,7 +273,7 @@ private fun SettingsDropdownMenu(
     DropdownMenu(
         expanded = expanded,
         onDismissRequest = onDismiss,
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(24.dp),
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         DropdownMenuItem(
@@ -348,13 +349,21 @@ private fun TopNavChip(
         animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.bounce(),
         label = "navIconBounce",
     )
+    val interaction = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    // Expressive press morph: the pill tightens while held and springs back.
+    val radius by androidx.compose.animation.core.animateDpAsState(
+        if (pressed) 12.dp else 22.dp,
+        com.music.vivi.compose.ui.motion.ViviMotion.spatialFast(),
+        label = "navChipRadius",
+    )
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         modifier = Modifier
-            .clip(CircleShape)
+            .clip(androidx.compose.foundation.shape.RoundedCornerShape(radius))
             .background(bg)
-            .clickable(onClick = onClick)
+            .clickable(interactionSource = interaction, indication = androidx.compose.foundation.LocalIndication.current, onClick = onClick)
             .padding(
                 horizontal = when (style) {
                     TopNavStyle.ICON_ONLY -> 12.dp

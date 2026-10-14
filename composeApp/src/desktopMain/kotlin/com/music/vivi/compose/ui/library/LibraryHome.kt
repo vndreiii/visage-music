@@ -287,7 +287,7 @@ private fun MixCard(mix: LibraryMix, onClick: () -> Unit) {
     val covers = remember(mix.tracks) {
         mix.tracks.mapNotNull { it.cover_path }.distinct().take(4)
     }
-    Surface(onClick = onClick, shape = RoundedCornerShape(24.dp), modifier = Modifier.size(176.dp)) {
+    com.music.vivi.compose.ui.expressive.ExpressiveCard(onClick = onClick, restRadius = 24.dp, pressedRadius = 14.dp, modifier = Modifier.size(176.dp)) {
         Box(Modifier.fillMaxSize().background(tint)) {
             if (covers.isNotEmpty()) {
                 val cells = if (covers.size >= 4) covers else List(4) { covers[it % covers.size] }
@@ -330,7 +330,7 @@ private fun LabelCard(
     icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Outlined.MusicNote,
     onClick: () -> Unit,
 ) {
-    Surface(onClick = onClick, shape = RoundedCornerShape(22.dp), modifier = Modifier.width(168.dp).height(92.dp)) {
+    com.music.vivi.compose.ui.expressive.ExpressiveCard(onClick = onClick, restRadius = 22.dp, pressedRadius = 12.dp, modifier = Modifier.width(168.dp).height(92.dp)) {
         Box(
             Modifier.fillMaxSize().background(
                 Brush.linearGradient(listOf(tint, tint.copy(red = tint.red * 0.55f, green = tint.green * 0.55f, blue = tint.blue * 0.7f))),

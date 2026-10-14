@@ -12,7 +12,7 @@ import kotlin.test.assertTrue
 class ExpressiveGalleryTest {
     @Test
     fun rendersGallery() {
-        val scene = ImageComposeScene(width = 1000, height = 900, density = Density(1.5f)) { ExpressiveGallery() }
+        val scene = ImageComposeScene(width = 1000, height = 1150, density = Density(1.5f)) { ExpressiveGallery() }
         try {
             var image = scene.render(0L)
             // Let the spring-driven shapes settle.

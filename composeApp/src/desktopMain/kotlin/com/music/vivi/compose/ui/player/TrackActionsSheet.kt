@@ -180,7 +180,7 @@ fun TrackActionsMenu(
                 exit = ViviMotion.menuExit(MenuTransformOrigin),
             ) {
                 Surface(
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(28.dp),
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                     tonalElevation = 8.dp,
                     shadowElevation = 0.dp,
