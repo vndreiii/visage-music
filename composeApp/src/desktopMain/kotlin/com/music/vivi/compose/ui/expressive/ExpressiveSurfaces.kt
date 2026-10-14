@@ -16,7 +16,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.music.vivi.compose.ui.motion.ViviMotion
+import com.music.vivi.compose.ui.motion.VisageMotion
 
 /**
  * Clickable card whose corners tighten while pressed and spring back (the Expressive shape morph),
@@ -36,8 +36,8 @@ fun ExpressiveCard(
 ) {
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
-    val radius by animateDpAsState(if (pressed) pressedRadius else restRadius, ViviMotion.spatialFast(), label = "cardRadius")
-    val scale by animateFloatAsState(if (pressed) 0.98f else 1f, ViviMotion.spatialFast(), label = "cardScale")
+    val radius by animateDpAsState(if (pressed) pressedRadius else restRadius, VisageMotion.spatialFast(), label = "cardRadius")
+    val scale by animateFloatAsState(if (pressed) 0.98f else 1f, VisageMotion.spatialFast(), label = "cardScale")
     Surface(
         onClick = onClick,
         enabled = enabled,

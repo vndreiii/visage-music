@@ -26,7 +26,7 @@ object AppLog {
         val dir = logDir()
         val file = runCatching {
             dir.mkdirs()
-            File(dir, "vivi-${SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())}.log").also { pruneOld(dir) }
+            File(dir, "visage-${SimpleDateFormat("yyyyMMdd-HHmmss", Locale.ROOT).format(Date())}.log").also { pruneOld(dir) }
         }.getOrNull()
         logFile = file
         val writer = file?.let { runCatching { it.bufferedWriter() }.getOrNull() }
@@ -34,17 +34,13 @@ object AppLog {
         System.setErr(PrintStream(Tee(System.err, writer, stderr = true), true, Charsets.UTF_8))
     }
 
-    fun logDir(): File {
-        val state = System.getenv("XDG_STATE_HOME")?.takeIf { it.isNotBlank() }
-            ?: File(System.getProperty("user.home"), ".local/state").path
-        return File(state, "vivi-desktop/logs")
-    }
+    fun logDir(): File = File(com.music.vivi.nativelib.AppPaths.state(), "logs")
 
     /** The most recent [lines] log lines, oldest first. */
     fun snapshot(lines: Int = 300): String = synchronized(lock) { tail.toList().takeLast(lines).joinToString("\n") }
 
     private fun pruneOld(dir: File) {
-        dir.listFiles { f -> f.name.startsWith("vivi-") && f.name.endsWith(".log") }
+        dir.listFiles { f -> (f.name.startsWith("visage-") || f.name.startsWith("vivi-")) && f.name.endsWith(".log") }
             ?.sortedByDescending { it.name }
             ?.drop(KEEP_FILES - 1)
             ?.forEach { runCatching { it.delete() } }

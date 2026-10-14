@@ -13,7 +13,7 @@ dependencyResolutionManagement {
         maven("https://jcenter.bintray.com/")
     }
 }
-rootProject.name = "vivi-desktop"
+rootProject.name = "visage"
 include(":innertube")
 include(":lyrics")
 include(":jiosaavn")

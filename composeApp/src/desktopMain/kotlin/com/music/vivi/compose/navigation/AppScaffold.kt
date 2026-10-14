@@ -44,7 +44,7 @@ import com.music.vivi.compose.ui.LoginGateScreen
 import com.music.vivi.compose.ui.MiniPlayerBar
 import com.music.vivi.compose.ui.PlaceholderScreen
 import com.music.vivi.compose.ui.SmokePlaybackScreen
-import com.music.vivi.compose.ui.ViviTopBar
+import com.music.vivi.compose.ui.VisageTopBar
 import com.music.vivi.compose.ui.resolveMiniPlayerStyle
 import com.music.vivi.compose.ui.album.OnlineAlbumScreen
 import com.music.vivi.compose.ui.artist.ArtistScreen
@@ -117,7 +117,7 @@ fun FrameWindowScope.AppScaffold(
         val hideTopBar =
             current == Routes.NOW_PLAYING_FULLSCREEN || osFullscreen
         if (!hideTopBar) {
-            ViviTopBar(
+            VisageTopBar(
                 destinations = Routes.mainDestinations,
                 currentRoute = current,
                 onNavigate = { route -> navigateMain(navController, route) },
@@ -156,7 +156,7 @@ fun FrameWindowScope.AppScaffold(
                     val bandColor = MaterialTheme.colorScheme.background
                     val miniStyle = resolveMiniPlayerStyle(prefs)
                     Box(Modifier.weight(1f).fillMaxSize()) {
-                        ViviNavHost(
+                        VisageNavHost(
                             navController = navController,
                             startDestination = if (sessionManager.isLoggedIn()) Routes.HOME else Routes.LIBRARY,
                             onOpenPinnedQueue = { openPinnedQueue() },
@@ -234,7 +234,7 @@ fun navigateMain(navController: NavHostController, route: String) {
 }
 
 @Composable
-fun ViviNavHost(
+fun VisageNavHost(
     navController: NavHostController,
     startDestination: String = Routes.HOME,
     modifier: Modifier = Modifier,
@@ -245,10 +245,10 @@ fun ViviNavHost(
         navController = navController,
         startDestination = startDestination,
         modifier = modifier,
-        enterTransition = viviEnterTransition,
-        exitTransition = viviExitTransition,
-        popEnterTransition = viviPopEnterTransition,
-        popExitTransition = viviPopExitTransition,
+        enterTransition = visageEnterTransition,
+        exitTransition = visageExitTransition,
+        popEnterTransition = visagePopEnterTransition,
+        popExitTransition = visagePopExitTransition,
     ) {
         composable(Routes.HOME) { HomeScreen(navController) }
         composable(Routes.SEARCH) { SearchScreen(navController) }

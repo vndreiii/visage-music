@@ -46,7 +46,7 @@ fun SmokePlaybackScreen() {
     Column(
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text("VIVI Desktop", style = MaterialTheme.typography.headlineMedium)
+        Text("VIsage", style = MaterialTheme.typography.headlineMedium)
         Text(
             if (sessionManager.isLoggedIn()) {
                 "Signed in as ${account ?: "unknown"}"

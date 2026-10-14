@@ -57,7 +57,7 @@ interface MpvLib : Library {
                 CLib.INSTANCE.setlocale(CLib.LC_NUMERIC, "C")
             }
             val candidates = listOf(
-                System.getenv("VIVI_LIBMPV"),
+                com.music.vivi.nativelib.AppEnv.get("LIBMPV"),
                 "mpv",
                 "libmpv.so.2",
                 "/usr/lib/libmpv.so.2",

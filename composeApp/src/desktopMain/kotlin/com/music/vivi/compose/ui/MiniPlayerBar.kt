@@ -64,7 +64,7 @@ import com.music.vivi.compose.prefs.MiniPlayerStyle
 import com.music.vivi.compose.prefs.PlayerBackgroundStyle
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.compose.ui.component.PlayPauseIcon
-import com.music.vivi.compose.ui.component.ViviLoadingIndicator
+import com.music.vivi.compose.ui.component.VisageLoadingIndicator
 import com.music.vivi.compose.ui.player.AudioOutputSheet
 import com.music.vivi.compose.ui.player.background.MiniPlayerBackgroundLayer
 import com.music.vivi.player.PlaybackState
@@ -265,7 +265,7 @@ fun MiniPlayerBar(
                                     modifier = Modifier.fillMaxSize(),
                                 )
                                 if (loading) {
-                                    ViviLoadingIndicator(
+                                    VisageLoadingIndicator(
                                         modifier = Modifier.size(22.dp),
                                         size = 22.dp,
                                         color = Color.White,

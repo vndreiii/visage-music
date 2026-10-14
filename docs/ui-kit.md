@@ -2,7 +2,7 @@
 
 Everything reusable about how the app looks and moves. Change things **here**, not at call sites.
 
-## Motion — `ui/motion/ViviMotion.kt`
+## Motion — `ui/motion/VisageMotion.kt`
 One object holds every animation spec; nothing in the UI should call `spring(...)`/`tween(...)` directly.
 
 | Token | Use |
@@ -23,7 +23,7 @@ Compose Multiplatform doesn't expose the official Expressive components on deskt
 - `ExpressiveSplitButton(...)` — action + chevron menu trigger.
 - `ExpressiveCard(onClick, restRadius, pressedRadius, ...)` — tappable container whose corners tighten while pressed (Library cards/tiles use it).
 - `ChipsRow` (ui/component) — filter rows built from `ExpressiveButton` toggles; the top nav chips use the same press morph.
-- Existing Expressive-style pieces: `ViviLoadingIndicator` (morphing shapes via graphics-shapes), `PlayerSeekBar` (wavy/squiggly), `ShaderBackground`.
+- Existing Expressive-style pieces: `VisageLoadingIndicator` (morphing shapes via graphics-shapes), `PlayerSeekBar` (wavy/squiggly), `ShaderBackground`.
 
 `ExpressiveGallery()` shows everything. **Adding or changing a component:** edit it, add it to the gallery, then render and look:
 

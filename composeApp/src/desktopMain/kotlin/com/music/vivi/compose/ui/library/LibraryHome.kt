@@ -55,7 +55,7 @@ import com.music.vivi.database.LocalMusicRepository
 import com.music.vivi.database.Local_album
 import com.music.vivi.database.Local_artist
 import com.music.vivi.database.Local_track
-import com.music.vivi.compose.ui.motion.ViviMotion
+import com.music.vivi.compose.ui.motion.VisageMotion
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically

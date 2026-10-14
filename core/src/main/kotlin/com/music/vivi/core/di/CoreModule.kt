@@ -9,14 +9,14 @@ import com.music.vivi.database.LibraryRepository
 import com.music.vivi.database.LocalMusicRepository
 import com.music.vivi.database.LocalMusicScanner
 import com.music.vivi.database.PlayHistoryRepository
-import com.music.vivi.database.ViviDatabase
+import com.music.vivi.database.VisageDatabase
 import org.koin.dsl.module
 
 val coreModule = module {
     single<SessionManager> { KeyringSessionManager() }
     single { YouTubeMusicService(get()) }
     single<app.cash.sqldelight.db.SqlDriver> { DatabaseFactory.createDriver() }
-    single<ViviDatabase> { ViviDatabase(get()) }
+    single<VisageDatabase> { VisageDatabase(get()) }
     single { LibraryRepository(get()) }
     single { PlayHistoryRepository(get()) }
     single { DownloadedTrackRepository(get()) }

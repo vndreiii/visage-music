@@ -6,7 +6,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * Desktop prefs using the same string keys as upstream [PreferenceKeys]
- * so cherry-picks stay easy. Stored at ~/.config/vivi-desktop/settings.properties
+ * so cherry-picks stay easy. Stored at ~/.config/visage/settings.properties
  */
 class DesktopPrefs(
     private val file: File = defaultFile(),
@@ -65,7 +65,7 @@ class DesktopPrefs(
         val target = file.absoluteFile
         val temporary = File.createTempFile("settings-", ".tmp", target.parentFile)
         try {
-            temporary.outputStream().use { props.store(it, "vivi-desktop settings") }
+            temporary.outputStream().use { props.store(it, "VIsage settings") }
             try {
                 java.nio.file.Files.move(temporary.toPath(), target.toPath(), java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING)
             } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
@@ -77,12 +77,7 @@ class DesktopPrefs(
     }
 
     companion object {
-        fun defaultFile(): File {
-            val home = System.getenv("XDG_CONFIG_HOME")
-                ?.takeIf { it.isNotBlank() }
-                ?: (System.getProperty("user.home") + "/.config")
-            return File(home, "vivi-desktop/settings.properties")
-        }
+        fun defaultFile(): File = File(com.music.vivi.nativelib.AppPaths.config(), "settings.properties")
     }
 }
 

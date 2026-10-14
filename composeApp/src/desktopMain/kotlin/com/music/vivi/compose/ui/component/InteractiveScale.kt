@@ -29,7 +29,7 @@ fun Modifier.interactiveScale(
             hovered -> hoveredScale
             else -> 1f
         },
-        animationSpec = if (pressed) com.music.vivi.compose.ui.motion.ViviMotion.pressDown() else com.music.vivi.compose.ui.motion.ViviMotion.press(),
+        animationSpec = if (pressed) com.music.vivi.compose.ui.motion.VisageMotion.pressDown() else com.music.vivi.compose.ui.motion.VisageMotion.press(),
         label = "interactiveScale",
     )
     this

@@ -4,7 +4,7 @@ package com.music.vivi.database
  * App-managed offline downloads (yt-dlp saves into the managed offline dir).
  */
 class DownloadedTrackRepository(
-    private val db: ViviDatabase,
+    private val db: VisageDatabase,
 ) {
     fun upsert(
         videoId: String,

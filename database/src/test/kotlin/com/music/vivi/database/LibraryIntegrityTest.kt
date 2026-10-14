@@ -8,10 +8,10 @@ import java.nio.file.Files
 import kotlin.test.*
 
 class LibraryIntegrityTest {
-    private fun database(block: (ViviDatabase) -> Unit) {
+    private fun database(block: (VisageDatabase) -> Unit) {
         val directory = Files.createTempDirectory("vivi-db-test").toFile()
         val driver = DatabaseFactory.createDriver(directory.resolve("library.db"))
-        try { block(ViviDatabase(driver)) } finally { driver.close(); directory.deleteRecursively() }
+        try { block(VisageDatabase(driver)) } finally { driver.close(); directory.deleteRecursively() }
     }
 
     private fun LocalMusicRepository.track(id: String, album: String = "album", count: Long = 0) {

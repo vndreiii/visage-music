@@ -25,7 +25,7 @@ enum class CanvasSource {
 }
 
 /**
- * Resolve Apple/Tidal/Vivi canvas animation URLs (cover slot, lyrics pane and the Apple Music background).
+ * Resolve Apple/Tidal/Visage canvas animation URLs (cover slot, lyrics pane and the Apple Music background).
  */
 object CanvasResolver {
     private val cache = ConcurrentHashMap<String, CanvasArtwork>()

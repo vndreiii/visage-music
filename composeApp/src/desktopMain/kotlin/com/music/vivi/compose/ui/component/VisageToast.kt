@@ -16,7 +16,7 @@ import androidx.compose.ui.window.PopupProperties
 import kotlinx.coroutines.delay
 
 @Composable
-fun ViviToast(
+fun VisageToast(
     message: String?,
     onDismiss: () -> Unit,
     durationMs: Long = 2_200,

@@ -224,7 +224,7 @@ fun SettingsHubScreen(navController: NavController) {
         }
 
         Text(
-            "VIVI Desktop — Linux port of VIVI Music",
+            "VIsage — Linux port of VIVI Music",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 20.dp),
@@ -347,9 +347,9 @@ fun ThemeSettingsScreen(navController: NavController) {
                 icon = Icons.Outlined.Wallpaper,
                 title = "Matugen wallpaper colors",
                 subtitle = if (matugenReady) {
-                    "Use ~/.cache/matugen/vivi-desktop.colors"
+                    "Use ~/.cache/matugen/visage.colors"
                 } else {
-                    "Run matugen with the vivi-desktop template first"
+                    "Run matugen with the visage template first"
                 },
                 checked = matugenOn,
                 onChecked = { prefs.setBoolean(PrefKeys.MatugenTheme, it) },
@@ -406,7 +406,7 @@ private fun PaletteGrid(
             val isSelected = entry == selected
             val container by animateColorAsState(
                 if (isSelected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
-                com.music.vivi.compose.ui.motion.ViviMotion.settle(),
+                com.music.vivi.compose.ui.motion.VisageMotion.settle(),
                 label = "paletteTile",
             )
             Surface(
@@ -651,7 +651,7 @@ fun PlayerSettingsScreen(navController: NavController) {
     val prefs = koinInject<DesktopPrefs>()
     @Suppress("UNUSED_VARIABLE")
     val observe = rememberPrefsVersion(prefs)
-    val saavn = prefs.getBoolean(PrefKeys.SaavnEnabled, System.getenv("VIVI_SAAVN") != "0")
+    val saavn = prefs.getBoolean(PrefKeys.SaavnEnabled, com.music.vivi.nativelib.AppEnv.get("SAAVN") != "0")
 
     SettingsPage(title = "Playback & audio", onBack = { navController.navigateUp() }) {
         SettingsSection("Stream") {

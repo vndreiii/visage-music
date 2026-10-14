@@ -9,15 +9,15 @@ import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
 import java.io.File
 
-/** Raw C ABI of `native/vivi-native` (see `native/vivi-native/src/lib.rs`). */
+/** Raw C ABI of `native/visage-native` (see `native/visage-native/src/lib.rs`). */
 @Suppress("FunctionName")
-internal interface ViviNativeLib : Library {
-    fun vivi_native_version(): Pointer?
-    fun vivi_free_string(p: Pointer?)
-    fun vivi_scan(request: String): Pointer?
-    fun vivi_search_new(items: String): Long
-    fun vivi_search_query(handle: Long, query: String, limit: Int): Pointer?
-    fun vivi_search_free(handle: Long)
+internal interface VisageNativeLib : Library {
+    fun visage_native_version(): Pointer?
+    fun visage_free_string(p: Pointer?)
+    fun visage_scan(request: String): Pointer?
+    fun visage_search_new(items: String): Long
+    fun visage_search_query(handle: Long, query: String, limit: Int): Pointer?
+    fun visage_search_free(handle: Long)
 }
 
 @Serializable
@@ -83,18 +83,18 @@ private data class SearchItem(val id: String, val text: String)
 object NativeHelpers {
     private val json = Json { ignoreUnknownKeys = true }
 
-    private val lib: ViviNativeLib? by lazy { com.music.vivi.nativelib.NativeLibLoader.load(ViviNativeLib::class.java) }
+    private val lib: VisageNativeLib? by lazy { com.music.vivi.nativelib.NativeLibLoader.load(VisageNativeLib::class.java) }
 
     val available: Boolean get() = lib != null
 
-    fun version(): String? = lib?.let { l -> take(l, l.vivi_native_version()) }
+    fun version(): String? = lib?.let { l -> take(l, l.visage_native_version()) }
 
-    private fun take(l: ViviNativeLib, p: Pointer?): String? {
+    private fun take(l: VisageNativeLib, p: Pointer?): String? {
         p ?: return null
         return try {
             p.getString(0, "UTF-8")
         } finally {
-            l.vivi_free_string(p)
+            l.visage_free_string(p)
         }
     }
 
@@ -108,7 +108,7 @@ object NativeHelpers {
             ScanRequest.serializer(),
             ScanRequest(roots.map { it.absolutePath }, coversDir.absolutePath, known),
         )
-        val raw = take(l, l.vivi_scan(request)) ?: return null
+        val raw = take(l, l.visage_scan(request)) ?: return null
         val result = runCatching { json.decodeFromString(NativeScanResult.serializer(), raw) }.getOrNull()
         return result?.takeIf { it.error == null }
     }
@@ -120,25 +120,25 @@ object NativeHelpers {
             ListSerializer(SearchItem.serializer()),
             items.map { SearchItem(it.first, it.second) },
         )
-        val handle = l.vivi_search_new(payload)
+        val handle = l.visage_search_new(payload)
         return if (handle == 0L) null else NativeSearchIndex(l, handle, json)
     }
 }
 
 class NativeSearchIndex internal constructor(
-    private val lib: ViviNativeLib,
+    private val lib: VisageNativeLib,
     private val handle: Long,
     private val json: Json,
 ) : AutoCloseable {
     fun query(text: String, limit: Int = 50): List<String> {
-        val p = lib.vivi_search_query(handle, text, limit) ?: return emptyList()
+        val p = lib.visage_search_query(handle, text, limit) ?: return emptyList()
         val raw = try {
             p.getString(0, "UTF-8")
         } finally {
-            lib.vivi_free_string(p)
+            lib.visage_free_string(p)
         }
         return runCatching { json.decodeFromString(ListSerializer(String.serializer()), raw) }.getOrDefault(emptyList())
     }
 
-    override fun close() = lib.vivi_search_free(handle)
+    override fun close() = lib.visage_search_free(handle)
 }

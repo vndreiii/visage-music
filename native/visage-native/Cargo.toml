@@ -1,11 +1,11 @@
 [package]
-name = "vivi-native"
+name = "visage-native"
 version = "0.1.0"
 edition = "2021"
-description = "Native helpers for VIVI Desktop: parallel library scan, tag cache, fuzzy search"
+description = "Native helpers for VIsage: parallel library scan, tag cache, fuzzy search"
 
 [lib]
-name = "vivi_native"
+name = "visage_native"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]

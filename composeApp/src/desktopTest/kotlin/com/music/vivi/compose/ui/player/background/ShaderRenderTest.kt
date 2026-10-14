@@ -69,7 +69,7 @@ class ShaderRenderTest {
 
     @Test
     fun everyShaderCompilesRendersAndAnimates() {
-        val out = System.getenv("VIVI_SHADER_OUT")?.let { File(it).apply { mkdirs() } }
+        val out = com.music.vivi.nativelib.AppEnv.get("SHADER_OUT")?.let { File(it).apply { mkdirs() } }
         for (kind in BackgroundShader.entries) {
             val a = render(kind, 3f)
             val b = render(kind, 9f)

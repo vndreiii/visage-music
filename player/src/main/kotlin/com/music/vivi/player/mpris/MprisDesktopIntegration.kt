@@ -4,11 +4,11 @@ import java.io.File
 
 /**
  * Installs a Freedesktop desktop entry + hicolor icon so MPRIS clients
- * (QuickShell, playerctl UIs, etc.) can resolve DesktopEntry=vivi-desktop.
+ * (QuickShell, playerctl UIs, etc.) can resolve DesktopEntry=visage.
  */
 object MprisDesktopIntegration {
-    const val DESKTOP_ID = "vivi-desktop"
-    private const val ICON_RESOURCE = "/mpris/vivi-desktop.png"
+    const val DESKTOP_ID = "visage"
+    private const val ICON_RESOURCE = "/mpris/visage.png"
 
     fun ensureInstalled() {
         runCatching {
@@ -34,18 +34,21 @@ object MprisDesktopIntegration {
 
             val apps = File(dataHome, "applications")
             apps.mkdirs()
+            // Remove the launcher this app generated before the rename (only if it is ours), so the
+            // menu doesn't show both "VIVI Desktop" and "VIsage".
+            File(apps, "vivi-desktop.desktop").takeIf { it.isFile && "Name=VIVI Desktop" in it.readText() }?.delete()
             val desktop = File(apps, "$DESKTOP_ID.desktop")
             val body = """
                 |[Desktop Entry]
                 |Type=Application
-                |Name=VIVI Desktop
+                |Name=VIsage
                 |GenericName=Music Player
-                |Comment=VIVI Music for Linux
-                |Exec=vivi-desktop
+                |Comment=VIsage — music for Linux
+                |Exec=visage
                 |Icon=$DESKTOP_ID
                 |Terminal=false
                 |Categories=AudioVideo;Audio;Player;
-                |StartupWMClass=com.music.vivi.alex
+                |StartupWMClass=visage
                 |StartupNotify=false
                 |
             """.trimMargin()

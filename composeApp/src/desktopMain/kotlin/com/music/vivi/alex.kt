@@ -77,12 +77,20 @@ val desktopModule = module {
 }
 
 /**
- * App entry — JVM class name is [com.music.vivi.alex] (WM_CLASS / Hyprland class).
+ * App entry — window class (WM_CLASS / Hyprland class) is "visage"; the JVM main class stays com.music.vivi.alex.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
     // Prefer this as Wayland app_id / X11 WM_CLASS where the toolkit honors it
-    System.setProperty("awt.appClassName", "com.music.vivi.alex")
+    System.setProperty("awt.appClassName", "visage")
+    // The JDK ignores that property on X11 and derives WM_CLASS from the main class; set the toolkit's
+    // field directly (needs --add-opens java.desktop/sun.awt.X11, already in the run args).
+    runCatching {
+        val toolkit = java.awt.Toolkit.getDefaultToolkit()
+        if (toolkit.javaClass.name == "sun.awt.X11.XToolkit") {
+            toolkit.javaClass.getDeclaredField("awtAppClassName").apply { isAccessible = true }.set(toolkit, "visage")
+        }
+    }
     // Before any Jaudiotagger class loads (local scan is very chatty otherwise).
     System.setProperty("org.jaudiotagger.level", "OFF")
     runCatching {
@@ -103,7 +111,7 @@ fun main() {
     }
     AppLog.install()
     CrashReporter.install()
-    if (System.getenv("VIVI_DEBUG_CRASH_WINDOW") == "1") {
+    if (com.music.vivi.nativelib.AppEnv.get("DEBUG_CRASH_WINDOW") == "1") {
         // Developer aid: open only the standalone error window with a sample report.
         CrashReporter.record("main", IllegalStateException("Sample error (VIVI_DEBUG_CRASH_WINDOW=1)"), fatal = true)
         CrashReporter.current.value?.let { showFatalCrashWindow(it) }
@@ -154,7 +162,7 @@ private fun runApp() {
                 onCloseRequest = closeApp,
                 state = windowState,
                 undecorated = true,
-                title = "VIVI Desktop",
+                title = "VIsage",
             ) {
                 App(
                     windowState = windowState,

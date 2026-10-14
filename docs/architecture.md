@@ -1,4 +1,4 @@
-# vivi-desktop — Architecture
+# VIsage — Architecture
 
 Canonical architecture for agents and humans. Session changelog lives in [`summary.md`](summary.md). UX audit / M3E backlog: [`UI-UX-enbetterment.md`](UI-UX-enbetterment.md).
 
@@ -61,7 +61,7 @@ Gradle: Kotlin **2.3.10**, JVM **21**, Compose Multiplatform **1.10.2**, Koin (n
 
 1. `:desktop` opens Chromium (`--app=…`) against Google → music.youtube.com.
 2. CDP scrapes cookies, `visitorData`, `dataSyncId`.
-3. Session validated via Innertube `accountInfo`, stored with **java-keyring** (Secret Service): service `vivi-desktop`, accounts `yt-music-session` / `yt-music-account`.
+3. Session validated via Innertube `accountInfo`, stored with **java-keyring** (Secret Service): service `visage`, accounts `yt-music-session` / `yt-music-account`.
 4. `YtMusicSession.applyToYouTube()` sets the global `YouTube` singleton used by Innertube.
 5. `:core`’s `KeyringSessionManager` reloads that session for Compose / player.
 
@@ -78,7 +78,7 @@ On `playVideo` / `playQueue`:
 1. **Stream resolve** (`StreamResolver`): prefer **JioSaavn** when enabled (`VIVI_SAAVN=0` to disable) → else Innertube / NewPipe → **yt-dlp** on 403 → last resorts.
 2. **libmpv** via JNA (`libmpv.so`; `LC_NUMERIC=C` / setlocale for mpv).
 3. **Queue + radio:** `playQueue` / in-queue jumps keep history, then `expandQueueFromRadio(..., replaceUpcoming = true)`. EOF advances on a coroutine — never `requestIndex` / `halt` on the mpv-events thread.
-4. **Artwork** under `~/.cache/vivi-desktop/art/` as `file://` URLs.
+4. **Artwork** under `~/.cache/visage/art/` as `file://` URLs.
 5. **MPRIS** bus `org.mpris.MediaPlayer2.vivi`.
 6. **Favourite** → Innertube `YouTube.likeVideo` / unlike.
 
@@ -105,7 +105,7 @@ On `playVideo` / `playQueue`:
 - `startKoin { modules(coreModule, desktopModule) }`
 - `CompositionLocalProvider(LocalPlaybackController provides controller)`
 - Screens: `LocalPlaybackController.current` / `koinInject<…>()`
-- Prefs: `DesktopPrefs` (`~/.config/vivi-desktop/settings.properties`) + listeners / `rememberPrefsVersion` for immediate Settings recomposition
+- Prefs: `DesktopPrefs` (`~/.config/visage/settings.properties`) + listeners / `rememberPrefsVersion` for immediate Settings recomposition
 
 ### Not in the stack yet
 

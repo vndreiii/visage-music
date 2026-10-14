@@ -715,7 +715,7 @@ class DefaultPlaybackController(
                 "Stream source=${resolved.source} for $videoId " +
                     "headers=${resolved.httpHeaders.keys} urlLen=${resolved.streamUrl.length}",
             )
-            if (System.getenv("VIVI_DUMP_STREAM") == "1") {
+            if (com.music.vivi.nativelib.AppEnv.get("DUMP_STREAM") == "1") {
                 runCatching {
                     java.io.File("/tmp/vivi-stream.url").writeText(resolved.streamUrl)
                     java.io.File("/tmp/vivi-stream.headers").writeText(

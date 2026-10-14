@@ -12,7 +12,7 @@ import java.util.LinkedHashMap
 import kotlinx.serialization.json.put
 
 /**
- * Exports org.mpris.MediaPlayer2.vivi on the session bus.
+ * Exports org.mpris.MediaPlayer2.visage on the session bus.
  *
  * D-Bus interfaces must be **public top-level** types — dbus-java reflects them from
  * another classloader context; private nested interfaces make Play/Pause/Next fail with
@@ -240,7 +240,7 @@ class MprisService(
                     "CanSetFullscreen" to Variant(false),
                     "CanRaise" to Variant(true),
                     "HasTrackList" to Variant(false),
-                    "Identity" to Variant("VIVI Desktop"),
+                    "Identity" to Variant("VIsage"),
                     "DesktopEntry" to Variant(MprisDesktopIntegration.DESKTOP_ID),
                     "SupportedUriSchemes" to Variant(listOf("https", "http"), "as"),
                     "SupportedMimeTypes" to Variant(
@@ -307,7 +307,7 @@ class MprisService(
     }
 
     companion object {
-        val BUS_NAME = "org.mpris.MediaPlayer2.vivi.instance${ProcessHandle.current().pid()}"
+        val BUS_NAME = "org.mpris.MediaPlayer2.visage.instance${ProcessHandle.current().pid()}"
         const val OBJECT_PATH = "/org/mpris/MediaPlayer2"
         private const val IFACE_ROOT = "org.mpris.MediaPlayer2"
         private const val IFACE_PLAYER = "org.mpris.MediaPlayer2.Player"

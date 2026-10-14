@@ -70,7 +70,7 @@ object SaavnStreamResolver {
     }
 
     fun defaultEnabled(): Boolean {
-        val env = System.getenv("VIVI_SAAVN")?.lowercase()
+        val env = com.music.vivi.nativelib.AppEnv.get("SAAVN")?.lowercase()
         return when (env) {
             "0", "false", "off", "no" -> false
             else -> true // default on: upstream often uses Saavn for audio

@@ -86,7 +86,7 @@ import com.music.vivi.compose.LocalPlaybackController
 import com.music.vivi.compose.download.TrackDownloadService
 import com.music.vivi.compose.navigation.Routes
 import com.music.vivi.compose.ui.component.ChipsRow
-import com.music.vivi.compose.ui.component.ViviLoadingIndicator
+import com.music.vivi.compose.ui.component.VisageLoadingIndicator
 import com.music.vivi.compose.ui.component.YouTubeGridItem
 import com.music.vivi.compose.ui.component.YouTubeListItem
 import com.music.vivi.compose.ui.component.horizontalWheelScroll
@@ -471,7 +471,7 @@ fun LibraryScreen(navController: NavController) {
         }
         AnimatedContent(
             targetState = tab,
-            transitionSpec = { fadeIn(com.music.vivi.compose.ui.motion.ViviMotion.fadeInSpec()) togetherWith fadeOut(com.music.vivi.compose.ui.motion.ViviMotion.fadeOutSpec()) },
+            transitionSpec = { fadeIn(com.music.vivi.compose.ui.motion.VisageMotion.fadeInSpec()) togetherWith fadeOut(com.music.vivi.compose.ui.motion.VisageMotion.fadeOutSpec()) },
             label = "libraryTab",
             modifier = Modifier.weight(1f),
         ) { selectedTab ->

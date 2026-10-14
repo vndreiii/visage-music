@@ -57,7 +57,7 @@ import kotlinx.coroutines.launch
  * a Canvas/Morph port of that animation using [androidx.graphics.shapes].
  */
 @Composable
-fun ViviLoadingIndicator(
+fun VisageLoadingIndicator(
     modifier: Modifier = Modifier,
     size: Dp = 40.dp,
     color: Color = MaterialTheme.colorScheme.primary,
@@ -78,7 +78,7 @@ fun ViviLoadingIndicator(
     LaunchedEffect(Unit) {
         launch {
             val morphAnimationSpec =
-                com.music.vivi.compose.ui.motion.ViviMotion.morph<Float>()
+                com.music.vivi.compose.ui.motion.VisageMotion.morph<Float>()
             while (true) {
                 val deferred = async {
                     val animationResult =
@@ -102,7 +102,7 @@ fun ViviLoadingIndicator(
                 targetValue = FullRotation,
                 animationSpec =
                     infiniteRepeatable(
-                        com.music.vivi.compose.ui.motion.ViviMotion.linear(GlobalRotationDurationMillis),
+                        com.music.vivi.compose.ui.motion.VisageMotion.linear(GlobalRotationDurationMillis),
                         repeatMode = RepeatMode.Restart,
                     ),
             )

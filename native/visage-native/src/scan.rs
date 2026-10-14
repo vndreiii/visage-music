@@ -261,7 +261,7 @@ mod tests {
 
     #[test]
     fn walk_skips_junk_and_small_files() {
-        let dir = std::env::temp_dir().join(format!("vivi-native-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("visage-native-test-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         fs::create_dir_all(dir.join("Artist/Album")).unwrap();
         fs::create_dir_all(dir.join("venv/lib")).unwrap();

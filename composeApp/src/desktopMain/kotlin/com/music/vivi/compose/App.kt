@@ -20,7 +20,7 @@ import com.music.vivi.compose.navigation.AppScaffold
 import com.music.vivi.compose.local.LocalLibraryBootstrap
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.PrefKeys
-import com.music.vivi.compose.theme.ViviTheme
+import com.music.vivi.compose.theme.VisageTheme
 import com.music.vivi.compose.theme.rememberArtworkPalette
 import com.music.vivi.database.LocalMusicRepository
 import com.music.vivi.database.PlayHistoryRepository
@@ -47,7 +47,7 @@ fun FrameWindowScope.App(
     val artworkPalette = rememberArtworkPalette(nowPlaying?.artworkUrl)
 
     // Developer aid: VIVI_DEBUG_CRASH=1 throws inside the UI after a few seconds to exercise the error dialog.
-    if (System.getenv("VIVI_DEBUG_CRASH") == "1") {
+    if (com.music.vivi.nativelib.AppEnv.get("DEBUG_CRASH") == "1") {
         LaunchedEffect(Unit) {
             kotlinx.coroutines.delay(7_000)
             error("Debug crash (VIVI_DEBUG_CRASH=1)")
@@ -85,7 +85,7 @@ fun FrameWindowScope.App(
         LaunchedEffect(Unit) {
             controller.setVolume(prefs.getFloat(PrefKeys.PlaybackVolume, 1f).coerceIn(0f, 1f))
         }
-        ViviTheme(prefs = prefs, artworkPalette = artworkPalette) {
+        VisageTheme(prefs = prefs, artworkPalette = artworkPalette) {
             // Clip to rounded bounds so glow/blur backgrounds can't bleed past the
             // compositor's window corner (the bottom-left "overflow" spit).
             // Skip rounding while OS-fullscreen so edges aren't inset.

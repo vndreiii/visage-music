@@ -4,7 +4,7 @@ package com.music.vivi.database
  * Indexed local music library (user-chosen folders).
  */
 class LocalMusicRepository(
-    private val db: ViviDatabase,
+    private val db: VisageDatabase,
     /** Needed for the FTS5 index (not expressible in .sq files); search degrades to LIKE without it. */
     private val driver: app.cash.sqldelight.db.SqlDriver? = null,
 ) {

@@ -84,7 +84,7 @@ private val CaptionIconSlot = 20.dp
  * caption buttons flush to the top-right edge.
  */
 @Composable
-fun FrameWindowScope.ViviTopBar(
+fun FrameWindowScope.VisageTopBar(
     destinations: List<MainDest>,
     currentRoute: String?,
     onNavigate: (String) -> Unit,
@@ -116,13 +116,13 @@ fun FrameWindowScope.ViviTopBar(
         onMain -> destinations.firstOrNull {
             currentRoute == it.route ||
                 (it.route == Routes.SEARCH && currentRoute?.startsWith("search/") == true)
-        }?.label ?: "VIVI"
+        }?.label ?: "VIsage"
         currentRoute?.startsWith("settings") == true -> "Settings"
         currentRoute?.startsWith("online_playlist/") == true -> "Playlist"
         currentRoute?.startsWith("album/") == true -> "Album"
         currentRoute?.startsWith("artist/") == true -> "Artist"
         currentRoute == Routes.NOW_PLAYING -> "Now playing"
-        else -> "VIVI"
+        else -> "VIsage"
     }
 
     val navDestinations = destinations.filter { it.route != Routes.SMOKE }
@@ -146,13 +146,13 @@ fun FrameWindowScope.ViviTopBar(
                 ) {
                     val logo = remember {
                         runCatching {
-                            useResource("vivi_icon.png") { loadImageBitmap(it) }
+                            useResource("visage_icon.png") { loadImageBitmap(it) }
                         }.getOrNull()
                     }
                     if (logo != null) {
                         Image(
                             bitmap = logo,
-                            contentDescription = "VIVI",
+                            contentDescription = "VIsage",
                             modifier = Modifier
                                 .size(36.dp)
                                 .clip(CircleShape)
@@ -332,7 +332,7 @@ private fun TopNavChip(
     val selectedFg = ensureContrastingOn(selectedBg, scheme.onPrimary)
     val bg by androidx.compose.animation.animateColorAsState(
         targetValue = if (selected) selectedBg else Color.Transparent,
-        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.settle(),
+        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
         label = "navChipBg",
     )
     val fg by androidx.compose.animation.animateColorAsState(
@@ -341,12 +341,12 @@ private fun TopNavChip(
         } else {
             scheme.onSurfaceVariant
         },
-        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.settle(),
+        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
         label = "navChipFg",
     )
     val iconScale by androidx.compose.animation.core.animateFloatAsState(
         targetValue = if (selected) 1.1f else 1f,
-        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.bounce(),
+        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.bounce(),
         label = "navIconBounce",
     )
     val interaction = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
@@ -354,7 +354,7 @@ private fun TopNavChip(
     // Expressive press morph: the pill tightens while held and springs back.
     val radius by androidx.compose.animation.core.animateDpAsState(
         if (pressed) 12.dp else 22.dp,
-        com.music.vivi.compose.ui.motion.ViviMotion.spatialFast(),
+        com.music.vivi.compose.ui.motion.VisageMotion.spatialFast(),
         label = "navChipRadius",
     )
     Row(

@@ -30,7 +30,7 @@ import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import com.music.vivi.compose.ui.component.PageLoadingState
-import com.music.vivi.compose.ui.component.ViviLoadingIndicator
+import com.music.vivi.compose.ui.component.VisageLoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -222,7 +222,7 @@ fun OnlinePlaylistScreen(
                             Modifier.fillMaxWidth().padding(16.dp),
                             contentAlignment = Alignment.Center,
                         ) {
-                            ViviLoadingIndicator()
+                            VisageLoadingIndicator()
                         }
                     }
                 }

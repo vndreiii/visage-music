@@ -75,7 +75,7 @@ import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.LyricsProvider
 import com.music.vivi.compose.prefs.LyricsTextAlign
 import com.music.vivi.compose.prefs.PrefKeys
-import com.music.vivi.compose.ui.component.ViviLoadingIndicator
+import com.music.vivi.compose.ui.component.VisageLoadingIndicator
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -205,7 +205,7 @@ fun LyricsPanel(
             val delta = placed.offset + placed.size / 2f - fresh.viewportSize.height / 2f
             listState.animateScrollBy(
                 delta,
-                com.music.vivi.compose.ui.motion.ViviMotion.rail(),
+                com.music.vivi.compose.ui.motion.VisageMotion.rail(),
             )
         } finally {
             autoScrolling = false
@@ -215,7 +215,7 @@ fun LyricsPanel(
     Box(modifier.fillMaxSize()) {
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                ViviLoadingIndicator(color = Color.White)
+                VisageLoadingIndicator(color = Color.White)
             }
             error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(error ?: "", color = Color.White.copy(alpha = 0.55f), textAlign = TextAlign.Center)
@@ -523,12 +523,12 @@ private fun LyricLineItem(
     }
     val scale by androidx.compose.animation.core.animateFloatAsState(
         targetValue = targetScale,
-        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.settle(),
+        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
         label = "lyricScale",
     )
     val alpha by androidx.compose.animation.core.animateFloatAsState(
         targetValue = targetAlpha,
-        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.settle(),
+        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
         label = "lyricAlpha",
     )
     Text(

@@ -19,7 +19,7 @@ class ExpressiveGalleryTest {
             for (i in 1..30) image = scene.render(i * 16_000_000L)
             val png = image.encodeToData()!!.bytes
             assertTrue(png.size > 5_000, "gallery rendered blank")
-            System.getenv("VIVI_RENDER_OUT")?.let { dir ->
+            com.music.vivi.nativelib.AppEnv.get("RENDER_OUT")?.let { dir ->
                 File(dir).mkdirs()
                 File(dir, "expressive-gallery.png").writeBytes(png)
             }

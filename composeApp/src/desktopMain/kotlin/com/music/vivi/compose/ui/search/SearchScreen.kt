@@ -80,7 +80,7 @@ import com.music.vivi.compose.ui.component.ChipsRow
 import com.music.vivi.compose.ui.component.GridThumbnailHeight
 import com.music.vivi.compose.ui.component.NavigationTitle
 import com.music.vivi.compose.ui.component.PageLoadingState
-import com.music.vivi.compose.ui.component.ViviLoadingIndicator
+import com.music.vivi.compose.ui.component.VisageLoadingIndicator
 import com.music.vivi.compose.ui.component.YouTubeGridItem
 import com.music.vivi.compose.ui.component.YouTubeListItem
 import com.music.vivi.compose.ui.component.rememberNowPlayingIds
@@ -649,12 +649,12 @@ private fun SearchField(
     var focused by remember { mutableStateOf(false) }
     val corner by animateDpAsState(
         targetValue = if (focused) 16.dp else 28.dp,
-        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.settle(),
+        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
         label = "searchCorner",
     )
     val elev by animateDpAsState(
         targetValue = if (focused) 6.dp else 0.dp,
-        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.settle(),
+        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
         label = "searchElev",
     )
     Surface(
@@ -833,7 +833,7 @@ private fun RecommendedRow(
 @Composable
 private fun Spinner() {
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        ViviLoadingIndicator()
+        VisageLoadingIndicator()
     }
 }
 
@@ -902,7 +902,7 @@ private fun LazyListScope.renderSongs(
     if (songsPage == null) {
         item {
             Box(Modifier.fillMaxWidth().padding(48.dp), contentAlignment = Alignment.Center) {
-                ViviLoadingIndicator()
+                VisageLoadingIndicator()
             }
         }
         return
@@ -941,7 +941,7 @@ private fun LazyListScope.renderSongs(
     if (loadingMore) {
         item(key = "loading_more") {
             Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
-                ViviLoadingIndicator()
+                VisageLoadingIndicator()
             }
         }
     }

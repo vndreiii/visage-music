@@ -80,12 +80,12 @@ fun CrashDialogHost(onQuit: () -> Unit) {
 /**
  * Standalone error window for when the main window can't be trusted any more. It is an independent
  * [ComposeWindow] (not part of the Compose `application` loop, which may be dead), so it works even
- * after a composition crash. Closing it ends the process; "Restart VIVI" relaunches first.
+ * after a composition crash. Closing it ends the process; "Restart VIsage" relaunches first.
  */
 fun showFatalCrashWindow(report: CrashReport) {
     SwingUtilities.invokeLater {
         val window = ComposeWindow()
-        window.title = "VIVI Desktop — crashed"
+        window.title = "VIsage — crashed"
         window.setSize(680, 680)
         window.setLocationRelativeTo(null)
         window.defaultCloseOperation = JFrame.DO_NOTHING_ON_CLOSE
@@ -209,8 +209,8 @@ fun CrashPanel(
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
             ExpressiveButton(text = dismissLabel, onClick = onDismiss, style = ExpressiveStyle.Text)
-            if (onRestart != null) ExpressiveButton(text = "Restart VIVI", onClick = onRestart)
-            if (onQuit != null) ExpressiveButton(text = "Quit VIVI", onClick = onQuit)
+            if (onRestart != null) ExpressiveButton(text = "Restart VIsage", onClick = onRestart)
+            if (onQuit != null) ExpressiveButton(text = "Quit VIsage", onClick = onQuit)
         }
     }
 }

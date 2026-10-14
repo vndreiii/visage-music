@@ -37,7 +37,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import com.music.vivi.compose.ui.component.PageLoadingState
-import com.music.vivi.compose.ui.component.ViviLoadingIndicator
+import com.music.vivi.compose.ui.component.VisageLoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -326,7 +326,7 @@ fun HomeScreen(navController: NavController) {
                     },
             ) {
                 if (vm.isRefreshing) {
-                    ViviLoadingIndicator(
+                    VisageLoadingIndicator(
                         modifier = Modifier
                             .align(Alignment.TopCenter)
                             .padding(top = 12.dp),
@@ -604,7 +604,7 @@ fun HomeScreen(navController: NavController) {
                                         .padding(24.dp),
                                     contentAlignment = Alignment.Center,
                                 ) {
-                                    ViviLoadingIndicator()
+                                    VisageLoadingIndicator()
                                 }
                             }
                         }

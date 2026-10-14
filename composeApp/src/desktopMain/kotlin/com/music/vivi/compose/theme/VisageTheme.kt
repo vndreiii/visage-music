@@ -25,7 +25,7 @@ import com.music.vivi.compose.prefs.PrefKeys
 
 val DefaultThemeColor = Color(DefaultThemeColorArgb.toLong() and 0xFFFFFFFFL)
 
-data class ViviThemeState(
+data class VisageThemeState(
     val darkMode: DarkMode,
     val pureBlack: Boolean,
     val themeColorArgb: Int,
@@ -42,7 +42,7 @@ data class ViviThemeState(
     }
 }
 
-fun DesktopPrefs.readThemeState(): ViviThemeState = ViviThemeState(
+fun DesktopPrefs.readThemeState(): VisageThemeState = VisageThemeState(
     darkMode = runCatching {
         DarkMode.valueOf(getString(PrefKeys.DarkMode, DarkMode.AUTO.name))
     }.getOrDefault(DarkMode.AUTO),
@@ -57,7 +57,7 @@ fun DesktopPrefs.readThemeState(): ViviThemeState = ViviThemeState(
 )
 
 @Composable
-fun rememberViviThemeState(prefs: DesktopPrefs): ViviThemeState {
+fun rememberVisageThemeState(prefs: DesktopPrefs): VisageThemeState {
     var state by remember { mutableStateOf(prefs.readThemeState()) }
     DisposableEffect(prefs) {
         val listener = { state = prefs.readThemeState() }
@@ -120,7 +120,7 @@ fun M3PaletteStyle.subtitle(): String = when (this) {
  * Official Material 3 Dynamic Color via material-color-utilities (Material Kolor).
  * Replaces the old hand-tint that washed surfaces with the seed and broke contrast.
  */
-fun viviColorScheme(
+fun visageColorScheme(
     darkTheme: Boolean,
     pureBlack: Boolean,
     seed: Color,
@@ -143,12 +143,12 @@ fun viviColorScheme(
  * @param artworkPalette when dynamic theme is on and a cover is available, used as seed.
  */
 @Composable
-fun ViviTheme(
+fun VisageTheme(
     prefs: DesktopPrefs,
     artworkPalette: ArtworkPalette? = null,
     content: @Composable () -> Unit,
 ) {
-    val theme = rememberViviThemeState(prefs)
+    val theme = rememberVisageThemeState(prefs)
     val systemDark = isSystemInDarkTheme()
     val dark = theme.useDarkTheme(systemDark)
     val matugen = rememberMatugenSchemes(enabled = theme.matugenTheme)
@@ -170,7 +170,7 @@ fun ViviTheme(
     // Crossfade seed → regenerates the full Monet scheme fluidly (500–800ms).
     val seed by animateColorAsState(
         targetValue = targetSeed,
-        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.colorShift(),
+        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.colorShift(),
         label = "themeSeedCrossfade",
     )
 
@@ -185,7 +185,7 @@ fun ViviTheme(
         artworkPalette?.seed,
         matugen?.modifiedMs,
     ) {
-        val base = viviColorScheme(
+        val base = visageColorScheme(
             darkTheme = dark,
             pureBlack = theme.pureBlack,
             seed = seed,
@@ -208,8 +208,8 @@ fun ViviTheme(
     CompositionLocalProvider(LocalArtworkPalette provides artworkPalette) {
         MaterialTheme(
             colorScheme = scheme,
-            shapes = ViviExpressiveShapes,
-            typography = ViviEmphasizedTypography,
+            shapes = VisageExpressiveShapes,
+            typography = VisageEmphasizedTypography,
             content = content,
         )
     }
@@ -220,7 +220,7 @@ fun ViviTheme(
  * Material 3 Expressive shape scale: rounder than the baseline across the board
  * (8 / 12 / 16 / 24 / 32 dp instead of 4 / 8 / 12 / 16 / 28).
  */
-val ViviExpressiveShapes = androidx.compose.material3.Shapes(
+val VisageExpressiveShapes = androidx.compose.material3.Shapes(
     extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
     small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
     medium = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
@@ -229,7 +229,7 @@ val ViviExpressiveShapes = androidx.compose.material3.Shapes(
 )
 
 /** The "emphasized" end of the Expressive type scale: heavier weights for headlines, titles and labels. */
-val ViviEmphasizedTypography: androidx.compose.material3.Typography = androidx.compose.material3.Typography().let { t ->
+val VisageEmphasizedTypography: androidx.compose.material3.Typography = androidx.compose.material3.Typography().let { t ->
     val semi = androidx.compose.ui.text.font.FontWeight.SemiBold
     val medium = androidx.compose.ui.text.font.FontWeight.Medium
     t.copy(

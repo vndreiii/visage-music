@@ -26,7 +26,7 @@ import androidx.compose.ui.graphics.TransformOrigin
  * Rule of thumb: **layout and position → [glide]**, large surfaces entering/leaving → [rail],
  * small anchored popups → [menuEnter]/[menuExit], touch feedback → [press].
  */
-object ViviMotion {
+object VisageMotion {
     // ── Springs ──────────────────────────────────────────────────────────────────────────────
 
     // Material 3 Expressive motion scheme (values from the spec's `MotionScheme.expressive()`):

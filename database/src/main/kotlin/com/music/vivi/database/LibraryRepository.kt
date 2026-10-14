@@ -8,7 +8,7 @@ import com.music.innertube.models.SongItem
  * Stores the metadata shown on playlist headers: title, song count, total duration.
  */
 class LibraryRepository(
-    private val db: ViviDatabase,
+    private val db: VisageDatabase,
 ) {
     fun upsertSong(
         song: SongItem,

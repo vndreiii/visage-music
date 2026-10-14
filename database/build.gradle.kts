@@ -10,7 +10,7 @@ kotlin {
 
 sqldelight {
     databases {
-        create("ViviDatabase") {
+        create("VisageDatabase") {
             packageName.set("com.music.vivi.database")
         }
     }
@@ -34,5 +34,5 @@ dependencies {
 tasks.test {
     useJUnitPlatform()
     // Native helper tests run only when `cargo build --release --manifest-path native/Cargo.toml` was done.
-    environment("VIVI_NATIVE_LIB", rootProject.file("native/target/release/libvivi_native.so").absolutePath)
+    environment("VISAGE_NATIVE_LIB", rootProject.file("native/target/release/libvisage_native.so").absolutePath)
 }

@@ -137,11 +137,11 @@ impl Root {
     }
     #[zbus(property)]
     fn identity(&self) -> String {
-        "VIVI Desktop".into()
+        "VIsage".into()
     }
     #[zbus(property)]
     fn desktop_entry(&self) -> String {
-        "vivi-desktop".into()
+        "visage".into()
     }
     #[zbus(property)]
     fn supported_uri_schemes(&self) -> Vec<String> {
@@ -295,7 +295,7 @@ fn build(name: &str, cb: Callback, state: &Shared) -> zbus::Result<Connection> {
         .build()
 }
 
-/// Returns a handle (0 on failure). Tries `org.mpris.MediaPlayer2.vivi`, then a per-pid name.
+/// Returns a handle (0 on failure). Tries `org.mpris.MediaPlayer2.visage`, then a per-pid name.
 pub fn start(cb: Callback) -> u64 {
     let state: Shared = Arc::new(Mutex::new(State {
         status: "Stopped".into(),
@@ -305,14 +305,14 @@ pub fn start(cb: Callback) -> u64 {
         loop_status: "None".into(),
         meta: Meta { track_id: "none".into(), ..Default::default() },
     }));
-    let primary = "org.mpris.MediaPlayer2.vivi".to_string();
-    let fallback = format!("org.mpris.MediaPlayer2.vivi.instance{}", std::process::id());
+    let primary = "org.mpris.MediaPlayer2.visage".to_string();
+    let fallback = format!("org.mpris.MediaPlayer2.visage.instance{}", std::process::id());
     let (conn, name) = match build(&primary, cb, &state) {
         Ok(c) => (c, primary),
         Err(_) => match build(&fallback, cb, &state) {
             Ok(c) => (c, fallback),
             Err(e) => {
-                eprintln!("vivi-native mpris: {e}");
+                eprintln!("visage-native mpris: {e}");
                 return 0;
             }
         },

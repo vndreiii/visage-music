@@ -127,7 +127,7 @@ object CrashReporter {
         fun has(vararg names: String) = chain.any { t -> names.any { t.javaClass.name.contains(it, ignoreCase = true) } }
         return when {
             has("OutOfMemoryError") ->
-                "VIVI ran out of memory" to "The app needed more memory than it was given. Closing other apps or restarting VIVI usually fixes it."
+                "VIsage ran out of memory" to "The app needed more memory than it was given. Closing other apps or restarting VIsage usually fixes it."
             has("UnsatisfiedLinkError", "NoClassDefFoundError") ->
                 "A required component is missing" to "A native library (for example libmpv) or a part of the app could not be loaded. Reinstalling or rebuilding VIVI should fix it."
             has("SQLite", "SQLException") ->
@@ -135,15 +135,15 @@ object CrashReporter {
             has("UnknownHost", "ConnectException", "SocketTimeout", "SSLException") ->
                 "Couldn't reach the network" to "A connection to an online service failed. Check your internet connection and try again."
             has("FileNotFound", "NoSuchFile", "AccessDenied") ->
-                "A file couldn't be opened" to "VIVI couldn't read or write a file it needed. Check that the folder still exists and is accessible."
+                "A file couldn't be opened" to "VIsage couldn't read or write a file it needed. Check that the folder still exists and is accessible."
             else ->
-                "Something went wrong in VIVI" to "An unexpected error interrupted the app. You can keep going, but if things look off, restarting is a good idea. Reporting it helps get it fixed."
+                "Something went wrong in VIsage" to "An unexpected error interrupted the app. You can keep going, but if things look off, restarting is a good idea. Reporting it helps get it fixed."
         }
     }
 
     /** Everything a maintainer needs: version info, the error and the recent log. */
     fun fullReport(report: CrashReport, logLines: Int = 250): String = buildString {
-        appendLine("VIVI Desktop crash report")
+        appendLine("VIsage crash report")
         appendLine("Time: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.ROOT).format(Date(report.timeMs))}")
         appendLine("Thread: ${report.thread}")
         appendLine("Java: ${System.getProperty("java.version")} (${System.getProperty("java.vendor")})")

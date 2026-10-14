@@ -9,7 +9,7 @@ import androidx.compose.animation.ExperimentalSharedTransitionApi
 import androidx.compose.animation.SharedTransitionLayout
 import androidx.compose.animation.SharedTransitionScope
 import androidx.compose.animation.core.animateFloatAsState
-import com.music.vivi.compose.ui.motion.ViviMotion
+import com.music.vivi.compose.ui.motion.VisageMotion
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -284,7 +284,7 @@ fun NowPlayingScreen(
             showClearArtwork = !showLyrics,
         )
 
-        com.music.vivi.compose.ui.component.ViviToast(
+        com.music.vivi.compose.ui.component.VisageToast(
             message = toastMessage,
             onDismiss = { toastMessage = null },
         )
@@ -309,7 +309,7 @@ fun NowPlayingScreen(
                 val lyricsContentW = maxWidth
                 val lyricsLeftW = (lyricsContentW - paneGap - lyricsStackW).coerceAtLeast(0.dp)
 
-                val layoutSpring = ViviMotion.glide<Dp>()
+                val layoutSpring = VisageMotion.glide<Dp>()
                 val contentW by animateDpAsState(
                     if (showLyrics) lyricsContentW else idleContentW,
                     layoutSpring,
@@ -455,7 +455,7 @@ fun NowPlayingScreen(
                             // controls glide between the two instead of snapping.
                             val controlsBias by animateFloatAsState(
                                 if (showLyrics) 1f else 0.5f,
-                                ViviMotion.settle(),
+                                VisageMotion.settle(),
                                 label = "npControlsBias",
                             )
                             if (!underQueue) {
@@ -804,7 +804,7 @@ internal fun TransportRow(
                 playing -> 20.dp
                 else -> 28.dp
             },
-            com.music.vivi.compose.ui.motion.ViviMotion.spatialFast(),
+            com.music.vivi.compose.ui.motion.VisageMotion.spatialFast(),
             label = "playRadius",
         )
         Surface(
@@ -947,7 +947,7 @@ internal fun TransportPill(
     val interaction = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     // Expressive press morph: pill → tighter corners while held, springing back on release.
-    val radius by animateDpAsState(if (pressed) 14.dp else 28.dp, com.music.vivi.compose.ui.motion.ViviMotion.spatialFast(), label = "pillRadius")
+    val radius by animateDpAsState(if (pressed) 14.dp else 28.dp, com.music.vivi.compose.ui.motion.VisageMotion.spatialFast(), label = "pillRadius")
     Surface(
         onClick = onClick,
         enabled = enabled,

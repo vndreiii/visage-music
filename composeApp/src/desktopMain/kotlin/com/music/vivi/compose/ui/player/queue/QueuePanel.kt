@@ -82,7 +82,7 @@ import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.music.vivi.compose.LocalPlaybackController
 import com.music.vivi.compose.ui.component.InteractionCornerRadius
-import com.music.vivi.compose.ui.motion.ViviMotion
+import com.music.vivi.compose.ui.motion.VisageMotion
 import com.music.vivi.database.PlayHistoryRepository
 import com.music.vivi.database.Play_event
 import com.music.vivi.player.NowPlaying
@@ -93,9 +93,9 @@ import org.koin.compose.koinInject
 
 private enum class QueueTab { Queue, Recent }
 
-private val PinOffsetSpring = ViviMotion.rail<IntOffset>()
-private val PinSizeSpring = ViviMotion.rail<IntSize>()
-private val TrayOffsetSpring = ViviMotion.settle<IntOffset>()
+private val PinOffsetSpring = VisageMotion.rail<IntOffset>()
+private val PinSizeSpring = VisageMotion.rail<IntSize>()
+private val TrayOffsetSpring = VisageMotion.settle<IntOffset>()
 
 /**
  * Right-rail queue: slides in from the trailing edge and expands width so the
@@ -606,7 +606,7 @@ private const val SkeletonCount = 6
 private fun RevealRow(animate: Boolean, content: @Composable () -> Unit) {
     val progress = remember { Animatable(if (animate) 0f else 1f) }
     LaunchedEffect(Unit) {
-        if (animate) progress.animateTo(1f, ViviMotion.settle())
+        if (animate) progress.animateTo(1f, VisageMotion.settle())
     }
     Box(
         Modifier.graphicsLayer {
@@ -624,7 +624,7 @@ private fun QueueSkeletonRow(index: Int) {
         initialValue = 0.35f,
         targetValue = 0.8f,
         animationSpec = infiniteRepeatable(
-            com.music.vivi.compose.ui.motion.ViviMotion.pulse(index * 90),
+            com.music.vivi.compose.ui.motion.VisageMotion.pulse(index * 90),
             RepeatMode.Reverse,
         ),
         label = "alpha",

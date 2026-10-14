@@ -4,7 +4,7 @@ package com.music.vivi.database
  * Local play history for Recently Played (queue panel + history screens).
  */
 class PlayHistoryRepository(
-    private val db: ViviDatabase,
+    private val db: VisageDatabase,
 ) {
     private var lastSongId: String? = null
     private var lastRecordedAt: Long = 0L

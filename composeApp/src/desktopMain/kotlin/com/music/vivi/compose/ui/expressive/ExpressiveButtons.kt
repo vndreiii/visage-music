@@ -38,13 +38,13 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.music.vivi.compose.ui.motion.ViviMotion
+import com.music.vivi.compose.ui.motion.VisageMotion
 
 /**
  * Material 3 **Expressive** buttons. Compose Multiplatform doesn't expose the official Expressive
  * components on desktop yet (they're internal/absent), so these follow the spec directly:
  * five sizes, round/square shapes, shape morph on press and when toggled, and the expressive
- * spatial spring ([ViviMotion.spatialFast]) driving every change.
+ * spatial spring ([VisageMotion.spatialFast]) driving every change.
  */
 enum class ExpressiveSize(val height: Dp, val horizontal: Dp, val icon: Dp, val iconGap: Dp, val squareRadius: Dp) {
     XSmall(32.dp, 12.dp, 20.dp, 4.dp, 10.dp),
@@ -114,7 +114,7 @@ internal fun morphingRadius(
         else -> round
     }
     val target = if (pressed) (size.squareRadius * 0.6f).coerceAtLeast(6.dp) else rest
-    return animateDpAsState(target, ViviMotion.spatialFast(), label = "expressiveRadius").value
+    return animateDpAsState(target, VisageMotion.spatialFast(), label = "expressiveRadius").value
 }
 
 /** Expressive button; pass [selected] to make it a toggle button. */
@@ -134,7 +134,7 @@ fun ExpressiveButton(
     val pressed by interaction.collectIsPressedAsState()
     val radius = morphingRadius(size, pressed, selected, square)
     val colors = colorsFor(style, selected, enabled)
-    val scale by animateFloatAsState(if (pressed) 0.97f else 1f, ViviMotion.spatialFast(), label = "expressivePress")
+    val scale by animateFloatAsState(if (pressed) 0.97f else 1f, VisageMotion.spatialFast(), label = "expressivePress")
 
     Surface(
         onClick = onClick,
@@ -204,7 +204,7 @@ fun <T> ConnectedButtonGroup(
             val inner = if (pressed) 4.dp else 6.dp
             val first = index == 0
             val last = index == options.lastIndex
-            val spring = ViviMotion.spatialFast<Dp>()
+            val spring = VisageMotion.spatialFast<Dp>()
             val tl by animateDpAsState(if (isSelected) round else if (first) round else inner, spring, label = "tl")
             val bl by animateDpAsState(if (isSelected) round else if (first) round else inner, spring, label = "bl")
             val tr by animateDpAsState(if (isSelected) round else if (last) round else inner, spring, label = "tr")
@@ -247,8 +247,8 @@ fun ExpressiveSplitButton(
     val colors = colorsFor(style, null, true)
     val round = size.height / 2
     val inner = 4.dp
-    val rotation by animateFloatAsState(if (expanded) 180f else 0f, ViviMotion.spatialDefault(), label = "chevron")
-    val trailingRadius by animateDpAsState(if (expanded) round else inner, ViviMotion.spatialFast(), label = "trailing")
+    val rotation by animateFloatAsState(if (expanded) 180f else 0f, VisageMotion.spatialDefault(), label = "chevron")
+    val trailingRadius by animateDpAsState(if (expanded) round else inner, VisageMotion.spatialFast(), label = "trailing")
     Row(modifier, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
         Surface(
             onClick = onClick,

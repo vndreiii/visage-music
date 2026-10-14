@@ -14,11 +14,11 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.navigation.NavBackStackEntry
-import com.music.vivi.compose.ui.motion.ViviMotion
+import com.music.vivi.compose.ui.motion.VisageMotion
 
 // M3 emphasized easing curves.
-private val EmphasizedDecelerate = ViviMotion.EmphasizedDecelerate
-private val EmphasizedAccelerate = ViviMotion.EmphasizedAccelerate
+private val EmphasizedDecelerate = VisageMotion.EmphasizedDecelerate
+private val EmphasizedAccelerate = VisageMotion.EmphasizedAccelerate
 
 private const val EnterMs = 340
 private const val ExitMs = 160
@@ -39,7 +39,7 @@ private fun AnimatedContentTransitionScope<NavBackStackEntry>.closesPlayer() =
 /** Offset used by the shared-axis X pattern: a nudge, not a full-page slide. */
 private fun axisOffset(fullWidth: Int) = (fullWidth / 14).coerceAtMost(96)
 
-val viviEnterTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
+val visageEnterTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
     when {
         opensPlayer() ->
             fadeIn(tween(FadeThroughInMs, easing = EmphasizedDecelerate)) +
@@ -53,7 +53,7 @@ val viviEnterTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() ->
     }
 }
 
-val viviExitTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
+val visageExitTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
     when {
         opensPlayer() -> fadeOut(tween(ExitMs + 80, easing = EmphasizedAccelerate))
         isTabSwitch() -> fadeOut(tween(ExitMs - 40, easing = EmphasizedAccelerate))
@@ -63,7 +63,7 @@ val viviExitTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> 
     }
 }
 
-val viviPopEnterTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
+val visagePopEnterTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> EnterTransition = {
     when {
         closesPlayer() -> fadeIn(tween(FadeThroughInMs, easing = EmphasizedDecelerate))
         isTabSwitch() -> fadeIn(tween(FadeThroughInMs, delayMillis = 60, easing = EmphasizedDecelerate))
@@ -73,7 +73,7 @@ val viviPopEnterTransition: AnimatedContentTransitionScope<NavBackStackEntry>.()
     }
 }
 
-val viviPopExitTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
+val visagePopExitTransition: AnimatedContentTransitionScope<NavBackStackEntry>.() -> ExitTransition = {
     when {
         closesPlayer() ->
             fadeOut(tween(ExitMs + 60, easing = EmphasizedAccelerate)) +

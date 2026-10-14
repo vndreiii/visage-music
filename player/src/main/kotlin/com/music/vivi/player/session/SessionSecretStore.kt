@@ -13,7 +13,9 @@ import kotlinx.serialization.json.Json
  * (GNOME Keyring / KWallet via libsecret), not as a plaintext file.
  */
 object SessionSecretStore {
-    private const val SERVICE = "vivi-desktop"
+    private const val SERVICE = "visage"
+    /** Keyring service used before the rename; entries are copied forward on first read. */
+    private const val LEGACY_SERVICE = "vivi-desktop"
     private const val ACCOUNT_SESSION = "yt-music-session"
     private const val ACCOUNT_PROFILE = "yt-music-account"
 
@@ -67,13 +69,21 @@ object SessionSecretStore {
 
     fun clear() {
         withKeyring { keyring ->
-            runCatching { keyring.deletePassword(SERVICE, ACCOUNT_SESSION) }
-            runCatching { keyring.deletePassword(SERVICE, ACCOUNT_PROFILE) }
+            // Both services: otherwise the next read would copy the old entry forward and undo the sign-out.
+            for (service in listOf(SERVICE, LEGACY_SERVICE)) {
+                runCatching { keyring.deletePassword(service, ACCOUNT_SESSION) }
+                runCatching { keyring.deletePassword(service, ACCOUNT_PROFILE) }
+            }
         }
     }
 
     private fun readSecret(account: String): String? = try {
-        withKeyring { keyring -> keyring.getPassword(SERVICE, account) }
+        withKeyring { keyring ->
+            keyring.getPassword(SERVICE, account) ?: keyring.getPassword(LEGACY_SERVICE, account)?.also { legacy ->
+                // Copy (don't move) so an older build on the same keyring keeps working.
+                runCatching { keyring.setPassword(SERVICE, account, legacy) }
+            }
+        }
     } catch (_: PasswordAccessException) {
         null
     }

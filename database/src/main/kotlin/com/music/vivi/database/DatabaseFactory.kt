@@ -6,14 +6,12 @@ import java.io.File
 import java.util.Properties
 
 object DatabaseFactory {
-    /** XDG data dir: ~/.local/share/vivi-desktop/vivi.db */
+    /** XDG data dir: ~/.local/share/visage/visage.db (migrated from vivi-desktop/vivi.db on first use). */
     fun defaultDbFile(): File {
-        val xdg = System.getenv("XDG_DATA_HOME")
-            ?.takeIf { it.isNotBlank() }
-            ?: File(System.getProperty("user.home"), ".local/share").absolutePath
-        val dir = File(xdg, "vivi-desktop")
-        if (!dir.exists()) dir.mkdirs()
-        return File(dir, "vivi.db")
+        val dir = com.music.vivi.nativelib.AppPaths.data()
+        // The scan cache moved into the database; drop the leftover file from older builds.
+        runCatching { File(dir, "scan-cache.json").delete() }
+        return com.music.vivi.nativelib.AppPaths.migratedFile(dir, "visage.db", "vivi.db")
     }
 
     fun dataDir(): File = defaultDbFile().parentFile
@@ -40,7 +38,7 @@ object DatabaseFactory {
             setProperty("busy_timeout", "30000")
             setProperty("foreign_keys", "true")
         }
-        val driver = JdbcSqliteDriver(url, props, ViviDatabase.Schema)
+        val driver = JdbcSqliteDriver(url, props, VisageDatabase.Schema)
         // Also set on the creating thread's connection (schema/migrate path).
         driver.execute(null, "PRAGMA journal_mode = WAL", 0)
         driver.execute(null, "PRAGMA synchronous = NORMAL", 0)
@@ -50,7 +48,7 @@ object DatabaseFactory {
         return driver
     }
 
-    /** Additive migrations for installs that already have an older vivi.db. */
+    /** Additive migrations for installs that already have an older database. */
     private fun migrateAdditive(driver: SqlDriver) {
         driver.execute(
             null,
@@ -257,6 +255,6 @@ object DatabaseFactory {
         }
     }
 
-    fun create(dbFile: File = defaultDbFile()): ViviDatabase =
-        ViviDatabase(createDriver(dbFile))
+    fun create(dbFile: File = defaultDbFile()): VisageDatabase =
+        VisageDatabase(createDriver(dbFile))
 }

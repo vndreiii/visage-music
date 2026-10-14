@@ -5,7 +5,7 @@ import java.io.File
 /** Locate yt-dlp / youtube-dl on PATH (or via `VIVI_YTDLP`). */
 object YtDlpBinary {
     private val candidates = listOf(
-        System.getenv("VIVI_YTDLP"),
+        com.music.vivi.nativelib.AppEnv.get("YTDLP"),
         "yt-dlp",
         "yt-dlp_linux",
         "youtube-dl",

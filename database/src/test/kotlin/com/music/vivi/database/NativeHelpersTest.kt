@@ -11,7 +11,7 @@ import kotlin.test.assertTrue
 class NativeHelpersTest {
     @Test
     fun fuzzySearchRanksTypos() {
-        assumeTrue(NativeHelpers.available, "libvivi_native.so not built")
+        assumeTrue(NativeHelpers.available, "libvisage_native.so not built")
         val index = assertNotNull(
             NativeHelpers.searchIndex(
                 listOf(
@@ -29,8 +29,8 @@ class NativeHelpersTest {
 
     @Test
     fun scanFindsAudioAndSkipsJunk() {
-        assumeTrue(NativeHelpers.available, "libvivi_native.so not built")
-        val dir = kotlin.io.path.createTempDirectory("vivi-native").toFile()
+        assumeTrue(NativeHelpers.available, "libvisage_native.so not built")
+        val dir = kotlin.io.path.createTempDirectory("visage-native").toFile()
         try {
             File(dir, "Artist/Album").mkdirs()
             File(dir, "venv").mkdirs()

@@ -22,7 +22,7 @@ fun PageLoadingState(title: String = "Loading music", detail: Boolean = false) {
     val transition = rememberInfiniteTransition(label = "pageLoading")
     val alpha by transition.animateFloat(
         0.35f, 0.75f,
-        infiniteRepeatable(com.music.vivi.compose.ui.motion.ViviMotion.pulse(), RepeatMode.Reverse),
+        infiniteRepeatable(com.music.vivi.compose.ui.motion.VisageMotion.pulse(), RepeatMode.Reverse),
         label = "placeholderPulse",
     )
     val color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = alpha)
@@ -31,7 +31,7 @@ fun PageLoadingState(title: String = "Loading music", detail: Boolean = false) {
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ViviLoadingIndicator(modifier = Modifier.size(32.dp))
+            VisageLoadingIndicator(modifier = Modifier.size(32.dp))
             Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (detail) {

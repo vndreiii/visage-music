@@ -7,19 +7,19 @@ import java.nio.file.Files
 import java.nio.file.attribute.PosixFilePermission
 
 /**
- * Loads `libvivi_native.so` (the Rust helpers in `native/`) for any module that binds part of it.
+ * Loads `libvisage_native.so` (the Rust helpers in `native/`) for any module that binds part of it.
  *
- * Lookup order: `$VIVI_NATIVE_LIB` (absolute path), the packaged app's resources directory, then the
+ * Lookup order: `$VISAGE_NATIVE_LIB` (or the legacy `VIVI_NATIVE_LIB`) (absolute path), the packaged app's resources directory, then the
  * system library path. The working directory is deliberately never searched, and file-based
- * candidates must not be group/world writable. `VIVI_NATIVE_DISABLE=1` forces the pure-JVM fallbacks.
+ * candidates must not be group/world writable. `VISAGE_NATIVE_DISABLE=1` forces the pure-JVM fallbacks.
  */
 object NativeLibLoader {
     fun <T : Library> load(api: Class<T>): T? {
-        if (System.getenv("VIVI_NATIVE_DISABLE") == "1") return null
+        if (com.music.vivi.nativelib.AppEnv.get("NATIVE_DISABLE") == "1") return null
         val candidates = buildList {
-            System.getenv("VIVI_NATIVE_LIB")?.takeIf { it.isNotBlank() }?.let(::add)
-            System.getProperty("compose.application.resources.dir")?.let { add(File(it, "libvivi_native.so").path) }
-            add("vivi_native")
+            com.music.vivi.nativelib.AppEnv.get("NATIVE_LIB")?.takeIf { it.isNotBlank() }?.let(::add)
+            System.getProperty("compose.application.resources.dir")?.let { add(File(it, "libvisage_native.so").path) }
+            add("visage_native")
         }
         for (name in candidates) {
             if (name.contains('/') && !trusted(File(name))) continue

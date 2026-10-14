@@ -20,6 +20,7 @@ kotlin {
             dependencies {
                 implementation("com.github.jagrosh:DiscordIPC:master-SNAPSHOT")
                 implementation(project(":core"))
+                implementation(project(":nativelib"))
                 implementation(project(":lyrics"))
                 implementation(project(":canvas"))
                 implementation(project(":applecanvas"))
@@ -51,12 +52,12 @@ compose.desktop {
     application {
         mainClass = "com.music.vivi.alex"
         nativeDistributions {
-            packageName = "com.music.vivi.alex"
-            description = "VIVI Desktop"
+            packageName = "visage"
+            description = "VIsage"
             copyright = ""
-            vendor = "vivi"
+            vendor = "visage"
             linux {
-                packageName = "vivi-desktop"
+                packageName = "visage"
                 appCategory = "AudioVideo"
             }
         }
@@ -64,7 +65,7 @@ compose.desktop {
             "--add-opens=java.desktop/java.awt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED",
-            "-Dawt.appClassName=com.music.vivi.alex",
+            "-Dawt.appClassName=visage",
         )
     }
 }
@@ -77,7 +78,7 @@ afterEvaluate {
                 "--add-opens=java.desktop/java.awt=ALL-UNNAMED",
                 "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
                 "--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED",
-                "-Dawt.appClassName=com.music.vivi.alex",
+                "-Dawt.appClassName=visage",
             )
         }
     }

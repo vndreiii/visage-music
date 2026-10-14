@@ -10,15 +10,10 @@ import kotlin.io.path.exists
 import kotlin.io.path.pathString
 
 /**
- * Caches remote artwork under ~/.cache/vivi-desktop/art for MPRIS file:// URLs.
+ * Caches remote artwork under ~/.cache/visage/art for MPRIS file:// URLs.
  */
 class ArtworkCache(
-    private val cacheDir: Path = Path.of(
-        System.getenv("XDG_CACHE_HOME")
-            ?: Path.of(System.getProperty("user.home"), ".cache").pathString,
-        "vivi-desktop",
-        "art",
-    ),
+    private val cacheDir: Path = com.music.vivi.nativelib.AppPaths.cache().toPath().resolve("art"),
 ) : AutoCloseable {
     private val http = HttpClient(CIO)
 

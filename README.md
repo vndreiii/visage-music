@@ -1,6 +1,6 @@
-# VIVI Desktop
+# VIsage
 
-**VIVI Desktop** is a Linux music player for [YouTube Music](https://music.youtube.com). It is the desktop port of [VIVI Music](https://github.com/vivizzz007/vivi-music) (Android): same idea — stream YT Music with your own account — built as a native Compose Multiplatform app for the desktop.
+**VIsage** is a Linux music player for [YouTube Music](https://music.youtube.com). It is the desktop port of [VIVI Music](https://github.com/vivizzz007/vivi-music) (Android): same idea — stream YT Music with your own account — built as a native Compose Multiplatform app for the desktop.
 
 Sign in once with Google (system Chromium + your Linux keyring). After that you get Home, Search, Library, a full Now Playing experience, lyrics, queue, MPRIS desktop integration, and optional offline audio saves.
 
@@ -34,7 +34,7 @@ Sign in once with Google (system Chromium + your Linux keyring). After that you 
 ./gradlew :desktop:run
 ```
 
-Prefs live at `~/.config/vivi-desktop/settings.properties`.
+Prefs live at `~/.config/visage/settings.properties`.
 
 ## Project layout (short)
 
@@ -60,3 +60,9 @@ Deeper architecture notes: [`docs/architecture.md`](docs/architecture.md). Reusa
 ## License / upstream
 
 Desktop port of the VIVI Music Android project. Upstream Android tree may exist locally as gitignored `vivi-music/` for reference only.
+
+## Migrating from VIVI Desktop
+VIsage is the new name of VIVI Desktop. On first launch it moves `~/.local/share`, `~/.config`, `~/.cache` and
+`~/.local/state` `vivi-desktop` directories to `visage` (leaving a symlink at the old path) and renames `vivi.db` to
+`visage.db`; the saved YouTube Music session is copied to the new keyring service. Old `VIVI_*` environment variables
+still work. The window class is now `visage` — update any compositor window rules that matched `com.music.vivi.alex`.

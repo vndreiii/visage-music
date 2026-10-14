@@ -26,10 +26,7 @@ object ChromiumLauncher {
     }
 
     fun profileDir(): Path {
-        val cacheHome = System.getenv("XDG_CACHE_HOME")
-            ?.takeIf { it.isNotBlank() }
-            ?: Path(System.getProperty("user.home"), ".cache").toString()
-        val dir = Path(cacheHome, "vivi-desktop", "login-profile")
+        val dir = com.music.vivi.nativelib.AppPaths.cache().toPath().resolve("login-profile")
         if (!dir.exists()) dir.createDirectories()
         return dir
     }

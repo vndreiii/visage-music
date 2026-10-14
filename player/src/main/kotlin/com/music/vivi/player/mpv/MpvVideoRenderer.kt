@@ -232,7 +232,7 @@ internal interface MpvRenderLib : Library {
     companion object {
         val INSTANCE: MpvRenderLib by lazy {
             MpvLib.INSTANCE // forces LC_NUMERIC=C and proves libmpv is loadable
-            val candidates = listOfNotNull(System.getenv("VIVI_LIBMPV"), "mpv", "libmpv.so.2", "/usr/lib/libmpv.so.2")
+            val candidates = listOfNotNull(com.music.vivi.nativelib.AppEnv.get("LIBMPV"), "mpv", "libmpv.so.2", "/usr/lib/libmpv.so.2")
             var last: Throwable? = null
             for (name in candidates) {
                 try {

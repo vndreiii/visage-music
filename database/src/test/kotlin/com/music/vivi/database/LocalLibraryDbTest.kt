@@ -15,7 +15,7 @@ class LocalLibraryDbTest {
 
     private fun repo(): LocalMusicRepository {
         val driver = DatabaseFactory.createDriver(File(dir, "lib.db"))
-        return LocalMusicRepository(ViviDatabase(driver), driver)
+        return LocalMusicRepository(VisageDatabase(driver), driver)
     }
 
     private fun LocalMusicRepository.add(id: String, title: String, artist: String, album: String, genre: String?, year: Long?) =
@@ -61,7 +61,7 @@ class LocalLibraryDbTest {
 
     @Test
     fun nativeScanSkipsUnchangedFiles() {
-        assumeTrue(NativeHelpers.available, "libvivi_native.so not built")
+        assumeTrue(NativeHelpers.available, "libvisage_native.so not built")
         val music = File(dir, "Artist/Album").apply { mkdirs() }
         wav(File(music, "song.wav"))
         val covers = File(dir, "covers")

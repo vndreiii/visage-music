@@ -16,10 +16,17 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** Loads wallpaper colours written by matugen into vivi-desktop.colors. */
+/**
+ * Loads wallpaper colours written by matugen into `~/.cache/matugen/visage.colors` (the pre-rename
+ * `vivi-desktop.colors` is still read if the new file hasn't been generated yet).
+ */
 object MatugenColors {
     val defaultFile: File
-        get() = File(System.getProperty("user.home"), ".cache/matugen/vivi-desktop.colors")
+        get() {
+            val dir = File(System.getProperty("user.home"), ".cache/matugen")
+            val current = File(dir, "visage.colors")
+            return if (current.isFile) current else File(dir, "vivi-desktop.colors").takeIf { it.isFile } ?: current
+        }
 
     data class Schemes(
         val light: Map<String, Color>,
