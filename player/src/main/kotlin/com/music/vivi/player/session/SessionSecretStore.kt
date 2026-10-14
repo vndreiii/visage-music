@@ -82,15 +82,32 @@ object SessionSecretStore {
 
     private fun readSecret(account: String): String? = try {
         withKeyring { keyring ->
-            runCatching { keyring.getPassword(SERVICE, account) }.getOrNull() ?: runCatching { keyring.getPassword(LEGACY_SERVICE, account) }.getOrNull()?.also { legacy ->
-                // Copy (don't move) so an older build on the same keyring keeps working.
-                runCatching { keyring.setPassword(SERVICE, account, legacy) }
-            }
+            readWithLegacyFallback(
+                account = account,
+                get = { service, acct -> keyring.getPassword(service, acct) },
+                put = { service, acct, value -> keyring.setPassword(service, acct, value) },
+            )
         }
     } catch (_: PasswordAccessException) {
         null
     } catch (_: BackendNotSupportedException) {
         null
+    }
+
+    /**
+     * Reads from the current service, then from the pre-rename one (copying the value forward so an
+     * older build on the same keyring keeps working). `Keyring.getPassword` *throws* when an entry is
+     * missing rather than returning null, so each lookup is guarded on its own.
+     */
+    internal fun readWithLegacyFallback(
+        account: String,
+        get: (service: String, account: String) -> String?,
+        put: (service: String, account: String, value: String) -> Unit,
+    ): String? {
+        runCatching { get(SERVICE, account) }.getOrNull()?.let { return it }
+        val legacy = runCatching { get(LEGACY_SERVICE, account) }.getOrNull() ?: return null
+        runCatching { put(SERVICE, account, legacy) }
+        return legacy
     }
 
     private val keyringLock = Any()
