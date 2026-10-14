@@ -44,6 +44,11 @@ class LocalMusicRepository(
 
     fun tracksByGenre(genre: String) = db.localTrackQueries.selectByGenre(genre).executeAsList()
 
+    fun composers(): List<Counted<String>> =
+        db.localTrackQueries.selectComposers().executeAsList().map { Counted(it.composer.orEmpty(), it.track_count) }
+
+    fun tracksByComposer(name: String) = db.localTrackQueries.selectByComposer(name).executeAsList()
+
     fun years(): List<Counted<Long>> =
         db.localTrackQueries.selectYears().executeAsList().mapNotNull { r -> r.year?.let { Counted(it, r.track_count) } }
 

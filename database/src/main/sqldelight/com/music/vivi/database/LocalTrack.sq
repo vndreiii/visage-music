@@ -89,3 +89,13 @@ GROUP BY year ORDER BY year DESC;
 selectByYear:
 SELECT * FROM local_track WHERE year = ?
 ORDER BY artist_name COLLATE NOCASE, album_title COLLATE NOCASE, disc_number ASC, track_number ASC;
+
+selectComposers:
+SELECT composer, COUNT(*) AS track_count FROM local_track
+WHERE composer IS NOT NULL AND composer != ''
+GROUP BY composer COLLATE NOCASE
+ORDER BY track_count DESC, composer COLLATE NOCASE;
+
+selectByComposer:
+SELECT * FROM local_track WHERE composer = ? COLLATE NOCASE
+ORDER BY artist_name COLLATE NOCASE, album_title COLLATE NOCASE, disc_number ASC, track_number ASC;

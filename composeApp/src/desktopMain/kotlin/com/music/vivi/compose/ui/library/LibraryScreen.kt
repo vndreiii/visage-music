@@ -109,6 +109,17 @@ import org.koin.compose.koinInject
 
 private val LikedBlue = Color(0xFF3E9BFF)
 
+/** What the Library is currently drilled into (shown as a track list with Play all / Shuffle). */
+internal sealed interface OpenCollection {
+    val title: String
+    data class Album(val id: String, override val title: String) : OpenCollection
+    data class Artist(val id: String, override val title: String) : OpenCollection
+    data class Genre(val name: String) : OpenCollection { override val title get() = name }
+    data class Year(val year: Long) : OpenCollection { override val title get() = "$year" }
+    data class Composer(val name: String) : OpenCollection { override val title get() = name }
+    data class Mix(override val title: String, val tracks: List<Local_track>) : OpenCollection
+}
+
 private enum class LibraryTab(val label: String) {
     Home("Home"),
     Songs("Songs"),
@@ -140,6 +151,9 @@ data class LocalFeed(
     val tracks: List<Local_track> = emptyList(),
     val recentPlayed: List<Local_track> = emptyList(),
     val liked: List<Local_track> = emptyList(),
+    val genres: List<LocalMusicRepository.Counted<String>> = emptyList(),
+    val years: List<LocalMusicRepository.Counted<Long>> = emptyList(),
+    val composers: List<LocalMusicRepository.Counted<String>> = emptyList(),
 )
 
 private fun Result<LibraryPage>.itemsOrEmpty(onFail: (Throwable) -> Unit): List<YTItem> =
@@ -255,6 +269,9 @@ class LibraryCache(
                     tracks = localRepo.allTracks(),
                     recentPlayed = localRepo.recentlyPlayedTracks(50),
                     liked = localRepo.allTracks().filter { libraryRepo.isLiked("local:${it.id}") },
+                    genres = localRepo.genres(),
+                    years = localRepo.years(),
+                    composers = localRepo.composers(),
                 )
             }
             val nextOffline = withContext(Dispatchers.IO) { downloads.listOfflineTracks() }
@@ -316,9 +333,7 @@ fun LibraryScreen(navController: NavController) {
     val downloadStatus by downloads.status.collectAsState()
     
     var tab by rememberSaveable { mutableStateOf(LibraryTab.Home) }
-    var collectionId by rememberSaveable { mutableStateOf<String?>(null) }
-    var collectionTitle by rememberSaveable { mutableStateOf("") }
-    var collectionArtist by rememberSaveable { mutableStateOf(false) }
+    var openCollection by remember { mutableStateOf<OpenCollection?>(null) }
     var collectionTracks by remember { mutableStateOf(emptyList<Local_track>()) }
     var collectionLoading by remember { mutableStateOf(false) }
     
@@ -336,27 +351,26 @@ fun LibraryScreen(navController: NavController) {
     }
     LaunchedEffect(Unit) { cache.loadOnline() }
     
-    LaunchedEffect(collectionId, collectionArtist, local) {
-        val id = collectionId ?: return@LaunchedEffect
+    LaunchedEffect(openCollection, local) {
+        val open = openCollection ?: return@LaunchedEffect
         collectionLoading = true
         try {
             collectionTracks = withContext(Dispatchers.IO) {
-                if (collectionArtist) localRepo.tracksForArtist(id) else localRepo.tracksForAlbum(id)
+                when (open) {
+                    is OpenCollection.Album -> localRepo.tracksForAlbum(open.id)
+                    is OpenCollection.Artist -> localRepo.tracksCreditedTo(open.id).ifEmpty { localRepo.tracksForArtist(open.id) }
+                    is OpenCollection.Genre -> localRepo.tracksByGenre(open.name)
+                    is OpenCollection.Year -> localRepo.tracksByYear(open.year)
+                    is OpenCollection.Composer -> localRepo.tracksByComposer(open.name)
+                    is OpenCollection.Mix -> open.tracks
+                }
             }
         } finally {
             collectionLoading = false
         }
     }
-    fun openAlbum(album: Local_album) {
-        collectionTitle = album.title
-        collectionArtist = false
-        collectionId = album.id
-    }
-    fun openArtist(artist: Local_artist) {
-        collectionTitle = artist.name
-        collectionArtist = true
-        collectionId = artist.id
-    }
+    fun openAlbum(album: Local_album) { openCollection = OpenCollection.Album(album.id, album.title) }
+    fun openArtist(artist: Local_artist) { openCollection = OpenCollection.Artist(artist.id, artist.name) }
 
     val onYtItem: (YTItem, List<SongItem>) -> Unit = { item, context ->
         when (item) {
@@ -391,7 +405,7 @@ fun LibraryScreen(navController: NavController) {
         ChipsRow(
             chips = LibraryTab.entries.map { it to it.label },
             currentValue = tab,
-            onValueUpdate = { next -> if (next != null) { tab = next; collectionId = null } },
+            onValueUpdate = { next -> if (next != null) { tab = next; openCollection = null } },
         )
         if (refreshing || scanProgress.running) {
             LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
@@ -400,11 +414,12 @@ fun LibraryScreen(navController: NavController) {
         if (ytData.error != null && tab != LibraryTab.Home) {
             Text("Online library unavailable · Your local music is still available", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
         }
-        if (collectionId != null) {
+        val open = openCollection
+        if (open != null) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                TextButton(onClick = { collectionId = null }) { Text("Back") }
+                TextButton(onClick = { openCollection = null }) { Text("Back") }
                 Column(Modifier.weight(1f)) {
-                    Text(collectionTitle, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(open.title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("${collectionTracks.size} tracks", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Button(enabled = collectionTracks.isNotEmpty(), onClick = { playLocalTracks(collectionTracks, 0) }) { Text("Play all") }
@@ -423,7 +438,7 @@ fun LibraryScreen(navController: NavController) {
         tabStates.SaveableStateProvider(selectedTab) {
         when {
             loading -> PageLoadingState("Opening your library")
-            selectedTab == LibraryTab.Home -> SecondHomeFeed(
+            selectedTab == LibraryTab.Home -> LibraryHomeFeed(
                 yt = ytData,
                 local = local,
                 offlineCount = offline.size,
@@ -432,8 +447,7 @@ fun LibraryScreen(navController: NavController) {
                 onLikedClick = { tab = LibraryTab.Liked },
                 onOfflineClick = { tab = LibraryTab.Offline },
                 onPlayLocal = playLocalTracks,
-                onPlayAlbum = ::openAlbum,
-                onOpenArtist = ::openArtist,
+                onOpen = { openCollection = it },
                 onManageFolders = { navController.navigate(Routes.SETTINGS_LOCAL_OFFLINE) },
                 onYtItem = onYtItem,
                 error = ytData.error,
@@ -511,134 +525,7 @@ fun LibraryScreen(navController: NavController) {
 }
 
 @Composable
-private fun SecondHomeFeed(
-    yt: YtLibraryData,
-    local: LocalFeed,
-    offlineCount: Int,
-    playingId: String?,
-    isPlaying: Boolean,
-    onLikedClick: () -> Unit,
-    onOfflineClick: () -> Unit,
-    onPlayLocal: (List<Local_track>, Int) -> Unit,
-    onPlayAlbum: (Local_album) -> Unit,
-    onOpenArtist: (Local_artist) -> Unit,
-    onManageFolders: () -> Unit,
-    onYtItem: (YTItem, List<SongItem>) -> Unit,
-    error: String?,
-    refreshing: Boolean,
-    onRetry: () -> Unit,
-) {
-    val emptyLocal = local.tracks.isEmpty() && local.albums.isEmpty()
-    val smoothScroll1 = androidx.compose.foundation.lazy.rememberLazyListState()
-    LazyColumn(
-        state = smoothScroll1,
-        contentPadding = PaddingValues(bottom = 128.dp),
-        modifier = Modifier.fillMaxSize()
-            .smoothWheelScroll(smoothScroll1),
-    ) {
-        item {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                LikedTile(
-                    songCount = yt.songs.size,
-                    onClick = onLikedClick,
-                    modifier = Modifier.weight(1f),
-                )
-                OfflineTile(
-                    count = offlineCount,
-                    onClick = onOfflineClick,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        }
-
-        if (error != null) {
-            item {
-                Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text("Online library unavailable", Modifier.weight(1f), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    TextButton(onClick = onRetry, enabled = !refreshing) { Text("Retry") }
-                }
-            }
-        }
-        if (emptyLocal) {
-            item {
-                Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainer, modifier = Modifier.fillMaxWidth().padding(16.dp)) {
-                    Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                        Text("Make yourself at home", style = MaterialTheme.typography.headlineSmall)
-                        Text("Add your music folders to find albums, recent additions and your most-played tracks here.")
-                        Button(onClick = onManageFolders) { Text("Add music folders") }
-                    }
-                }
-            }
-        }
-        if (local.recentTracks.isNotEmpty()) {
-            item {
-                LocalTrackShelf(
-                    title = "Recently added (On this computer / 本机)",
-                    tracks = local.recentTracks,
-                    playingId = playingId,
-                    isPlaying = isPlaying,
-                    onPlay = onPlayLocal,
-                )
-            }
-        }
-        if (yt.playlists.isNotEmpty()) {
-            item {
-                Text("Your playlists", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(16.dp))
-                val rowState = rememberLazyListState()
-                LazyRow(state = rowState, contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.horizontalWheelScroll(rowState)) {
-                    items(yt.playlists.distinctBy { it.id }, key = { it.id }) { playlist ->
-                        YouTubeGridItem(item = playlist, onClick = { onYtItem(playlist, emptyList()) }, modifier = Modifier.width(172.dp))
-                    }
-                }
-            }
-        }
-        if (local.recentAlbums.isNotEmpty()) {
-            item {
-                LocalAlbumShelf(
-                    title = "New albums (On this computer / 本机)",
-                    albums = local.recentAlbums,
-                    onClick = onPlayAlbum,
-                )
-            }
-        }
-        if (local.heavy.isNotEmpty()) {
-            item {
-                LocalTrackShelf(
-                    title = "Heavy rotation (On this computer / 本机)",
-                    tracks = local.heavy,
-                    playingId = playingId,
-                    isPlaying = isPlaying,
-                    onPlay = onPlayLocal,
-                )
-            }
-        }
-        if (local.rediscover.isNotEmpty()) {
-            item {
-                LocalTrackShelf(
-                    title = "Rediscover (On this computer / 本机)",
-                    tracks = local.rediscover,
-                    playingId = playingId,
-                    isPlaying = isPlaying,
-                    onPlay = onPlayLocal,
-                )
-            }
-        }
-        if (local.artists.isNotEmpty()) {
-            item {
-                LocalArtistShelf(title = "Local artists", artists = local.artists.take(24), onClick = onOpenArtist)
-            }
-        }
-
-    }
-}
-
-@Composable
-private fun LikedTile(
+internal fun LikedTile(
     songCount: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -676,7 +563,7 @@ private fun LikedTile(
 }
 
 @Composable
-private fun OfflineTile(
+internal fun OfflineTile(
     count: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -714,7 +601,7 @@ private fun OfflineTile(
 }
 
 @Composable
-private fun LocalTrackShelf(
+internal fun LocalTrackShelf(
     title: String,
     tracks: List<Local_track>,
     playingId: String?,
@@ -753,7 +640,7 @@ private fun LocalTrackShelf(
 }
 
 @Composable
-private fun LocalAlbumShelf(
+internal fun LocalAlbumShelf(
     title: String,
     albums: List<Local_album>,
     onClick: (Local_album) -> Unit,
@@ -862,7 +749,7 @@ private fun LocalTrackCard(
 }
 
 @Composable
-private fun LocalCoverCard(
+internal fun LocalCoverCard(
     title: String,
     subtitle: String,
     coverPath: String?,
