@@ -22,6 +22,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -390,17 +391,22 @@ fun NowPlayingScreen(
                                         label = "npArtwork",
                                         modifier = Modifier.fillMaxSize().clip(coverShape),
                                     ) { (_, artUrl) ->
-                                        Box(Modifier.fillMaxSize()) {
+                                        Box(Modifier.fillMaxSize().then(Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest))) {
                                             val squareUrl = canvasSquareUrl
                                             // The canvas takes over the cover: the static art only shows
                                             // until the first video frame, then it's removed entirely.
                                             var canvasShowing by remember(squareUrl) { mutableStateOf(false) }
                                             if (!canvasShowing) {
+                                                // Art with baked-in rounded corners is zoomed so its transparent
+                                                // corners fall outside our own rounded slot.
+                                                val bleed = com.music.vivi.compose.ui.component.rememberArtworkCornerBleed(artUrl)
                                                 AsyncImage(
                                                     model = artUrl,
                                                     contentDescription = track?.title,
                                                     contentScale = ContentScale.Crop,
-                                                    modifier = Modifier.fillMaxSize(),
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .graphicsLayer { scaleX = bleed; scaleY = bleed },
                                                 )
                                             }
                                             if (squareUrl != null) {
