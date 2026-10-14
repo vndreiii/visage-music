@@ -58,7 +58,7 @@ kotlin {
     }
 }
 
-val visageVersion: String = (System.getenv("VISAGE_VERSION") ?: "0.1.0").removePrefix("v")
+val visageVersion: String = (System.getenv("VISAGE_VERSION") ?: "1.0.0").removePrefix("v")
 
 // Stage the optional native helper where Compose copies "linux" resources from.
 val nativeResources = layout.buildDirectory.dir("native-resources")
@@ -95,7 +95,7 @@ compose.desktop {
                 iconFile.set(rootProject.file("packaging/icons/visage-512.png"))
                 debMaintainer = "Alex <alex@milfs.party>"
                 debPackageVersion = visageVersion
-                rpmLicenseType = "GPL-3.0"
+                rpmLicenseType = "GPL-3.0-only"
                 rpmPackageVersion = visageVersion
                 shortcut = true
             }

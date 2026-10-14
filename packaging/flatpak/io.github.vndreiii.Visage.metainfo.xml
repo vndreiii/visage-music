@@ -5,8 +5,8 @@
   <name>VIsage</name>
   <summary>Music player for Linux</summary>
   <metadata_license>CC0-1.0</metadata_license>
-  <!-- PLACEHOLDER: set the real project license (no LICENSE file in the repo yet). -->
-  <project_license>LicenseRef-proprietary</project_license>
+  
+  <project_license>GPL-3.0-only</project_license>
   <developer id="io.github.vndreiii">
     <name>vndreiii</name>
   </developer>
@@ -28,7 +28,7 @@
   <url type="bugtracker">https://github.com/vndreiii/visage-music/issues</url>
   <url type="vcs-browser">https://github.com/vndreiii/visage-music</url>
   <releases>
-    <release version="0.1.0" date="2026-10-14"/>
+    <release version="1.0.0" date="2026-10-14"/>
   </releases>
   <content_rating type="oars-1.1"/>
 </component>

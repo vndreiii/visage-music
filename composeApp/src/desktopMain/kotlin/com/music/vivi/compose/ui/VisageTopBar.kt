@@ -156,9 +156,9 @@ fun FrameWindowScope.VisageTopBar(
                             contentDescription = "VIsage",
                             modifier = Modifier
                                 .size(36.dp)
-                                .clip(CircleShape)
+                                .clip(RoundedCornerShape(8.dp)) // the icon is a rounded square; a circle would cut its corners
                                 .clickable { onNavigate(Routes.HOME) },
-                            contentScale = ContentScale.Crop,
+                            contentScale = ContentScale.Fit,
                         )
                     } else {
                         Text(
