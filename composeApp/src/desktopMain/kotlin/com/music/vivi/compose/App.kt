@@ -46,6 +46,14 @@ fun FrameWindowScope.App(
     val state by controller.state.collectAsState()
     val artworkPalette = rememberArtworkPalette(nowPlaying?.artworkUrl)
 
+    // Developer aid: VIVI_DEBUG_CRASH=1 throws inside the UI after a few seconds to exercise the error dialog.
+    if (System.getenv("VIVI_DEBUG_CRASH") == "1") {
+        LaunchedEffect(Unit) {
+            kotlinx.coroutines.delay(7_000)
+            error("Debug crash (VIVI_DEBUG_CRASH=1)")
+        }
+    }
+
     LaunchedEffect(Unit) {
         queuePersistence.start()
         localBootstrap.maybeAutoScan()
@@ -96,6 +104,7 @@ fun FrameWindowScope.App(
                     windowState = windowState,
                     onClose = onClose,
                 )
+                com.music.vivi.compose.crash.CrashDialogHost(onQuit = onClose)
             }
         }
     }

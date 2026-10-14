@@ -6,11 +6,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.LocalWindowExceptionHandlerFactory
 import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.WindowExceptionHandler
-import androidx.compose.ui.window.WindowExceptionHandlerFactory
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.music.vivi.compose.App
+import com.music.vivi.compose.crash.AppLog
+import com.music.vivi.compose.crash.CrashReporter
+import com.music.vivi.compose.crash.showFatalCrashWindow
 import com.music.vivi.compose.local.toQueueTrack
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.PrefKeys
@@ -75,37 +76,6 @@ val desktopModule = module {
     }
 }
 
-/** Log Compose/UI crashes instead of the native "Unknown error" OK dialog. */
-@OptIn(ExperimentalComposeUiApi::class)
-private val SilentWindowExceptionHandlerFactory = WindowExceptionHandlerFactory { _ ->
-    WindowExceptionHandler { throwable ->
-        System.err.println(
-            "Compose window exception: ${throwable.javaClass.simpleName}: ${throwable.message}",
-        )
-        throwable.printStackTrace(System.err)
-    }
-}
-
-private fun installSilentExceptionHandlers() {
-    val logOnly = Thread.UncaughtExceptionHandler { t, e ->
-        System.err.println("Uncaught on ${t.name}: ${e.javaClass.simpleName}: ${e.message}")
-        e.printStackTrace(System.err)
-    }
-    Thread.setDefaultUncaughtExceptionHandler(logOnly)
-    runCatching {
-        System.setProperty("sun.awt.exception.handler", SilentAwtExceptionHandler::class.java.name)
-    }
-}
-
-/** Loaded reflectively by the AWT toolkit when sun.awt.exception.handler is set. */
-class SilentAwtExceptionHandler {
-    @Suppress("unused")
-    fun handle(t: Throwable) {
-        System.err.println("AWT: ${t.javaClass.simpleName}: ${t.message}")
-        t.printStackTrace(System.err)
-    }
-}
-
 /**
  * App entry — JVM class name is [com.music.vivi.alex] (WM_CLASS / Hyprland class).
  */
@@ -131,7 +101,25 @@ fun main() {
             }
         }
     }
-    installSilentExceptionHandlers()
+    AppLog.install()
+    CrashReporter.install()
+    if (System.getenv("VIVI_DEBUG_CRASH_WINDOW") == "1") {
+        // Developer aid: open only the standalone error window with a sample report.
+        CrashReporter.record("main", IllegalStateException("Sample error (VIVI_DEBUG_CRASH_WINDOW=1)"), fatal = true)
+        CrashReporter.current.value?.let { showFatalCrashWindow(it) }
+        return
+    }
+    try {
+        runApp()
+    } catch (t: Throwable) {
+        // The Compose loop itself died: show a standalone Material 3 error window instead of Java's output.
+        CrashReporter.record(Thread.currentThread().name, t, fatal = true)
+        CrashReporter.current.value?.let { showFatalCrashWindow(it) }
+    }
+}
+
+@OptIn(ExperimentalComposeUiApi::class)
+private fun runApp() {
     application {
         remember { startKoin { modules(coreModule, desktopModule) } }
         val rpcManager = remember { com.music.vivi.compose.ui.player.DiscordRpcManager(kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default)).apply { start() } }
@@ -144,14 +132,29 @@ fun main() {
                 exitApplication()
             }
         }
-        Window(
-            onCloseRequest = closeApp,
-            state = windowState,
-            undecorated = true,
-            title = "VIVI Desktop",
+        androidx.compose.runtime.LaunchedEffect(Unit) {
+            // After a composition error the window can't update; release audio, close it and
+            // explain in a standalone Material 3 window instead.
+            CrashReporter.onUiDied = {
+                println("crash: UI died, opening the error window")
+                // Stop audio without going through Compose or Koin teardown (both race with the broken UI).
+                Thread({
+                    runCatching { getKoin().get<com.music.vivi.compose.local.QueuePersistence>().close() }
+                    runCatching { getKoin().get<PlaybackController>().release() }
+                }, "crash-cleanup").apply { isDaemon = true }.start()
+                CrashReporter.current.value?.let { showFatalCrashWindow(it) }
+            }
+        }
+        // The factory is read when the Window is created, so it must wrap the Window call itself
+        // (providing it inside the content never took effect and Java's own error dialog appeared).
+        CompositionLocalProvider(
+            LocalWindowExceptionHandlerFactory provides CrashReporter.windowExceptionHandlerFactory,
         ) {
-            CompositionLocalProvider(
-                LocalWindowExceptionHandlerFactory provides SilentWindowExceptionHandlerFactory,
+            Window(
+                onCloseRequest = closeApp,
+                state = windowState,
+                undecorated = true,
+                title = "VIVI Desktop",
             ) {
                 App(
                     windowState = windowState,
