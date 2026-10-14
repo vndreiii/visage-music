@@ -11,6 +11,10 @@ object MprisDesktopIntegration {
     private const val ICON_RESOURCE = "/mpris/visage.png"
 
     fun ensureInstalled() {
+        // Packaged installs (deb/rpm/Flatpak) ship their own launcher + icons.
+        if (System.getenv("FLATPAK_ID") != null ||
+            File("/usr/share/applications/$DESKTOP_ID.desktop").isFile
+        ) return
         runCatching {
             val home = System.getProperty("user.home")
             val dataHome = System.getenv("XDG_DATA_HOME")
@@ -44,7 +48,7 @@ object MprisDesktopIntegration {
                 |Name=VIsage
                 |GenericName=Music Player
                 |Comment=VIsage — music for Linux
-                |Exec=visage
+                |Exec=${System.getenv("APPIMAGE")?.takeIf { it.isNotBlank() } ?: "visage"}
                 |Icon=$DESKTOP_ID
                 |Terminal=false
                 |Categories=AudioVideo;Audio;Player;

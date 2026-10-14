@@ -1,19 +1,18 @@
 package com.music.vivi.player.session
 
-import com.github.javakeyring.KeyringStorageType
-import com.github.javakeyring.BackendNotSupportedException
-import java.util.concurrent.TimeUnit
-import com.github.javakeyring.Keyring
-import com.github.javakeyring.PasswordAccessException
 import com.music.innertube.auth.YtMusicSession
 import com.music.innertube.models.AccountInfo
+import com.music.vivi.nativelib.AppPaths
+import com.github.javakeyring.PasswordAccessException
+import java.io.File
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 
 /**
- * Persists YT Music session + account profile in the Freedesktop Secret Service
- * (GNOME Keyring / KWallet via libsecret), not as a plaintext file.
+ * Persists the YT Music session + account profile, not as a plaintext file: in the desktop keyring
+ * (GNOME Keyring / KWallet via the Secret Service) when one is reachable, otherwise in an encrypted
+ * file under the config dir. See [EncryptedFileBackend] for what that fallback does and does not protect.
  */
 object SessionSecretStore {
     private const val SERVICE = "visage"
@@ -25,6 +24,13 @@ object SessionSecretStore {
     private val json = Json {
         ignoreUnknownKeys = true
         encodeDefaults = true
+    }
+
+    private val router: SecretStoreRouter by lazy {
+        SecretStoreRouter(
+            primaryFactory = { SecretServiceBackend.system() },
+            file = EncryptedFileBackend.forCurrentUser(File(AppPaths.config(), "session.vault")),
+        )
     }
 
     @Serializable
@@ -51,15 +57,22 @@ object SessionSecretStore {
         )
     }
 
+    /** Where secrets currently live, for the Diagnostics screen. */
+    fun backendDescription(): String = router.backendDescription()
+
     fun save(session: YtMusicSession, account: AccountInfo) {
-        withKeyring { keyring ->
-            keyring.setPassword(SERVICE, ACCOUNT_SESSION, json.encodeToString(session))
-            keyring.setPassword(
-                SERVICE,
-                ACCOUNT_PROFILE,
-                json.encodeToString(StoredAccount.from(account)),
-            )
-        }
+        val sessionJson = json.encodeToString(session)
+        val accountJson = json.encodeToString(StoredAccount.from(account))
+        router.withBackend(
+            onKeyring = { keyring ->
+                keyring.put(SERVICE, ACCOUNT_SESSION, sessionJson)
+                keyring.put(SERVICE, ACCOUNT_PROFILE, accountJson)
+            },
+            onFile = { file ->
+                file.put(SERVICE, ACCOUNT_SESSION, sessionJson)
+                file.put(SERVICE, ACCOUNT_PROFILE, accountJson)
+            },
+        )
     }
 
     fun loadSession(): YtMusicSession? = readSecret(ACCOUNT_SESSION)?.let { payload ->
@@ -71,26 +84,30 @@ object SessionSecretStore {
     }
 
     fun clear() {
-        withKeyring { keyring ->
-            // Both services: otherwise the next read would copy the old entry forward and undo the sign-out.
-            for (service in listOf(SERVICE, LEGACY_SERVICE)) {
-                runCatching { keyring.deletePassword(service, ACCOUNT_SESSION) }
-                runCatching { keyring.deletePassword(service, ACCOUNT_PROFILE) }
-            }
-        }
+        router.withBackend(
+            onKeyring = { keyring ->
+                // Both services: otherwise the next read would copy the old entry forward and undo the sign-out.
+                for (service in listOf(SERVICE, LEGACY_SERVICE)) {
+                    for (account in listOf(ACCOUNT_SESSION, ACCOUNT_PROFILE)) {
+                        runCatching { keyring.delete(service, account) }
+                    }
+                }
+            },
+            onFile = { file -> file.deleteFile() },
+        )
     }
 
+    /**
+     * Reads the entry, or null when it is missing or unreadable. An unreadable store is logged (not thrown),
+     * so the app treats it as signed out instead of crashing; the reason is visible in [backendDescription].
+     */
     private fun readSecret(account: String): String? = try {
-        withKeyring { keyring ->
-            readWithLegacyFallback(
-                account = account,
-                get = { service, acct -> keyring.getPassword(service, acct) },
-                put = { service, acct, value -> keyring.setPassword(service, acct, value) },
-            )
-        }
-    } catch (_: PasswordAccessException) {
-        null
-    } catch (_: BackendNotSupportedException) {
+        router.withBackend(
+            onKeyring = { keyring -> readWithLegacyFallback(account, keyring::get, keyring::put) },
+            onFile = { file -> file.get(SERVICE, account) },
+        )
+    } catch (e: SecretBackendException) {
+        System.err.println("SessionSecretStore: could not read $account: ${e.message}")
         null
     }
 
@@ -104,43 +121,16 @@ object SessionSecretStore {
         get: (service: String, account: String) -> String?,
         put: (service: String, account: String, value: String) -> Unit,
     ): String? {
-        runCatching { get(SERVICE, account) }.getOrNull()?.let { return it }
-        val legacy = runCatching { get(LEGACY_SERVICE, account) }.getOrNull() ?: return null
+        missingAsNull { get(SERVICE, account) }?.let { return it }
+        val legacy = missingAsNull { get(LEGACY_SERVICE, account) } ?: return null
         runCatching { put(SERVICE, account, legacy) }
         return legacy
     }
 
-    private val keyringLock = Any()
-    // Cache success or failure: repeated UI reads must not keep activating wallet daemons.
-    private val keyringResult by lazy {
-        runCatching {
-            if (!System.getProperty("os.name").startsWith("Linux", ignoreCase = true)) {
-                Keyring.create()
-            } else {
-                try {
-                    Keyring.create(KeyringStorageType.GNOME_KEYRING)
-                } catch (secretServiceUnavailable: BackendNotSupportedException) {
-                    // Legacy KDE support without starting an unused KWallet on other desktops.
-                    if (walletAlreadyRunning()) Keyring.create(KeyringStorageType.KWALLET)
-                    else throw secretServiceUnavailable
-                }
-            }
-        }
-    }
-
-    private fun walletAlreadyRunning(): Boolean = listOf("org.kde.kwalletd6", "org.kde.kwalletd5").any { name ->
-        runCatching {
-            val process = ProcessBuilder("busctl", "--user", "--timeout=1", "call",
-                "org.freedesktop.DBus", "/org/freedesktop/DBus", "org.freedesktop.DBus",
-                "NameHasOwner", "s", name).redirectError(ProcessBuilder.Redirect.DISCARD).start()
-            if (!process.waitFor(2, TimeUnit.SECONDS)) {
-                process.destroyForcibly()
-                false
-            } else process.exitValue() == 0 && process.inputStream.bufferedReader().use { it.readText().trim() } == "b true"
-        }.getOrDefault(false)
-    }
-
-    private fun <T> withKeyring(block: (Keyring) -> T): T = synchronized(keyringLock) {
-        block(keyringResult.getOrThrow())
+    /** "No such entry" is null (java-keyring throws for it); any other failure propagates as unavailability. */
+    private fun missingAsNull(read: () -> String?): String? = try {
+        read()
+    } catch (_: PasswordAccessException) {
+        null
     }
 }
