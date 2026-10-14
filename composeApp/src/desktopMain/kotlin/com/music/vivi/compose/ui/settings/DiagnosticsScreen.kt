@@ -35,6 +35,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.music.vivi.canvas.NativeCanvas
+import com.music.vivi.player.session.SessionSecretStore
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.music.vivi.compose.crash.AppLog
 import com.music.vivi.compose.crash.CrashReport
 import com.music.vivi.compose.crash.CrashReporter
@@ -69,8 +72,17 @@ fun DiagnosticsScreen(navController: NavController) {
         }
     }
 
-    val system = remember {
+    // Probing the keyring can block for a few seconds, so keep it off the UI thread.
+    var credentials by remember { mutableStateOf("checking…") }
+    LaunchedEffect(Unit) {
+        credentials = withContext(Dispatchers.IO) {
+            runCatching { SessionSecretStore.backendDescription() }.getOrElse { "unavailable (${it.message})" }
+        }
+    }
+    val system = remember(credentials) {
         listOf(
+            "Version" to (System.getProperty("visage.version") ?: "dev"),
+            "Credential storage" to credentials,
             "Java" to "${System.getProperty("java.version")} (${System.getProperty("java.vendor")})",
             "OS" to "${System.getProperty("os.name")} ${System.getProperty("os.version")} ${System.getProperty("os.arch")}",
             "Session" to "${System.getenv("XDG_SESSION_TYPE") ?: "?"} / ${System.getenv("XDG_CURRENT_DESKTOP") ?: "?"}",
@@ -79,7 +91,7 @@ fun DiagnosticsScreen(navController: NavController) {
             "Log file" to (AppLog.logFile?.absolutePath ?: "—"),
         )
     }
-    val systemText = remember { system.joinToString("\n") { "${it.first}: ${it.second}" } }
+    val systemText = remember(system) { system.joinToString("\n") { "${it.first}: ${it.second}" } }
 
     SettingsPage(title = "Diagnostics", onBack = { navController.navigateUp() }) {
         DiagnosticsCard("System") {

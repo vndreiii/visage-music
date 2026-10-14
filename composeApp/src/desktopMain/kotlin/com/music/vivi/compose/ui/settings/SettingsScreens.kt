@@ -223,6 +223,8 @@ fun SettingsHubScreen(navController: NavController) {
             )
         }
 
+        com.music.vivi.compose.update.UpdateSettingsSection()
+
         Text(
             "VIsage — Linux port of VIVI Music",
             style = MaterialTheme.typography.bodySmall,
