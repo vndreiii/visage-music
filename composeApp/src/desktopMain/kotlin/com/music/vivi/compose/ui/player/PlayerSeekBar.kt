@@ -58,7 +58,7 @@ fun PlayerSeekBar(
         initialValue = 0f,
         targetValue = 1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1600, easing = LinearEasing),
+            animation = com.music.vivi.compose.ui.motion.ViviMotion.linear(1600),
             repeatMode = RepeatMode.Restart,
         ),
         label = "wavePhase",

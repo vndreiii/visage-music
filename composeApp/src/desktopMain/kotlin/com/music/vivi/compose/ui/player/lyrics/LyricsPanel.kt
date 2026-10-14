@@ -528,7 +528,7 @@ private fun LyricLineItem(
     )
     val alpha by androidx.compose.animation.core.animateFloatAsState(
         targetValue = targetAlpha,
-        animationSpec = androidx.compose.animation.core.tween(220),
+        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.settle(),
         label = "lyricAlpha",
     )
     Text(

@@ -78,7 +78,7 @@ fun ViviLoadingIndicator(
     LaunchedEffect(Unit) {
         launch {
             val morphAnimationSpec =
-                spring(dampingRatio = 0.6f, stiffness = 200f, visibilityThreshold = 0.1f)
+                com.music.vivi.compose.ui.motion.ViviMotion.morph<Float>()
             while (true) {
                 val deferred = async {
                     val animationResult =
@@ -102,7 +102,7 @@ fun ViviLoadingIndicator(
                 targetValue = FullRotation,
                 animationSpec =
                     infiniteRepeatable(
-                        tween(GlobalRotationDurationMillis, easing = LinearEasing),
+                        com.music.vivi.compose.ui.motion.ViviMotion.linear(GlobalRotationDurationMillis),
                         repeatMode = RepeatMode.Restart,
                     ),
             )

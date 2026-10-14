@@ -219,7 +219,7 @@ fun CanvasVideoSurface(
 ) {
     val video = rememberCanvasVideo(videoUrl, playing)
     val hasFrame = video.frame != null
-    val alpha by animateFloatAsState(if (hasFrame) 1f else 0f, tween(fadeInMillis), label = "canvasFade")
+    val alpha by animateFloatAsState(if (hasFrame) 1f else 0f, com.music.vivi.compose.ui.motion.ViviMotion.fade(fadeInMillis), label = "canvasFade")
     if (onFirstFrame != null) {
         LaunchedEffect(hasFrame) { if (hasFrame) onFirstFrame() }
     }

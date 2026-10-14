@@ -81,8 +81,13 @@ internal fun LibraryHomeFeed(
     error: String?,
     refreshing: Boolean,
     onRetry: () -> Unit,
+    /** Bumped when the Library tab is tapped again: scroll back to the top. */
+    resetTick: Int = 0,
 ) {
     val state = rememberLazyListState()
+    androidx.compose.runtime.LaunchedEffect(resetTick) {
+        if (resetTick > 0) state.animateScrollToItem(0)
+    }
     val mixes = remember(local.tracks, local.rediscover, local.genres) {
         buildMixes(local.tracks, local.rediscover, local.genres)
     }

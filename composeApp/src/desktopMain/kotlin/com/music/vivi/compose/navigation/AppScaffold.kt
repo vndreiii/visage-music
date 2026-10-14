@@ -218,7 +218,11 @@ fun FrameWindowScope.AppScaffold(
  */
 fun navigateMain(navController: NavHostController, route: String) {
     val start = navController.graph.findStartDestination()
-    if (navController.currentDestination?.route == route) return
+    if (navController.currentDestination?.route == route) {
+        // Tapping the tab you're already on goes back to that section's home.
+        if (route == Routes.LIBRARY) com.music.vivi.compose.ui.library.LibraryNavigator.reset()
+        return
+    }
     if (route == start.route) {
         navController.popBackStack(start.id, inclusive = false)
         return

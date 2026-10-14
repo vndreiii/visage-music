@@ -109,6 +109,15 @@ import org.koin.compose.koinInject
 
 private val LikedBlue = Color(0xFF3E9BFF)
 
+/** Lets the top bar tell the Library to return to its home when its tab is tapped again. */
+object LibraryNavigator {
+    private val _resets = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    val resets: kotlinx.coroutines.flow.SharedFlow<Unit> = _resets
+    fun reset() {
+        _resets.tryEmit(Unit)
+    }
+}
+
 /** What the Library is currently drilled into (shown as a track list with Play all / Shuffle). */
 internal sealed interface OpenCollection {
     val title: String
@@ -346,6 +355,15 @@ fun LibraryScreen(navController: NavController) {
     val offline by cache.offline.collectAsState()
     val localError by cache.localError.collectAsState()
 
+    var homeResetTick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        LibraryNavigator.resets.collect {
+            tab = LibraryTab.Home
+            openCollection = null
+            homeResetTick++
+        }
+    }
+
     LaunchedEffect(scanProgress.running, downloadStatus) {
         if (!scanProgress.running) cache.loadLocal()
     }
@@ -431,7 +449,7 @@ fun LibraryScreen(navController: NavController) {
         }
         AnimatedContent(
             targetState = tab,
-            transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) },
+            transitionSpec = { fadeIn(com.music.vivi.compose.ui.motion.ViviMotion.fadeInSpec()) togetherWith fadeOut(com.music.vivi.compose.ui.motion.ViviMotion.fadeOutSpec()) },
             label = "libraryTab",
             modifier = Modifier.weight(1f),
         ) { selectedTab ->
@@ -448,6 +466,7 @@ fun LibraryScreen(navController: NavController) {
                 onOfflineClick = { tab = LibraryTab.Offline },
                 onPlayLocal = playLocalTracks,
                 onOpen = { openCollection = it },
+                resetTick = homeResetTick,
                 onManageFolders = { navController.navigate(Routes.SETTINGS_LOCAL_OFFLINE) },
                 onYtItem = onYtItem,
                 error = ytData.error,

@@ -3,7 +3,10 @@ package com.music.vivi.compose.ui.motion
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.CubicBezierEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.TweenSpec
 import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.SpringSpec
@@ -56,6 +59,29 @@ object ViviMotion {
         tween(FadeInMs, delayMillis = delayMs, easing = EmphasizedDecelerate)
 
     fun <T> fadeOutSpec(): FiniteAnimationSpec<T> = tween(FadeOutMs, easing = EmphasizedAccelerate)
+
+    /** Constant-speed loops (spinners, drifting backgrounds, progress shimmer). */
+    fun <T> linear(durationMs: Int): TweenSpec<T> = tween(durationMs, easing = LinearEasing)
+
+    /** Deliberate, slow fades (canvas fade-in, ambient crossfades). */
+    fun <T> fade(durationMs: Int): TweenSpec<T> = tween(durationMs, easing = EmphasizedDecelerate)
+
+    /** Ambient colour/background changes that should be felt, not seen (palette per track). */
+    fun <T> ambient(): TweenSpec<T> = tween(AmbientMs)
+
+    /** App-wide theme colour transitions. */
+    fun <T> colorShift(): TweenSpec<T> = tween(650)
+
+    /** Breathing placeholder pulse; [delayMs] staggers neighbours. */
+    fun <T> pulse(delayMs: Int = 0): TweenSpec<T> = tween(900, delayMillis = delayMs, easing = FastOutSlowInEasing)
+
+    /** Snappy press-down before the [press] spring releases. */
+    fun <T> pressDown(): TweenSpec<T> = tween(90)
+
+    /** Loading-indicator shape morphing. */
+    fun <T> morph(): SpringSpec<T> = spring(dampingRatio = 0.6f, stiffness = 200f, visibilityThreshold = null)
+
+    const val AmbientMs = 1100
 
     // ── Anchored popups (same feel as Material's DropdownMenu) ──────────────────────────────
 

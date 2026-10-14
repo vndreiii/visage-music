@@ -169,7 +169,7 @@ fun ViviTheme(
     // Crossfade seed → regenerates the full Monet scheme fluidly (500–800ms).
     val seed by animateColorAsState(
         targetValue = targetSeed,
-        animationSpec = tween(durationMillis = 650),
+        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.colorShift(),
         label = "themeSeedCrossfade",
     )
 

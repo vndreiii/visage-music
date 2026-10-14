@@ -624,7 +624,7 @@ private fun QueueSkeletonRow(index: Int) {
         initialValue = 0.35f,
         targetValue = 0.8f,
         animationSpec = infiniteRepeatable(
-            tween(900, delayMillis = index * 90, easing = FastOutSlowInEasing),
+            com.music.vivi.compose.ui.motion.ViviMotion.pulse(index * 90),
             RepeatMode.Reverse,
         ),
         label = "alpha",

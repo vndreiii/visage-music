@@ -164,7 +164,7 @@ private fun GlowCoverBg(palette: ArtworkPalette?, artworkUrl: String?, sksl: Str
     val infinite = rememberInfiniteTransition(label = "glowCover")
     val rot by infinite.animateFloat(
         0f, 360f,
-        infiniteRepeatable(tween(40_000, easing = LinearEasing), RepeatMode.Restart),
+        infiniteRepeatable(com.music.vivi.compose.ui.motion.ViviMotion.linear(40_000), RepeatMode.Restart),
         label = "glowRot",
     )
     
@@ -243,7 +243,7 @@ private fun AppleMusicBg(
     Box(Modifier.fillMaxSize()) {
     AnimatedContent(
         targetState = artworkUrl,
-        transitionSpec = { fadeIn(tween(1200)) togetherWith fadeOut(tween(1200)) },
+        transitionSpec = { fadeIn(com.music.vivi.compose.ui.motion.ViviMotion.ambient()) togetherWith fadeOut(com.music.vivi.compose.ui.motion.ViviMotion.ambient()) },
         label = "appleMusicBackground",
     ) { url ->
         if (url == null) return@AnimatedContent
@@ -377,7 +377,7 @@ private fun MiniGlowCoverBg(palette: ArtworkPalette?, artworkUrl: String?, sksl:
     val infinite = rememberInfiniteTransition(label = "miniGlow")
     val rot by infinite.animateFloat(
         0f, 360f,
-        infiniteRepeatable(tween(36_000, easing = LinearEasing), RepeatMode.Restart),
+        infiniteRepeatable(com.music.vivi.compose.ui.motion.ViviMotion.linear(36_000), RepeatMode.Restart),
         label = "miniGlowRot",
     )
     

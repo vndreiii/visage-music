@@ -649,12 +649,12 @@ private fun SearchField(
     var focused by remember { mutableStateOf(false) }
     val corner by animateDpAsState(
         targetValue = if (focused) 16.dp else 28.dp,
-        animationSpec = tween(220),
+        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.settle(),
         label = "searchCorner",
     )
     val elev by animateDpAsState(
         targetValue = if (focused) 6.dp else 0.dp,
-        animationSpec = tween(220),
+        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.settle(),
         label = "searchElev",
     )
     Surface(

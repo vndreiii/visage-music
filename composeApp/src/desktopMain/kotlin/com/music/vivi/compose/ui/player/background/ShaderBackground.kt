@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.luminance
 import com.music.vivi.compose.theme.ArtworkPalette
 import com.music.vivi.compose.theme.fetchImageBytesCached
+import com.music.vivi.compose.ui.motion.ViviMotion
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.jetbrains.skia.FilterMipmap
@@ -71,7 +72,7 @@ internal fun ShaderBackground(
         MaterialTheme.colorScheme.surface,
     )
     val target = remember(palette, fallback) { shaderColors(palette, fallback) }
-    val colors = target.map { animateColorAsState(it, tween(1100), label = "bgColor").value }
+    val colors = target.map { animateColorAsState(it, ViviMotion.ambient(), label = "bgColor").value }
 
     val time = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {

@@ -331,7 +331,7 @@ private fun TopNavChip(
     val selectedFg = ensureContrastingOn(selectedBg, scheme.onPrimary)
     val bg by androidx.compose.animation.animateColorAsState(
         targetValue = if (selected) selectedBg else Color.Transparent,
-        animationSpec = androidx.compose.animation.core.tween(280),
+        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.settle(),
         label = "navChipBg",
     )
     val fg by androidx.compose.animation.animateColorAsState(
@@ -340,7 +340,7 @@ private fun TopNavChip(
         } else {
             scheme.onSurfaceVariant
         },
-        animationSpec = androidx.compose.animation.core.tween(280),
+        animationSpec = com.music.vivi.compose.ui.motion.ViviMotion.settle(),
         label = "navChipFg",
     )
     val iconScale by androidx.compose.animation.core.animateFloatAsState(
