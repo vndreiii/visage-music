@@ -45,6 +45,8 @@ fun PlayerSeekBar(
     style: SliderStyle,
     squiggly: Boolean,
     compact: Boolean = false,
+    /** M3 Expressive: the played part is a travelling wave while playing and eases flat when paused. */
+    isPlaying: Boolean = true,
     modifier: Modifier = Modifier,
     height: Dp = 28.dp,
     activeColor: Color = Color.White,
@@ -64,6 +66,12 @@ fun PlayerSeekBar(
         label = "wavePhase",
     )
     val wavy = squiggly || style == SliderStyle.WAVY
+    // Wave height eases in/out with play state (Expressive wavy-progress behaviour).
+    val waveAmount by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (isPlaying && !compact) 1f else 0f,
+        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.linear(450),
+        label = "waveAmount",
+    )
     // Freeze wave animation while scrubbing feels odd; keep phase but OK.
 
     fun fractionForX(x: Float, width: Float): Float =
@@ -110,29 +118,49 @@ fun PlayerSeekBar(
         val midY = size.height / 2f
         val m3Expressive = style == SliderStyle.M3_EXPRESSIVE
         if (m3Expressive) {
-            val trackH = 16.dp.toPx()
+            val wavyTrack = !compact
+            val trackH = if (wavyTrack) 8.dp.toPx() else 16.dp.toPx()
             val thumbW = 4.dp.toPx()
-            val thumbH = if (compact) 34.dp.toPx() else 48.dp.toPx()
+            val thumbH = if (compact) 34.dp.toPx() else 44.dp.toPx()
             val gap = 6.dp.toPx()
-            
+
             val tx = size.width * p
-            
-            // Active track
+
+            // Active track: a wave (seek bar) or a flat rounded bar (volume / compact).
             val activeEnd = (tx - gap - thumbW/2f).coerceAtLeast(0f)
             if (activeEnd > 0f) {
-                val activePath = Path().apply {
-                    addRoundRect(RoundRect(
-                        left = 0f, top = midY - trackH/2f,
-                        right = activeEnd, bottom = midY + trackH/2f,
-                        topLeftCornerRadius = CornerRadius(trackH/2f),
-                        bottomLeftCornerRadius = CornerRadius(trackH/2f),
-                        topRightCornerRadius = CornerRadius.Zero,
-                        bottomRightCornerRadius = CornerRadius.Zero,
-                    ))
+                if (wavyTrack) {
+                    val amp = 3.5.dp.toPx() * waveAmount
+                    val wavelength = 36.dp.toPx()
+                    val inset = trackH / 2f
+                    val path = Path()
+                    // The round caps extend by trackH/2 at each end, so run the centre line inset on both sides.
+                    val x0 = inset
+                    val x1 = (activeEnd - inset).coerceAtLeast(x0)
+                    val steps = ((x1 - x0) / 3f).toInt().coerceIn(2, 400)
+                    for (i in 0..steps) {
+                        val x = x0 + (x1 - x0) * i / steps
+                        // ease the wave to flat at both ends so it meets the cap and the gap calmly
+                        val edge = minOf((x1 - x) / 14.dp.toPx(), (x - x0) / 8.dp.toPx()).coerceIn(0f, 1f)
+                        val y = midY + sin(2f * PI.toFloat() * (x / wavelength - phase)) * amp * edge
+                        if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                    }
+                    drawPath(path, activeColor, style = Stroke(width = trackH, cap = StrokeCap.Round))
+                } else {
+                    val activePath = Path().apply {
+                        addRoundRect(RoundRect(
+                            left = 0f, top = midY - trackH/2f,
+                            right = activeEnd, bottom = midY + trackH/2f,
+                            topLeftCornerRadius = CornerRadius(trackH/2f),
+                            bottomLeftCornerRadius = CornerRadius(trackH/2f),
+                            topRightCornerRadius = CornerRadius(2.dp.toPx()),
+                            bottomRightCornerRadius = CornerRadius(2.dp.toPx()),
+                        ))
+                    }
+                    drawPath(activePath, activeColor)
                 }
-                drawPath(activePath, activeColor)
             }
-            
+
             // Thumb
             val thumbLeft = (tx - thumbW/2f).coerceIn(0f, size.width - thumbW)
             drawRoundRect(
@@ -149,8 +177,8 @@ fun PlayerSeekBar(
                     addRoundRect(RoundRect(
                         left = inactiveStart, top = midY - trackH/2f,
                         right = size.width, bottom = midY + trackH/2f,
-                        topLeftCornerRadius = CornerRadius.Zero,
-                        bottomLeftCornerRadius = CornerRadius.Zero,
+                        topLeftCornerRadius = CornerRadius(2.dp.toPx()),
+                        bottomLeftCornerRadius = CornerRadius(2.dp.toPx()),
                         topRightCornerRadius = CornerRadius(trackH/2f),
                         bottomRightCornerRadius = CornerRadius(trackH/2f),
                     ))

@@ -666,7 +666,7 @@ fun NowPlayingSettingsScreen(navController: NavController) {
                 onSelect = { prefs.setString(PrefKeys.PlayerButtonsStyle, it.name) },
             )
             SettingsDivider()
-            val slider = prefs.enumPref(PrefKeys.SliderStyle, SliderStyle.DEFAULT)
+            val slider = prefs.enumPref(PrefKeys.SliderStyle, SliderStyle.M3_EXPRESSIVE)
             LiveSliderStyleHeroPreview(style = slider, squiggly = prefs.getBoolean(PrefKeys.SquigglySlider, false))
             ChipChoiceRow(
                 icon = Icons.Outlined.GraphicEq,

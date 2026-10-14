@@ -228,7 +228,7 @@ fun NowPlayingScreen(
         )
     }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
     val sliderStyle = runCatching {
-        SliderStyle.valueOf(prefs.getString(PrefKeys.SliderStyle, SliderStyle.DEFAULT.name))
+        SliderStyle.valueOf(prefs.getString(PrefKeys.SliderStyle, SliderStyle.M3_EXPRESSIVE.name))
     }.getOrDefault(SliderStyle.DEFAULT)
     val squigglySlider = prefs.getBoolean(PrefKeys.SquigglySlider, false)
     val framedControls = prefs.getBoolean(PrefKeys.UsePlayerV2, false)
@@ -726,6 +726,7 @@ internal fun NowPlayingSeekSection(
 ) {
     val controller = LocalPlaybackController.current
     val positionMs by controller.positionMs.collectAsState()
+    val playbackState by controller.state.collectAsState()
     var scrubbing by remember { mutableStateOf(false) }
     var scrubPos by remember { mutableFloatStateOf(0f) }
     val progress = when {
@@ -744,6 +745,7 @@ internal fun NowPlayingSeekSection(
             },
             style = sliderStyle,
             squiggly = squiggly,
+            isPlaying = playbackState == com.music.vivi.player.PlaybackState.Playing,
             modifier = Modifier.fillMaxWidth(),
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {

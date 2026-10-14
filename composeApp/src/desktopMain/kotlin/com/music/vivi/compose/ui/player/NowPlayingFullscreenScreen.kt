@@ -234,9 +234,10 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                         scrubbing = false
                         controller.seekTo((scrubPos * duration).toLong().coerceAtLeast(0L))
                     },
-                    style = runCatching { com.music.vivi.compose.prefs.SliderStyle.valueOf(prefs.getString(PrefKeys.SliderStyle, "DEFAULT")) }.getOrDefault(com.music.vivi.compose.prefs.SliderStyle.DEFAULT),
+                    style = runCatching { com.music.vivi.compose.prefs.SliderStyle.valueOf(prefs.getString(PrefKeys.SliderStyle, "M3_EXPRESSIVE")) }.getOrDefault(com.music.vivi.compose.prefs.SliderStyle.M3_EXPRESSIVE),
                     squiggly = prefs.getBoolean(PrefKeys.SquigglySlider, false),
-                    modifier = Modifier.fillMaxWidth().height(28.dp),
+                    isPlaying = controller.state.value == com.music.vivi.player.PlaybackState.Playing,
+                    modifier = Modifier.fillMaxWidth().height(40.dp),
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(formatMs(displayPos), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
