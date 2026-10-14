@@ -33,6 +33,7 @@ import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ColorLens
@@ -212,6 +213,13 @@ fun SettingsHubScreen(navController: NavController) {
                 title = "Local files",
                 subtitle = "Music folders, scanning, offline library",
                 onClick = { navController.navigate(Routes.SETTINGS_LOCAL_OFFLINE) },
+            )
+            SettingsDivider()
+            SettingsNavItem(
+                icon = Icons.Outlined.BugReport,
+                title = "Diagnostics",
+                subtitle = "Logs, system info, report a problem",
+                onClick = { navController.navigate(Routes.SETTINGS_DIAGNOSTICS) },
             )
         }
 

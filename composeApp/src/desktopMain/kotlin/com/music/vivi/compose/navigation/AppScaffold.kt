@@ -261,6 +261,7 @@ fun ViviNavHost(
         composable(Routes.SETTINGS_NOW_PLAYING) { NowPlayingSettingsScreen(navController) }
         composable(Routes.SETTINGS_DOWNLOADS) { DownloadsSettingsScreen(navController) }
         composable(Routes.SETTINGS_LOCAL_OFFLINE) { LocalOfflineSettingsScreen(navController) }
+        composable(Routes.SETTINGS_DIAGNOSTICS) { com.music.vivi.compose.ui.settings.DiagnosticsScreen(navController) }
         composable(Routes.SMOKE) { SmokePlaybackScreen() }
         composable(Routes.NOW_PLAYING) {
             NowPlayingScreen(

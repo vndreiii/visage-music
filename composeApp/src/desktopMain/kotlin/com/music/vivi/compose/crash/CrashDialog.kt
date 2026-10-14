@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -49,6 +50,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.awt.ComposeWindow
 import kotlinx.coroutines.delay
+import com.music.vivi.compose.ui.expressive.ConnectedButtonGroup
 import com.music.vivi.compose.ui.expressive.ExpressiveButton
 import com.music.vivi.compose.ui.expressive.ExpressiveStyle
 import java.awt.event.WindowAdapter
@@ -140,7 +142,7 @@ fun CrashPanel(
                 Modifier.size(48.dp),
                 contentAlignment = Alignment.Center,
             ) {
-                Surface(shape = CircleShape, color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxSize()) {}
+                Surface(shape = RoundedCornerShape(16.dp), color = MaterialTheme.colorScheme.errorContainer, modifier = Modifier.fillMaxSize()) {}
                 Icon(Icons.Outlined.ErrorOutline, contentDescription = null, tint = MaterialTheme.colorScheme.onErrorContainer)
             }
             Column(Modifier.weight(1f)) {
@@ -154,10 +156,12 @@ fun CrashPanel(
         }
         Text(report.explanation, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = detail == Detail.Error, onClick = { detail = Detail.Error }, label = { Text("Error details") })
-            FilterChip(selected = detail == Detail.Log, onClick = { detail = Detail.Log }, label = { Text("Log") })
-        }
+        ConnectedButtonGroup(
+            options = listOf(Detail.Error to "Error details", Detail.Log to "Log"),
+            selected = detail,
+            onSelect = { detail = it },
+            modifier = Modifier.width(260.dp),
+        )
         Surface(
             shape = MaterialTheme.shapes.medium,
             color = MaterialTheme.colorScheme.surfaceContainerHighest,
