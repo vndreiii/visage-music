@@ -1,99 +1,101 @@
-# VIsage
+<p align="center">
+  <img src="packaging/icons/visage-128.png" width="96" alt="VIsage logo">
+</p>
 
-**VIsage** is a Linux music player for [YouTube Music](https://music.youtube.com). It is the desktop port of [VIVI Music](https://github.com/vivizzz007/vivi-music) (Android): same idea — stream YT Music with your own account — built as a native Compose Multiplatform app for the desktop.
+<h1 align="center">VIsage</h1>
 
-Sign in once with Google (bundled browser + your Linux keyring). After that you get Home, Search, Library, a full Now Playing experience, lyrics, queue, MPRIS desktop integration, and optional offline audio saves.
+<p align="center">
+  A Linux desktop player for YouTube Music. Desktop port of <a href="https://github.com/vivizzz007/vivi-music">VIVI Music</a>.
+</p>
 
-## What you can do
+<p align="center">
+  <a href="https://github.com/vndreiii/visage-music/actions/workflows/ci.yml"><img src="https://github.com/vndreiii/visage-music/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+</p>
 
-- Browse Home shelves, Search, artists, albums, and playlists
-- Play with **libmpv**, queue / radio expand, shuffle & repeat
-- Control playback from the shell via **MPRIS** (media keys / applets)
-- Read synced **lyrics** (LRCLIB and other providers)
-- Pin a **queue** rail, use under-playbar or fullscreen queue
-- **Make tracks available offline** (audio files via yt-dlp into your Downloads folder)
-- Theme the UI (Material You / dynamic color, mini-player styles, player backgrounds)
+## Screenshots
 
-## Requirements
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/01-home.png" width="100%" alt="Home"><br><sub><b>Home</b>: shelves, quick picks and charts</sub></td>
+    <td width="50%"><img src="docs/screenshots/02-search.png" width="100%" alt="Search"><br><sub><b>Search</b>: songs, videos, albums and playlists</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/03-library.png" width="100%" alt="Library"><br><sub><b>Library</b>: local folders, liked songs and offline saves</sub></td>
+    <td width="50%"><img src="docs/screenshots/04-now-playing-canvas.png" width="100%" alt="Now Playing with canvas"><br><sub><b>Now Playing</b>: animated Canvas cover art, with a wavy seek bar</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/05-lyrics-canvas.png" width="100%" alt="Synced lyrics with canvas"><br><sub><b>Synced lyrics</b>: the current line is highlighted, canvas still playing in the cover card</sub></td>
+    <td width="50%"><img src="docs/screenshots/06-queue-rail.png" width="100%" alt="Pinned queue"><br><sub><b>Queue</b>: pinned rail with queue and radio controls</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/07-now-playing-anime.png" width="100%" alt="Now Playing, anime track"><br><sub><b>Now Playing</b>: artwork-driven background</sub></td>
+    <td width="50%"><img src="docs/screenshots/10-lyrics-anime.png" width="100%" alt="Lyrics, anime track"><br><sub><b>Lyrics</b> on a Japanese track, with the line highlighted</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/08-background-wave.png" width="100%" alt="Wave background style"><br><sub><b>Background style</b>: Wave</sub></td>
+    <td width="50%"><img src="docs/screenshots/09-background-live-mesh.png" width="100%" alt="Live mesh background style"><br><sub><b>Background style</b>: Live mesh</sub></td>
+  </tr>
+</table>
 
-- Linux (Secret Service keyring: GNOME Keyring, KWallet, etc.)
-- JDK **21**
-- **libmpv** (`libmpv.so`)
-- No browser installation needed: Chromium sign-in is embedded in the app
-- Optional: **yt-dlp** (offline saves + stream fallback), **pactl** (audio output picker)
+## Features
 
-## Run
+- **Browse**: Home shelves, Search, artists, albums and playlists from your YouTube Music account
+- **Library**: local music folders with a Rust scan and fuzzy-search helper, plus liked songs and offline saves
+- **Playback**: libmpv engine, queue and radio, shuffle and repeat
+- **Lyrics**: synced lyrics from LRCLIB and other providers
+- **Now Playing**: Canvas looping video backgrounds and shader backgrounds, with a pinnable queue rail
+- **Desktop integration**: MPRIS for media keys and shell applets
+- **Offline**: save tracks as audio files via yt-dlp into your Downloads folder
+- **UI**: Material 3 Expressive components and dynamic color
+- **Sign-in**: embedded Chromium, so you sign in with Google inside the app
+- **Updates**: signed auto-update for the AppImage; other formats link to the release page
+
+## Install
+
+Download the latest build from the [Releases page](https://github.com/vndreiii/visage-music/releases):
+
+- `.deb` (Debian, Ubuntu)
+- `.rpm` (Fedora, openSUSE)
+- `.tar.gz` (portable)
+- `VIsage-x86_64.AppImage` (any distro, self-updating)
+- Flatpak
+
+You need **libmpv** installed. VIsage uses a Secret Service keyring (GNOME Keyring, KWallet, etc.) for your session; if none is available, it falls back to an encrypted file.
+
+## Build from source
+
+Requires **JDK 21**. Gradle fetches a JDK if needed, and the first build needs internet access.
 
 ```bash
-# Main app (dev)
-./run-dev.sh
-# or
-./gradlew :composeApp:run
+# Run in development
+./run-dev.sh            # or: ./gradlew :composeApp:run
 
-# First-time / re-login: Settings → Account → Sign in with Google
+# Optional: Rust helpers (scan and search), loaded through JNA
+cargo build --release --manifest-path native/Cargo.toml
+
+# Linux packages (.deb, .rpm, .tar.gz, AppImage) into dist/
+scripts/package-linux.sh
 ```
 
-Prefs live at `~/.config/visage/settings.properties`.
+## Project layout
 
-## Project layout (short)
+| Path | Role |
+|------|------|
+| `composeApp/` | Compose Multiplatform desktop UI |
+| `player/` | Playback controller, libmpv, MPRIS, stream resolution, session storage |
+| `innertube/` | YouTube Music Innertube API client |
+| `core/` | DI, session and service facades |
+| `database/` | Local SQLDelight cache |
+| `native/` | Optional Rust helpers for library scan and fuzzy search |
 
-| Module | Role |
-|--------|------|
-| `:composeApp` | Main Compose Desktop UI |
-| `:player` | PlaybackController, libmpv, MPRIS, stream resolve |
-| `:innertube` | YouTube Music Innertube API |
-| `:core` | DI / session / service facades |
-| `:database` | Local SQLDelight cache |
-| `native/` | Optional Rust helpers (parallel scan + tag cache, fuzzy search) via JNA — see [`native/README.md`](native/README.md) |
-| `:lyrics`, `:jiosaavn`, … | Lyrics backends, Saavn stream assist, other integrations |
+More detail: [`docs/architecture.md`](docs/architecture.md). Reusable UI pieces (motion tokens, Material 3 Expressive components, shader backgrounds): [`docs/ui-kit.md`](docs/ui-kit.md).
 
-Deeper architecture notes: [`docs/architecture.md`](docs/architecture.md). Reusable UI pieces (motion tokens, Material 3 Expressive components, shader backgrounds): [`docs/ui-kit.md`](docs/ui-kit.md). Session changelog for agents: [`SUMMARY.md`](SUMMARY.md).
+## Upgrading from VIVI Desktop
 
-## Build / test
+Your data is migrated automatically on first launch. The window class is now `visage`, so update any compositor rules that matched the old class.
 
-```bash
-./gradlew :composeApp:compileKotlinDesktop
-./gradlew :innertube:jvmTest :lyrics:jvmTest
-```
+## Credits and license
 
-Gradle automatically downloads JDK 21 if it is missing (the Gradle launcher
-itself needs Java 17 or newer). The first build needs internet access.
+VIsage is licensed under the **GPL-3.0**; see [`LICENSE`](LICENSE). It is derived from [VIVI Music](https://github.com/vivizzz007/vivi-music) and inherits its license terms.
 
-To build a Linux AppImage for testing:
-
-```bash
-./build-appimage.sh
-./dist/VIsage-x86_64.AppImage
-# Without FUSE:
-APPIMAGE_EXTRACT_AND_RUN=1 ./dist/VIsage-x86_64.AppImage
-```
-
-The AppImage bundles Java 21 and JCEF/Chromium 152 for embedded sign-in;
-system **libmpv** and a Secret Service keyring are still needed. The script downloads
-appimagetool 1.9.1, or uses an executable supplied via `APPIMAGETOOL`.
-Gradle bundles the CEF native runtime for the build architecture. On first sign-in
-it is extracted into `~/.cache/visage/jcef-152.0.6/`; no browser download is needed.
-The browser profile lives in `~/.cache/visage/embedded-login-profile/`.
-Existing keyring sessions are restored into the embedded browser automatically.
-
-Canvas controls live under **Settings → Now Playing → Background**. GPU decoding
-defaults off; optional **Ping-pong canvas** plays forward and backward without
-repeating endpoint frames. Normal loops use a crossfade, with frame interpolation
-after the first pass has filled the decoded-frame cache.
-
-Canvas identities distinguish Apple/Tidal album artwork from VIVI song artwork,
-and distinguish square and tall assets. The native helper persists lookup metadata
-for 24 hours. Decoded pixels are cached in RAM (512 MiB total, 256 MiB per clip),
-shared across tracks and reused when signed URL query parameters change. Oversized
-clips retain the streaming forward loop. Video files are not permanently cached
-on disk.
-
-## License / upstream
-
-Desktop port of the VIVI Music Android project. Upstream Android tree may exist locally as gitignored `vivi-music/` for reference only.
-
-## Migrating from VIVI Desktop
-VIsage is the new name of VIVI Desktop. On first launch it moves `~/.local/share`, `~/.config`, `~/.cache` and
-`~/.local/state` `vivi-desktop` directories to `visage` (leaving a symlink at the old path) and renames `vivi.db` to
-`visage.db`; the saved YouTube Music session is copied to the new keyring service. Old `VIVI_*` environment variables
-still work. The window class is now `visage` — update any compositor window rules that matched `com.music.vivi.alex`.
+VIsage is not affiliated with, endorsed by, or sponsored by YouTube or Google. YouTube Music is a trademark of Google LLC.
