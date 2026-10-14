@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Name=VIsage
+GenericName=Music Player
+Comment=Music for Linux
+Exec=visage %U
+Icon=io.github.vndreiii.Visage
+Terminal=false
+Categories=AudioVideo;Audio;Player;
+Keywords=music;player;audio;streaming;
+StartupWMClass=visage
+StartupNotify=false

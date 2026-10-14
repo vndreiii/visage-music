@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.vndreiii.Visage</id>
+  <launchable type="desktop-id">io.github.vndreiii.Visage.desktop</launchable>
+  <name>VIsage</name>
+  <summary>Music player for Linux</summary>
+  <metadata_license>CC0-1.0</metadata_license>
+  <!-- PLACEHOLDER: set the real project license (no LICENSE file in the repo yet). -->
+  <project_license>LicenseRef-proprietary</project_license>
+  <developer id="io.github.vndreiii">
+    <name>vndreiii</name>
+  </developer>
+  <description>
+    <p>VIsage is a music player for Linux with a Material 3 interface, a local library, and streaming playback through libmpv.</p>
+    <p>Playback integrates with desktop media controls (MPRIS), the system keyring for stored credentials, and desktop notifications.</p>
+  </description>
+  <categories>
+    <category>Audio</category>
+    <category>AudioVideo</category>
+    <category>Player</category>
+  </categories>
+  <keywords>
+    <keyword>music</keyword>
+    <keyword>player</keyword>
+    <keyword>audio</keyword>
+  </keywords>
+  <url type="homepage">https://github.com/vndreiii/visage-music</url>
+  <url type="bugtracker">https://github.com/vndreiii/visage-music/issues</url>
+  <url type="vcs-browser">https://github.com/vndreiii/visage-music</url>
+  <releases>
+    <release version="0.1.0" date="2026-10-14"/>
+  </releases>
+  <content_rating type="oars-1.1"/>
+</component>

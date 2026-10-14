@@ -1,0 +1,137 @@
+# Flatpak manifest for VIsage (Compose Desktop / JVM music player).
+#
+# Build inputs:
+#   - dist/visage  : the jpackage/Compose distributable (bin/ + lib/), staged by CI
+#                    (see .github/workflows/release.yml) from the tar.gz of the same name.
+#   - ../icons/    : hicolor PNG/SVG icons shared with the AppImage/desktop packaging.
+#
+# Build locally: see README.md in this directory.
+app-id: io.github.vndreiii.Visage
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: visage
+
+finish-args:
+  # Display: AWT and the embedded JCEF browser run on X11 (native or XWayland).
+  - --socket=x11
+  - --socket=wayland
+  - --share=ipc
+  - --device=dri
+  # Audio (libmpv -> PulseAudio API, served by PipeWire-Pulse on modern systems).
+  - --socket=pulseaudio
+  # Streaming, lyrics, Last.fm, embedded login, etc.
+  - --share=network
+  # Secret Service keyring (credentials / tokens).
+  - --talk-name=org.freedesktop.secrets
+  # MPRIS: the app owns its own bus name so clients can control playback.
+  - --own-name=org.mpris.MediaPlayer2.visage
+  - --talk-name=org.freedesktop.Notifications
+  # Local library: music folder for import, downloads for exports.
+  - --filesystem=xdg-music
+  - --filesystem=xdg-download
+
+modules:
+  # ---------------------------------------------------------------------------
+  # FFmpeg: shared libav* libraries that libmpv needs for demuxing and decoding.
+  # The Platform runtime does not ship FFmpeg, so it is built here. The build is
+  # trimmed to programs/docs off and autodetection off; codecs/demuxers stay at
+  # FFmpeg defaults (safer than a hand-picked list for streaming formats).
+  # ---------------------------------------------------------------------------
+  - name: ffmpeg
+    buildsystem: simple
+    build-commands:
+      - >-
+        ./configure
+        --prefix=/app
+        --enable-shared
+        --disable-static
+        --disable-programs
+        --disable-doc
+        --disable-debug
+        --disable-autodetect
+        --enable-openssl
+        --enable-pic
+      - make -j"$(nproc)"
+      - make install
+    sources:
+      # No checksum: tag pins the release. Pin a commit hash for reproducible CI.
+      - type: git
+        url: https://git.ffmpeg.org/ffmpeg.git
+        tag: n7.1
+
+  # ---------------------------------------------------------------------------
+  # libmpv only (shared library, no mpv CLI player, no video output stack).
+  # Audio-only use: vo/GL/Vulkan/X11/Wayland/Lua/JS/libass/libplacebo all off via
+  # auto_features=disabled. Only PulseAudio output is enabled as an audio backend.
+  # ---------------------------------------------------------------------------
+  - name: mpv
+    buildsystem: meson
+    config-opts:
+      - -Dauto_features=disabled
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dffmpeg=enabled
+      - -Dpulse=enabled
+    cleanup:
+      - /bin
+      - /include
+      - /lib/pkgconfig
+      - /share/man
+    sources:
+      - type: git
+        url: https://github.com/mpv-player/mpv.git
+        tag: v0.39.0
+
+  # ---------------------------------------------------------------------------
+  # VIsage itself: the prebuilt Compose distributable, plus desktop integration.
+  # ---------------------------------------------------------------------------
+  - name: visage
+    buildsystem: simple
+    build-commands:
+      # Application payload (bundled JRE, JCEF, app jars, optional native helper).
+      - install -d /app/lib/visage
+      - cp -a visage-dist/. /app/lib/visage/
+      # Launcher wrapper (LC_NUMERIC, DISABLE_LSFGVK, VISAGE_NATIVE_LIB).
+      - install -Dm755 visage.sh /app/bin/visage
+      # Desktop entry + AppStream metadata.
+      - install -Dm644 io.github.vndreiii.Visage.desktop /app/share/applications/io.github.vndreiii.Visage.desktop
+      - install -Dm644 io.github.vndreiii.Visage.metainfo.xml /app/share/metainfo/io.github.vndreiii.Visage.metainfo.xml
+      # Icons: scalable SVG plus PNG per hicolor size.
+      - install -Dm644 visage.svg /app/share/icons/hicolor/scalable/apps/io.github.vndreiii.Visage.svg
+      - install -Dm644 visage-16.png /app/share/icons/hicolor/16x16/apps/io.github.vndreiii.Visage.png
+      - install -Dm644 visage-24.png /app/share/icons/hicolor/24x24/apps/io.github.vndreiii.Visage.png
+      - install -Dm644 visage-32.png /app/share/icons/hicolor/32x32/apps/io.github.vndreiii.Visage.png
+      - install -Dm644 visage-48.png /app/share/icons/hicolor/48x48/apps/io.github.vndreiii.Visage.png
+      - install -Dm644 visage-64.png /app/share/icons/hicolor/64x64/apps/io.github.vndreiii.Visage.png
+      - install -Dm644 visage-128.png /app/share/icons/hicolor/128x128/apps/io.github.vndreiii.Visage.png
+      - install -Dm644 visage-256.png /app/share/icons/hicolor/256x256/apps/io.github.vndreiii.Visage.png
+      - install -Dm644 visage-512.png /app/share/icons/hicolor/512x512/apps/io.github.vndreiii.Visage.png
+    sources:
+      - type: dir
+        path: dist/visage
+        dest: visage-dist
+      - type: file
+        path: visage.sh
+      - type: file
+        path: io.github.vndreiii.Visage.desktop
+      - type: file
+        path: io.github.vndreiii.Visage.metainfo.xml
+      - type: file
+        path: ../icons/visage.svg
+      - type: file
+        path: ../icons/visage-16.png
+      - type: file
+        path: ../icons/visage-24.png
+      - type: file
+        path: ../icons/visage-32.png
+      - type: file
+        path: ../icons/visage-48.png
+      - type: file
+        path: ../icons/visage-64.png
+      - type: file
+        path: ../icons/visage-128.png
+      - type: file
+        path: ../icons/visage-256.png
+      - type: file
+        path: ../icons/visage-512.png

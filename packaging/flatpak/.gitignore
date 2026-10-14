@@ -1,0 +1,6 @@
+# Staged by CI / local build steps (copy of the Compose distributable).
+dist/
+.flatpak-builder/
+build-dir/
+repo/
+*.flatpak

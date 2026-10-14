@@ -9,7 +9,10 @@ case "$ARCH" in
   *) echo "Unsupported AppImage architecture: $ARCH" >&2; exit 1 ;;
 esac
 
-./gradlew :composeApp:createDistributable "$@"
+if [[ -z "${APP_DIR:-}" ]]; then
+  ./gradlew :composeApp:createDistributable "$@"
+  APP_DIR="$ROOT/composeApp/build/compose/binaries/main/app/visage"
+fi
 mkdir -p "$ROOT/build/appimage/tools" "$ROOT/dist"
 TOOL="${APPIMAGETOOL:-$ROOT/build/appimage/tools/appimagetool-$ARCH.AppImage}"
 if [[ ! -x "$TOOL" ]]; then
@@ -26,17 +29,25 @@ fi
 STAGE="$(mktemp -d "$ROOT/build/appimage/stage.XXXXXX")"
 APPDIR="$STAGE/visage.AppDir"
 mkdir -p "$APPDIR/opt"
-cp -a "$ROOT/composeApp/build/compose/binaries/main/app/visage" "$APPDIR/opt/visage"
-cp "$ROOT/composeApp/src/desktopMain/resources/visage_icon.png" "$APPDIR/visage.png"
+cp -a "$APP_DIR" "$APPDIR/opt/visage"
+cp "$ROOT/packaging/icons/visage-256.png" "$APPDIR/visage.png"
+cp "$APPDIR/visage.png" "$APPDIR/.DirIcon"
+for size in 16 24 32 48 64 128 256 512; do
+  install -Dm644 "$ROOT/packaging/icons/visage-$size.png" \
+    "$APPDIR/usr/share/icons/hicolor/${size}x${size}/apps/visage.png"
+done
+install -Dm644 "$ROOT/packaging/icons/visage.svg" "$APPDIR/usr/share/icons/hicolor/scalable/apps/visage.svg"
 cat > "$APPDIR/visage.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
 Name=VIsage
-Comment=YouTube Music desktop player
+GenericName=Music Player
+Comment=YouTube Music player for Linux
 Exec=visage
 Icon=visage
 Categories=AudioVideo;Audio;Player;
 Terminal=false
+StartupWMClass=visage
 EOF
 cat > "$APPDIR/AppRun" <<'EOF'
 #!/usr/bin/env bash

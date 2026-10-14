@@ -1,0 +1,23 @@
+#!/usr/bin/env bash
+# Replaces jpackage's stock native launcher, which segfaults at startup on current glibc (2.44):
+# reads the generated lib/app/visage.cfg and starts the bundled JVM directly.
+set -eu
+SELF="$(readlink -f "${BASH_SOURCE[0]}")"
+ROOT="$(dirname "$(dirname "$SELF")")"
+APPDIR="$ROOT/lib/app"
+CFG="$APPDIR/visage.cfg"
+[[ -r "$CFG" ]] || { echo "visage: missing $CFG" >&2; exit 1; }
+
+main="" cp="" opts=()
+while IFS= read -r line; do
+  case "$line" in
+    app.mainclass=*) main="${line#app.mainclass=}" ;;
+    app.classpath=*) v="${line#app.classpath=}"; cp+="${cp:+:}${v//\$APPDIR/$APPDIR}" ;;
+    java-options=*)  v="${line#java-options=}"; opts+=("${v//\$APPDIR/$APPDIR}") ;;
+  esac
+done < "$CFG"
+
+export LC_NUMERIC=C
+# Keep the game frame-generation Vulkan layer out of libmpv/Chromium probing.
+export DISABLE_LSFGVK=1
+exec "$ROOT/lib/runtime/bin/java" "${opts[@]}" -cp "$cp" "$main" "$@"

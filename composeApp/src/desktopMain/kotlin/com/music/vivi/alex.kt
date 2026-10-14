@@ -5,6 +5,9 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.LocalWindowExceptionHandlerFactory
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.res.loadImageBitmap
+import androidx.compose.ui.res.useResource
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -129,6 +132,11 @@ fun main() {
 @OptIn(ExperimentalComposeUiApi::class)
 private fun runApp() {
     application {
+        val windowIcon = remember {
+            runCatching {
+                BitmapPainter(useResource("visage_icon.png") { loadImageBitmap(it) })
+            }.getOrNull()
+        }
         remember { startKoin { modules(coreModule, desktopModule) } }
         val rpcManager = remember { com.music.vivi.compose.ui.player.DiscordRpcManager(kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default)).apply { start() } }
         val windowState = rememberWindowState()
@@ -163,6 +171,7 @@ private fun runApp() {
                 state = windowState,
                 undecorated = true,
                 title = "VIsage",
+                icon = windowIcon,
             ) {
                 App(
                     windowState = windowState,

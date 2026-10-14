@@ -1,0 +1,145 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build, e.g. v0.2.0"
+        required: true
+
+permissions:
+  contents: write
+
+env:
+  TAG: ${{ inputs.tag || github.ref_name }}
+
+jobs:
+  linux:
+    name: ${{ matrix.arch }} — deb, rpm, tar.gz, AppImage
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native
+      - name: Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fakeroot rpm dpkg-dev binutils desktop-file-utils libfuse2t64 || \
+            sudo apt-get install -y --no-install-recommends fakeroot rpm dpkg-dev binutils desktop-file-utils libfuse2
+      - name: Package
+        run: VISAGE_VERSION="$TAG" ./scripts/package-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/*
+
+  flatpak:
+    name: ${{ matrix.arch }} — Flatpak
+    needs: linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      # Reuse the tar.gz built above instead of compiling twice.
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: staged
+      - name: Stage the app for flatpak-builder
+        run: |
+          mkdir -p packaging/flatpak/dist
+          tar -xzf staged/visage-*-linux-${{ matrix.arch }}.tar.gz -C packaging/flatpak/dist
+          ls packaging/flatpak/dist/visage
+      - uses: flatpak/flatpak-github-actions/flatpak-builder@v6
+        with:
+          bundle: VIsage-${{ matrix.arch }}.flatpak
+          manifest-path: packaging/flatpak/io.github.vndreiii.Visage.yml
+          arch: ${{ matrix.arch }}
+          cache-key: flatpak-${{ matrix.arch }}-${{ hashFiles('packaging/flatpak/*.yml') }}
+          upload-artifact: false
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flatpak-${{ matrix.arch }}
+          path: VIsage-${{ matrix.arch }}.flatpak
+
+  publish:
+    needs: [linux, flatpak]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Build + sign the update manifest
+        env:
+          UPDATE_KEY: ${{ secrets.VISAGE_UPDATE_SIGNING_KEY }}
+        run: |
+          set -euo pipefail
+          version="${TAG#v}"
+          base="https://github.com/${{ github.repository }}/releases/download/${TAG}"
+          cd artifacts
+          # Only the AppImage is self-updating; the others are listed so clients can show the right link.
+          jq -n --arg version "$version" --arg date "$(date -u +%FT%TZ)" --arg notes "VIsage $version" '{version:$version, notes:$notes, pub_date:$date, assets:{}}' > ../latest.json
+          for f in VIsage-*-*.AppImage; do
+            # VIsage-<version>-<arch>.AppImage ; the stable name VIsage-<arch>.AppImage is also published
+            :
+          done
+          for f in VIsage-x86_64.AppImage VIsage-aarch64.AppImage; do
+            [[ -f "$f" ]] || continue
+            jq --arg n "$f" --arg u "$base/$f" --arg h "$(sha256sum "$f" | cut -d' ' -f1)" --argjson s "$(stat -c %s "$f")" \
+              '.assets[$n] = {url:$u, sha256:$h, size:$s}' ../latest.json > ../latest.tmp && mv ../latest.tmp ../latest.json
+          done
+          cd ..
+          cat latest.json
+          if [[ -z "$UPDATE_KEY" ]]; then
+            echo "::warning::VISAGE_UPDATE_SIGNING_KEY is not set — releasing without latest.json.sig (clients will not auto-update)"
+          else
+            printf '%s' "$UPDATE_KEY" | base64 -d > key.pem
+            openssl pkeyutl -sign -inkey key.pem -rawin -in latest.json | base64 -w0 > latest.json.sig
+            shred -u key.pem
+          fi
+          mv latest.json artifacts/
+          [[ -f latest.json.sig ]] && mv latest.json.sig artifacts/ || true
+          cd artifacts && sha256sum * | grep -v SHA256SUMS > SHA256SUMS && ls -lh
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ env.TAG }}
+          name: VIsage ${{ env.TAG }}
+          generate_release_notes: true
+          files: artifacts/*
+          fail_on_unmatched_files: true
+          prerelease: ${{ contains(env.TAG, '-') }}
