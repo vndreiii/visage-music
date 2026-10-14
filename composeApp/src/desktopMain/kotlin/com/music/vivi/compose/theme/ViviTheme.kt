@@ -13,6 +13,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import com.materialkolor.PaletteStyle
 import com.materialkolor.dynamiccolor.ColorSpec
 import com.materialkolor.dynamicColorScheme
@@ -207,7 +208,42 @@ fun ViviTheme(
     CompositionLocalProvider(LocalArtworkPalette provides artworkPalette) {
         MaterialTheme(
             colorScheme = scheme,
+            shapes = ViviExpressiveShapes,
+            typography = ViviEmphasizedTypography,
             content = content,
         )
     }
+}
+
+
+/**
+ * Material 3 Expressive shape scale: rounder than the baseline across the board
+ * (8 / 12 / 16 / 24 / 32 dp instead of 4 / 8 / 12 / 16 / 28).
+ */
+val ViviExpressiveShapes = androidx.compose.material3.Shapes(
+    extraSmall = androidx.compose.foundation.shape.RoundedCornerShape(8.dp),
+    small = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+    medium = androidx.compose.foundation.shape.RoundedCornerShape(16.dp),
+    large = androidx.compose.foundation.shape.RoundedCornerShape(24.dp),
+    extraLarge = androidx.compose.foundation.shape.RoundedCornerShape(32.dp),
+)
+
+/** The "emphasized" end of the Expressive type scale: heavier weights for headlines, titles and labels. */
+val ViviEmphasizedTypography: androidx.compose.material3.Typography = androidx.compose.material3.Typography().let { t ->
+    val semi = androidx.compose.ui.text.font.FontWeight.SemiBold
+    val medium = androidx.compose.ui.text.font.FontWeight.Medium
+    t.copy(
+        displayLarge = t.displayLarge.copy(fontWeight = semi),
+        displayMedium = t.displayMedium.copy(fontWeight = semi),
+        displaySmall = t.displaySmall.copy(fontWeight = semi),
+        headlineLarge = t.headlineLarge.copy(fontWeight = semi),
+        headlineMedium = t.headlineMedium.copy(fontWeight = semi),
+        headlineSmall = t.headlineSmall.copy(fontWeight = semi),
+        titleLarge = t.titleLarge.copy(fontWeight = semi),
+        titleMedium = t.titleMedium.copy(fontWeight = semi),
+        titleSmall = t.titleSmall.copy(fontWeight = semi),
+        labelLarge = t.labelLarge.copy(fontWeight = semi),
+        labelMedium = t.labelMedium.copy(fontWeight = medium),
+        labelSmall = t.labelSmall.copy(fontWeight = medium),
+    )
 }

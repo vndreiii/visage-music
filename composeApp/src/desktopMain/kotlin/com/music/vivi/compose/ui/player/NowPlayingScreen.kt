@@ -12,6 +12,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import com.music.vivi.compose.ui.motion.ViviMotion
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -788,11 +789,24 @@ internal fun TransportRow(
             )
             },
         )
+        val playInteraction = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+        val playPressed by playInteraction.collectIsPressedAsState()
+        // Expressive toggle morph: a full pill while paused, a squarer shape while playing, tighter on press.
+        val playRadius by animateDpAsState(
+            when {
+                playPressed -> 12.dp
+                playing -> 20.dp
+                else -> 28.dp
+            },
+            com.music.vivi.compose.ui.motion.ViviMotion.spatialFast(),
+            label = "playRadius",
+        )
         Surface(
             onClick = onPlayPause,
             enabled = enabledPlay,
-            shape = RoundedCornerShape(50),
+            shape = RoundedCornerShape(playRadius),
             color = playBg,
+            interactionSource = playInteraction,
             modifier = Modifier.weight(1f).height(56.dp),
         ) {
             Row(
@@ -924,11 +938,16 @@ internal fun TransportPill(
     containerColor: Color = Color.White.copy(alpha = 0.12f),
     content: @Composable () -> Unit,
 ) {
+    val interaction = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    // Expressive press morph: pill → tighter corners while held, springing back on release.
+    val radius by animateDpAsState(if (pressed) 14.dp else 28.dp, com.music.vivi.compose.ui.motion.ViviMotion.spatialFast(), label = "pillRadius")
     Surface(
         onClick = onClick,
         enabled = enabled,
-        shape = RoundedCornerShape(50),
+        shape = RoundedCornerShape(radius),
         color = containerColor,
+        interactionSource = interaction,
         modifier = Modifier.size(width = width, height = 56.dp),
     ) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center, content = { content() })
