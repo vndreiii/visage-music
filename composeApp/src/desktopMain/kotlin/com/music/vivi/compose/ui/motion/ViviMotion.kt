@@ -29,6 +29,23 @@ import androidx.compose.ui.graphics.TransformOrigin
 object ViviMotion {
     // ── Springs ──────────────────────────────────────────────────────────────────────────────
 
+    // Material 3 Expressive motion scheme (values from the spec's `MotionScheme.expressive()`):
+    // spatial = movement/size/shape (may overshoot), effects = colour/alpha (never overshoot).
+
+    /** Fast spatial: small components, press/toggle shape morphs. damping 0.6, stiffness 800. */
+    fun <T> spatialFast(): SpringSpec<T> = spring(dampingRatio = 0.6f, stiffness = 800f)
+
+    /** Default spatial: most layout/position changes. damping 0.8, stiffness 380. */
+    fun <T> spatialDefault(): SpringSpec<T> = spring(dampingRatio = 0.8f, stiffness = 380f)
+
+    /** Slow spatial: large surfaces. damping 0.8, stiffness 200. */
+    fun <T> spatialSlow(): SpringSpec<T> = spring(dampingRatio = 0.8f, stiffness = 200f)
+
+    /** Effects (colour, alpha): fast 3800 / default 1600 / slow 800, damping 1.0. */
+    fun <T> effectsFast(): SpringSpec<T> = spring(dampingRatio = 1f, stiffness = 3800f)
+    fun <T> effectsDefault(): SpringSpec<T> = spring(dampingRatio = 1f, stiffness = 1600f)
+    fun <T> effectsSlow(): SpringSpec<T> = spring(dampingRatio = 1f, stiffness = 800f)
+
     /** Signature glide: soft, a hair of give, no visible overshoot. Resizing/repositioning layout. */
     fun <T> glide(): SpringSpec<T> =
         spring(dampingRatio = GlideDamping, stiffness = Spring.StiffnessMediumLow)

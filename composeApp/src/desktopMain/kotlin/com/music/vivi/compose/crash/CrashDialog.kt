@@ -49,6 +49,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.awt.ComposeWindow
 import kotlinx.coroutines.delay
+import com.music.vivi.compose.ui.expressive.ExpressiveButton
+import com.music.vivi.compose.ui.expressive.ExpressiveStyle
 import java.awt.event.WindowAdapter
 import java.awt.event.WindowEvent
 import javax.swing.JFrame
@@ -175,34 +177,36 @@ fun CrashPanel(
         }
 
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = {
-                CrashReporter.copyToClipboard(CrashReporter.fullReport(report))
-                copied = true
-            }) {
-                Icon(if (copied) Icons.Outlined.CheckCircle else Icons.Outlined.ContentCopy, null, Modifier.size(18.dp))
-                Text(if (copied) "  Copied" else "  Copy report")
-            }
-            FilledTonalButton(onClick = {
-                CrashReporter.copyToClipboard(CrashReporter.fullReport(report))
-                copied = true
-                CrashReporter.openInBrowser(CrashReporter.issueUrl(report))
-            }) {
-                Icon(Icons.Outlined.BugReport, null, Modifier.size(18.dp))
-                Text("  Report problem")
-            }
-            TextButton(onClick = CrashReporter::openLogFolder) {
-                Icon(Icons.Outlined.FolderOpen, null, Modifier.size(18.dp))
-                Text("  Open log folder")
-            }
+            ExpressiveButton(
+                text = if (copied) "Copied" else "Copy report",
+                onClick = {
+                    CrashReporter.copyToClipboard(CrashReporter.fullReport(report))
+                    copied = true
+                },
+                style = ExpressiveStyle.Outlined,
+                leadingIcon = if (copied) Icons.Outlined.CheckCircle else Icons.Outlined.ContentCopy,
+            )
+            ExpressiveButton(
+                text = "Report problem",
+                onClick = {
+                    CrashReporter.copyToClipboard(CrashReporter.fullReport(report))
+                    copied = true
+                    CrashReporter.openInBrowser(CrashReporter.issueUrl(report))
+                },
+                style = ExpressiveStyle.Tonal,
+                leadingIcon = Icons.Outlined.BugReport,
+            )
+            ExpressiveButton(
+                text = "Open log folder",
+                onClick = CrashReporter::openLogFolder,
+                style = ExpressiveStyle.Text,
+                leadingIcon = Icons.Outlined.FolderOpen,
+            )
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-            TextButton(onClick = onDismiss) { Text(dismissLabel) }
-            if (onRestart != null) {
-                Button(onClick = onRestart, modifier = Modifier.padding(start = 8.dp)) { Text("Restart VIVI") }
-            }
-            if (onQuit != null) {
-                Button(onClick = onQuit, modifier = Modifier.padding(start = 8.dp)) { Text("Quit VIVI") }
-            }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+            ExpressiveButton(text = dismissLabel, onClick = onDismiss, style = ExpressiveStyle.Text)
+            if (onRestart != null) ExpressiveButton(text = "Restart VIVI", onClick = onRestart)
+            if (onQuit != null) ExpressiveButton(text = "Quit VIVI", onClick = onQuit)
         }
     }
 }

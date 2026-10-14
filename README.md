@@ -48,7 +48,7 @@ Prefs live at `~/.config/vivi-desktop/settings.properties`.
 | `native/` | Optional Rust helpers (parallel scan + tag cache, fuzzy search) via JNA — see [`native/README.md`](native/README.md) |
 | `:lyrics`, `:jiosaavn`, … | Lyrics backends, Saavn stream assist, other integrations |
 
-Deeper architecture notes: [`docs/architecture.md`](docs/architecture.md). Session changelog for agents: [`SUMMARY.md`](SUMMARY.md).
+Deeper architecture notes: [`docs/architecture.md`](docs/architecture.md). Reusable UI pieces (motion tokens, Material 3 Expressive components, shader backgrounds): [`docs/ui-kit.md`](docs/ui-kit.md). Session changelog for agents: [`SUMMARY.md`](SUMMARY.md).
 
 ## Build / test
 

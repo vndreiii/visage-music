@@ -991,17 +991,12 @@ private fun <T> ChoiceRow(
     BoxWithConstraints(Modifier.fillMaxWidth()) {
         val inline = maxWidth >= 560.dp
         val segmented: @Composable (Modifier) -> Unit = { modifier ->
-            SingleChoiceSegmentedButtonRow(modifier) {
-                options.forEachIndexed { index, (value, label) ->
-                    SegmentedButton(
-                        selected = local == value,
-                        onClick = { local = value; onSelect(value) },
-                        shape = SegmentedButtonDefaults.itemShape(index, options.size),
-                        icon = {},
-                        label = { Text(label, maxLines = 1, style = MaterialTheme.typography.labelLarge) },
-                    )
-                }
-            }
+            com.music.vivi.compose.ui.expressive.ConnectedButtonGroup(
+                options = options,
+                selected = local,
+                onSelect = { local = it; onSelect(it) },
+                modifier = modifier,
+            )
         }
         if (inline) {
             SettingsRowFrame(icon, title, null, onClick = null) { segmented(Modifier.widthIn(max = 380.dp)) }

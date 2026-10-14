@@ -46,6 +46,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.Download
@@ -417,8 +419,17 @@ fun LibraryScreen(navController: NavController) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Library", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            TextButton(onClick = { navController.navigate(Routes.SETTINGS_LOCAL_OFFLINE) }) { Text("Manage folders") }
-            TextButton(enabled = !refreshing && !loading, onClick = { scope.launch { cache.loadLocal(); cache.loadOnline() } }) { Text("Refresh") }
+            com.music.vivi.compose.ui.expressive.ExpressiveButton(
+                text = "Manage folders",
+                onClick = { navController.navigate(Routes.SETTINGS_LOCAL_OFFLINE) },
+                style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Text,
+            )
+            com.music.vivi.compose.ui.expressive.ExpressiveButton(
+                text = "Refresh",
+                onClick = { scope.launch { cache.loadLocal(); cache.loadOnline() } },
+                enabled = !refreshing && !loading,
+                style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Text,
+            )
         }
         ChipsRow(
             chips = LibraryTab.entries.map { it to it.label },
@@ -440,8 +451,19 @@ fun LibraryScreen(navController: NavController) {
                     Text(open.title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text("${collectionTracks.size} tracks", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
-                Button(enabled = collectionTracks.isNotEmpty(), onClick = { playLocalTracks(collectionTracks, 0) }) { Text("Play all") }
-                TextButton(enabled = collectionTracks.isNotEmpty(), onClick = { playLocalTracks(collectionTracks.shuffled(), 0) }) { Text("Shuffle") }
+                com.music.vivi.compose.ui.expressive.ExpressiveButton(
+                    text = "Play all",
+                    onClick = { playLocalTracks(collectionTracks, 0) },
+                    enabled = collectionTracks.isNotEmpty(),
+                    leadingIcon = Icons.Filled.PlayArrow,
+                )
+                com.music.vivi.compose.ui.expressive.ExpressiveButton(
+                    text = "Shuffle",
+                    onClick = { playLocalTracks(collectionTracks.shuffled(), 0) },
+                    enabled = collectionTracks.isNotEmpty(),
+                    style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Tonal,
+                    leadingIcon = Icons.Filled.Shuffle,
+                )
             }
             if (collectionLoading) PageLoadingState("Loading tracks", detail = true)
             else LocalTrackList(collectionTracks, playingId, isPlaying, playLocalTracks)
