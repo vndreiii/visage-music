@@ -170,8 +170,6 @@ enum class PlayerBackgroundStyle {
     GLOW_ANIMATED,
     APPLE_MUSIC,
     LIVE_MESH,
-    /** Classic horizontal cover→black gradient (former mini default look). */
-    LEGACY,
     FLUID,
     WAVE,
     XMB,

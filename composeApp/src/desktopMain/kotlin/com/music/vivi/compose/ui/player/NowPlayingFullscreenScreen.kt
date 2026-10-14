@@ -128,7 +128,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
     var canvasVideoUrl by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(track?.videoId, bgStyle, enableCanvas, canvasSource) {
         canvasVideoUrl = null
-        if (bgStyle != PlayerBackgroundStyle.APPLE_MUSIC || !enableCanvas || track == null) return@LaunchedEffect
+        if (!enableCanvas || track == null) return@LaunchedEffect
         val art = withContext(Dispatchers.IO) {
             runCatching {
                 CanvasResolver.resolve(

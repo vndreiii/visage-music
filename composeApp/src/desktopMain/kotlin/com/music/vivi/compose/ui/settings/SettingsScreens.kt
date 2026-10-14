@@ -144,7 +144,6 @@ private fun PlayerBackgroundStyle.label(): String = when (this) {
     PlayerBackgroundStyle.GLOW_ANIMATED -> "Glow"
     PlayerBackgroundStyle.APPLE_MUSIC -> "Apple Music"
     PlayerBackgroundStyle.LIVE_MESH -> "Live mesh"
-    PlayerBackgroundStyle.LEGACY -> "Legacy"
     PlayerBackgroundStyle.FLUID -> "Fluid"
     PlayerBackgroundStyle.WAVE -> "Wave"
     PlayerBackgroundStyle.XMB -> "XMB"
@@ -524,15 +523,11 @@ fun NowPlayingSettingsScreen(navController: NavController) {
             SwitchItem(
                 icon = Icons.Outlined.MovieFilter,
                 title = "Canvas video",
-                subtitle = if (playerBg == PlayerBackgroundStyle.APPLE_MUSIC) {
-                    "Animated album art in place of the cover when available"
-                } else {
-                    "Available with the Apple Music background"
-                },
+                subtitle = "Animated album art in place of the cover when available, with any background",
                 checked = canvasOn,
                 onChecked = { prefs.setBoolean(PrefKeys.EnableCanvas, it) },
             )
-            AnimatedVisibility(canvasOn && playerBg == PlayerBackgroundStyle.APPLE_MUSIC, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            AnimatedVisibility(canvasOn, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                 Column {
                     SettingsDivider()
                     ChoiceRow(

@@ -6,7 +6,6 @@ import com.music.vivi.canvas.NativeCanvas
 import com.music.vivi.canvas.TidalCanvasProvider
 import com.music.vivi.vivimusiccanvas.ViviMusicCanvasProvider
 import com.music.vivi.compose.prefs.DesktopPrefs
-import com.music.vivi.compose.prefs.PlayerBackgroundStyle
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.player.PlaybackController
 import kotlinx.coroutines.Dispatchers
@@ -26,7 +25,7 @@ enum class CanvasSource {
 }
 
 /**
- * Resolve Apple/Tidal/Vivi canvas animation URLs for APPLE_MUSIC player background.
+ * Resolve Apple/Tidal/Vivi canvas animation URLs (cover slot, lyrics pane and the Apple Music background).
  */
 object CanvasResolver {
     private val cache = ConcurrentHashMap<String, CanvasArtwork>()
@@ -118,14 +117,7 @@ object CanvasPrefetcher {
         }
             .distinctUntilChangedBy { (np, next) -> np?.videoId to next?.videoId }
             .collectLatest { (np, next) ->
-                val style = runCatching {
-                    PlayerBackgroundStyle.valueOf(
-                        prefs.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name),
-                    )
-                }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
-                if (style != PlayerBackgroundStyle.APPLE_MUSIC || !prefs.getBoolean(PrefKeys.EnableCanvas, true)) {
-                    return@collectLatest
-                }
+                if (!prefs.getBoolean(PrefKeys.EnableCanvas, true)) return@collectLatest
                 val source = runCatching {
                     CanvasSource.valueOf(prefs.getString(PrefKeys.CanvasSource, CanvasSource.AUTO.name))
                 }.getOrDefault(CanvasSource.AUTO)

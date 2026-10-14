@@ -15,7 +15,7 @@ internal enum class BackgroundShader(val sksl: String, val usesImage: Boolean = 
     MESH(SHADER_COMMON + MESH_BODY),
     WAVE(SHADER_COMMON + WAVE_BODY),
     XMB(SHADER_COMMON + XMB_BODY),
-    BLUR(SHADER_COMMON + IMAGE_COMMON + BLUR_BODY, usesImage = true, imageEdge = 32),
+    BLUR(SHADER_COMMON + IMAGE_COMMON + BLUR_BODY, usesImage = true, imageEdge = 14),
     DISTORT(SHADER_COMMON + IMAGE_COMMON + DISTORT_BODY, usesImage = true, imageEdge = 256),
 }
 
@@ -192,45 +192,65 @@ half4 main(float2 fc) {
 }
 """
 
-/** PlayStation-style XMB: translucent ribbons with bright edges over a tinted gradient, plus drifting dust. */
+/**
+ * PlayStation 3 XMB wave: broad, silky translucent ribbons sweeping diagonally from the lower left.
+ * Each ribbon swells wide, then pinches to a bright thread where it twists; edges glow, the body
+ * is a soft gradient, and a few sparkles drift over a deep tinted background.
+ */
 private const val XMB_BODY = """
 half4 main(float2 fc) {
     float2 uv = fc / iResolution;
     float aspect = iResolution.x / iResolution.y;
-    float t = iTime * 0.25;
+    float2 p = float2((uv.x - 0.5) * aspect, uv.y - 0.5);
 
-    float3 col = mix(c0 * 0.45, c1 * 0.18, uv.y) + c2 * 0.05 * sin(uv.x * 3.0 + t);
-    for (int i = 0; i < 4; i++) {
+    // The XMB wave runs up and to the right.
+    float ang = 0.30;
+    float ca = cos(ang);
+    float sa = sin(ang);
+    float2 r = float2(ca * p.x - sa * p.y, sa * p.x + ca * p.y);
+    float t = iTime * 0.16;
+
+    float3 col = mix(c0 * 0.60, c1 * 0.18, clamp(uv.y * 1.1, 0.0, 1.0));
+    col += c2 * 0.16 * exp(-pow(length(uv - float2(0.12, 0.92)) * 1.5, 2.0));
+
+    for (int i = 0; i < 6; i++) {
         float fi = float(i);
-        float x = uv.x * aspect;
-        float y = 0.5 + 0.18 * sin(x * 1.2 + t * (1.0 + 0.3 * fi) + fi * 2.0) * cos(x * 0.5 - t * 0.6 + fi)
-                + 0.07 * sin(x * 3.1 - t * 1.4 + fi * 1.7) + (fi - 1.5) * 0.07;
-        float d = abs(uv.y - y);
-        float thick = 0.09 + 0.05 * sin(x * 1.7 + t + fi * 3.0);
-        float ribbon = smoothstep(thick, 0.0, d);
-        float edge = exp(-d * 140.0);
-        float3 rc = palette(fi / 4.0 + 0.15 + 0.1 * sin(t + fi));
-        col += rc * ribbon * ribbon * 0.28;
-        col += mix(rc, float3(1.0), 0.6) * edge * 0.35;
+        float ph = fi * 1.13;
+        float center = 0.20 * sin(r.x * 1.1 + t * (0.9 + 0.12 * fi) + ph)
+                     + 0.09 * sin(r.x * 2.3 - t * (0.7 + 0.10 * fi) + ph * 1.7)
+                     + (fi - 2.5) * 0.085;
+        float swell = 0.5 + 0.5 * sin(r.x * 0.9 + t * 0.6 + ph * 2.1);
+        float width = 0.012 + 0.115 * swell * swell;
+        float dy = r.y - center;
+
+        float body = smoothstep(width, width * 0.15, abs(dy));
+        float shade = 0.5 + 0.5 * clamp(dy / width, -1.0, 1.0);
+        float edge = exp(-abs(abs(dy) - width) * 85.0);
+        float haze = exp(-abs(dy) * 7.0) * 0.05;
+
+        float3 rc = palette(fi / 6.0 + 0.1 + 0.05 * sin(t));
+        col += rc * body * (0.07 + 0.23 * shade);
+        col += mix(rc, float3(1.0), 0.75) * edge * 0.26 * (0.35 + 0.65 * smoothstep(0.02, 0.10, width));
+        col += rc * haze;
     }
 
-    float2 g = uv * float2(aspect, 1.0) * 14.0;
+    // Sparkles.
+    float2 g = float2(uv.x * aspect, uv.y) * 16.0;
     float2 id = floor(g);
     float2 f = fract(g) - 0.5;
     float rnd = hash21(id);
     float2 jitter = float2(hash21(id + 7.0), hash21(id + 13.0)) - 0.5;
-    float tw = 0.5 + 0.5 * sin(iTime * (0.6 + rnd * 1.8) + rnd * 40.0);
-    float dust = smoothstep(0.06, 0.0, length(f - jitter * 0.6)) * step(0.82, rnd) * tw;
-    col += palette(rnd) * dust * 0.8;
+    float tw = 0.5 + 0.5 * sin(iTime * (0.5 + rnd * 1.5) + rnd * 40.0);
+    float dust = smoothstep(0.05, 0.0, length(f - jitter * 0.6)) * step(0.86, rnd) * tw;
+    col += mix(palette(rnd), float3(1.0), 0.6) * dust * 0.7;
 
-    col *= 0.8 + 0.2 * smoothstep(1.2, 0.2, length(uv - 0.5) * 1.4);
+    col *= 0.78 + 0.22 * smoothstep(1.3, 0.2, length(uv - 0.5) * 1.5);
     return finish(col, fc);
 }
 """
 
 /** Heavily blurred cover (a tiny bilinear-filtered copy), slowly drifting and warped. */
 private const val BLUR_BODY = """
-uniform shader img;
 half4 main(float2 fc) {
     float2 p = (fc - 0.5 * iResolution) / min(iResolution.x, iResolution.y);
     float t = iTime * 0.08;
@@ -239,7 +259,14 @@ half4 main(float2 fc) {
     float z = 1.15 + 0.06 * sin(iTime * 0.11);
     q = (q - 0.5 * iResolution) / z + 0.5 * iResolution;
 
-    float3 col = float3(img.eval(coverUV(q)).rgb);
+    // Bilinear filtering of a tiny copy is already a blur; extra taps remove its blocky seams.
+    float2 uv0 = coverUV(q);
+    float k = 0.9;
+    float3 col = float3(img.eval(uv0).rgb) * 0.4
+        + float3(img.eval(clamp(uv0 + float2(k, 0.0), float2(0.5), imgSize - 0.5)).rgb) * 0.15
+        + float3(img.eval(clamp(uv0 - float2(k, 0.0), float2(0.5), imgSize - 0.5)).rgb) * 0.15
+        + float3(img.eval(clamp(uv0 + float2(0.0, k), float2(0.5), imgSize - 0.5)).rgb) * 0.15
+        + float3(img.eval(clamp(uv0 - float2(0.0, k), float2(0.5), imgSize - 0.5)).rgb) * 0.15;
     float l = dot(col, float3(0.299, 0.587, 0.114));
     col = mix(float3(l), col, 1.35) * 0.62;
     col += palette(fbm(p * 2.0 + t * 3.0)) * 0.04;
@@ -250,7 +277,6 @@ half4 main(float2 fc) {
 
 /** Cover art rippled by layered sine + noise displacement, with a chromatic split. */
 private const val DISTORT_BODY = """
-uniform shader img;
 half4 main(float2 fc) {
     float2 uv = fc / iResolution;
     float m = min(iResolution.x, iResolution.y);
