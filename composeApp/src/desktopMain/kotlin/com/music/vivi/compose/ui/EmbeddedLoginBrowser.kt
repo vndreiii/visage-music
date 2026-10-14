@@ -18,16 +18,32 @@ import java.net.ServerSocket
 import javax.swing.JPanel
 import javax.swing.SwingUtilities
 
+/**
+ * Chromium switches for the embedded (windowed) browser.
+ *
+ * On Linux, Chromium picks the Ozone/Wayland backend whenever WAYLAND_DISPLAY is set. JCEF's windowed
+ * browser is embedded by handing Chromium an X11 window to reparent into the Swing canvas; the Wayland
+ * backend ignores that and creates its own top-level xdg_toplevel, which is the separate window the user
+ * sees. Forcing the X11 backend (XWayland under a Wayland session) makes the browser a child of the canvas.
+ */
+internal fun embeddedBrowserChromiumSwitches(osName: String): List<String> =
+    if (osName.startsWith("Linux", ignoreCase = true)) {
+        listOf(
+            // Use the active Secret Service (GNOME Keyring or compatible KDE provider),
+            // rather than Chromium guessing a wallet from desktop environment variables.
+            "--password-store=gnome-libsecret",
+            "--ozone-platform=x11",
+        )
+    } else {
+        emptyList()
+    }
+
 /** One process-wide CEF runtime, with a browser component embedded in the Account page. */
 private object LoginCefRuntime {
     val debugPort = ServerSocket(0).use { it.localPort }
     val app: CefApp by lazy {
         val builder = CefAppBuilder()
-        // Use the active Secret Service (GNOME Keyring or compatible KDE provider),
-        // rather than Chromium guessing a wallet from desktop environment variables.
-        if (System.getProperty("os.name").startsWith("Linux", ignoreCase = true)) {
-            builder.addJcefArgs("--password-store=gnome-libsecret")
-        }
+        embeddedBrowserChromiumSwitches(System.getProperty("os.name")).forEach { builder.addJcefArgs(it) }
         builder.setInstallDir(AppPaths.cache().resolve("jcef-152.0.6"))
         builder.cefSettings.apply {
             windowless_rendering_enabled = false
