@@ -141,29 +141,49 @@ half4 main(float2 fc) {
 }
 """
 
-/** Mesh gradient: five drifting colour points blended by inverse distance, warped by noise. */
+/**
+ * Live mesh: large, saturated colour fields drifting and slowly rotating over a deep base (the look of
+ * Apple Music's lyric background). Each field is a soft Gaussian; colours are blended by weight and
+ * only cover the base as much as the fields actually reach, so there are real dark regions and
+ * vivid colour, not a washed-out average.
+ */
 private const val MESH_BODY = """
 half4 main(float2 fc) {
-    float2 uv = fc / iResolution;
-    float t = iTime * 0.18;
-    float2 w = float2(fbm(uv * 2.0 + t), fbm(uv * 2.0 + float2(4.0, 7.0) - t)) - 0.5;
-    uv += w * 0.35;
+    float m = min(iResolution.x, iResolution.y);
+    float2 p = (fc - 0.5 * iResolution) / m;
+    float t = iTime * 0.14;
+
+    // Slow global rotation + organic warp.
+    float a = t * 0.35;
+    float ca = cos(a);
+    float sa = sin(a);
+    p = float2(ca * p.x - sa * p.y, sa * p.x + ca * p.y);
+    p += (float2(fbm(p * 1.5 + t), fbm(p * 1.5 + float2(6.0, 2.0) - t)) - 0.5) * 0.45;
 
     float3 acc = float3(0.0);
-    float ws = 0.0;
-    for (int i = 0; i < 5; i++) {
+    float wsum = 0.0;
+    for (int i = 0; i < 6; i++) {
         float fi = float(i);
-        float2 pt = float2(0.5 + 0.42 * sin(t * (0.9 + 0.21 * fi) + fi * 1.9),
-                           0.5 + 0.42 * cos(t * (0.7 + 0.17 * fi) + fi * 2.7));
-        float d = length(uv - pt);
-        float wgt = 1.0 / (pow(d, 2.4) + 0.015);
-        acc += pick(i) * wgt;
-        ws += wgt;
+        float2 o = float2(0.55 * sin(t * (0.8 + 0.17 * fi) + fi * 2.4),
+                          0.42 * cos(t * (0.6 + 0.21 * fi) + fi * 1.7));
+        float r = 0.42 + 0.10 * sin(t * 1.1 + fi * 3.0);
+        float d = length(p - o);
+        float g = exp(-(d * d) / (r * r));
+        float3 c = pick(i - (i / 5) * 5);
+        acc += c * g;
+        wsum += g;
     }
-    float3 col = acc / ws;
-    col = mix(col * 0.55, col, smoothstep(0.0, 1.0, col.r + col.g + col.b));
-    col += 0.04 * sin(uv.x * 6.0 + uv.y * 4.0 + iTime * 0.4);
-    return finish(col * 0.9, fc);
+    float3 field = acc / max(wsum, 0.0001);
+    float coverage = 1.0 - exp(-wsum * 1.6);
+    float3 base = mix(c4, c0, 0.4) * 0.16;
+    float3 col = mix(base, field, coverage);
+
+    // A touch more saturation and a soft light sweep.
+    float l = dot(col, float3(0.299, 0.587, 0.114));
+    col = mix(float3(l), col, 1.25);
+    col += palette(t * 0.2) * 0.05 * (0.5 + 0.5 * sin(p.x * 3.0 - iTime * 0.3));
+    col *= 0.78 + 0.22 * smoothstep(1.3, 0.1, length(p));
+    return finish(col, fc);
 }
 """
 
@@ -275,27 +295,50 @@ half4 main(float2 fc) {
 }
 """
 
-/** Cover art rippled by layered sine + noise displacement, with a chromatic split. */
+/**
+ * Liquid distort: the cover flowed through layered domain warping and a slow swirl, so it melts like
+ * marbled ink but stays recognisable. The image is mirrored at its edges (no clamped streaks), colour
+ * channels separate very slightly, and a glossy sheen rides the flow.
+ */
 private const val DISTORT_BODY = """
+float2 fold(float2 uv) {
+    return abs(fract(uv * 0.5) * 2.0 - 1.0);
+}
+
+float3 coverAt(float2 qf) {
+    float s = max(iResolution.x / imgSize.x, iResolution.y / imgSize.y);
+    float2 n = fold(((qf - 0.5 * iResolution) / s + 0.5 * imgSize) / imgSize);
+    return float3(img.eval(clamp(n * imgSize, float2(0.5), imgSize - 0.5)).rgb);
+}
+
 half4 main(float2 fc) {
-    float2 uv = fc / iResolution;
     float m = min(iResolution.x, iResolution.y);
-    float t = iTime * 0.35;
+    float2 p = (fc - 0.5 * iResolution) / m;
+    float t = iTime * 0.10;
 
-    float2 d = float2(sin(uv.y * 7.0 + t * 1.3) + 0.6 * sin(uv.y * 13.0 - t * 0.9),
-                      cos(uv.x * 6.0 + t * 1.1) + 0.6 * cos(uv.x * 11.0 + t * 0.7));
-    float2 n = float2(fbm(uv * 3.0 + t * 0.5), fbm(uv * 3.0 + 9.0 - t * 0.5)) - 0.5;
-    float2 off = (d * 0.5 + n * 2.0) * 0.03 * m;
+    float2 w1 = float2(fbm(p * 1.6 + float2(0.0, t)), fbm(p * 1.6 + float2(5.2, 1.3) - float2(t, 0.0))) - 0.5;
+    float2 w2 = float2(fbm(p * 2.8 + w1 * 2.0 + float2(t * 1.3, 3.1)),
+                       fbm(p * 2.8 + w1 * 2.0 + float2(8.3, 2.8) - float2(0.0, t * 1.1))) - 0.5;
+    float2 q = p + w1 * 0.60 + w2 * 0.32;
 
-    float2 split = off * 0.35;
-    float r = img.eval(coverUV(fc + off + split)).r;
-    float g = img.eval(coverUV(fc + off)).g;
-    float b = img.eval(coverUV(fc + off - split)).b;
-    float3 col = float3(r, g, b);
+    float a = 0.45 * sin(iTime * 0.07) * smoothstep(1.3, 0.0, length(p));
+    float ca = cos(a);
+    float sa = sin(a);
+    q = float2(ca * q.x - sa * q.y, sa * q.x + ca * q.y);
+    float2 qf = q * m + 0.5 * iResolution;
 
-    // Soft tint from the palette keeps it cohesive with the rest of the UI.
-    col = mix(col, col * (0.6 + palette(fbm(uv * 2.0 + t)) * 0.8), 0.35);
-    col *= 0.72 * (0.78 + 0.22 * smoothstep(1.3, 0.2, length(uv - 0.5) * 1.6));
+    float2 split = w2 * 0.012 * m;
+    float3 col = float3(coverAt(qf + split).r, coverAt(qf).g, coverAt(qf - split).b);
+    float soft = 0.012 * m;
+    col = col * 0.5
+        + 0.125 * (coverAt(qf + float2(soft, 0.0)) + coverAt(qf - float2(soft, 0.0))
+                 + coverAt(qf + float2(0.0, soft)) + coverAt(qf - float2(0.0, soft)));
+
+    float h = w1.x + w2.y;
+    float sheen = pow(0.5 + 0.5 * sin(h * 11.0 + iTime * 0.25), 7.0) * 0.12;
+    col += palette(h + 0.3) * sheen;
+
+    col *= 0.74 * (0.80 + 0.20 * smoothstep(1.3, 0.2, length(p) * 1.4));
     return finish(col, fc);
 }
 """
