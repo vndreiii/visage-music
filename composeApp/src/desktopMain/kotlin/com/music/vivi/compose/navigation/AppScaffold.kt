@@ -75,6 +75,11 @@ fun FrameWindowScope.AppScaffold(
     val sessionManager = koinInject<SessionManager>()
     val navController = rememberNavController()
     val prefs = koinInject<DesktopPrefs>()
+    val playbackController = com.music.vivi.compose.LocalPlaybackController.current
+    // Fetch canvases in the background so Now Playing never waits on them when it opens.
+    androidx.compose.runtime.LaunchedEffect(playbackController) {
+        com.music.vivi.compose.ui.player.canvas.CanvasPrefetcher.run(playbackController, prefs)
+    }
     val backStack by navController.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
     val onNowPlaying = current == Routes.NOW_PLAYING || current == Routes.NOW_PLAYING_FULLSCREEN

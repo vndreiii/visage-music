@@ -67,7 +67,7 @@ fun rememberArtworkPalette(artworkUrl: String?): ArtworkPalette? {
 
 suspend fun extractArtworkPalette(url: String): ArtworkPalette? = withContext(Dispatchers.IO) {
     runCatching {
-        val bytes = fetchImageBytes(url) ?: return@runCatching null
+        val bytes = fetchImageBytesCached(url) ?: return@runCatching null
         val skia = Image.makeFromEncoded(bytes) ?: return@runCatching null
         val bitmap = Bitmap.makeFromImage(skia)
         val seeds = pickVibrantSeeds(bitmap, count = 6)
@@ -95,6 +95,18 @@ suspend fun extractArtworkPalette(url: String): ArtworkPalette? = withContext(Di
             glowColors = glow,
         )
     }.getOrNull()
+}
+
+/** Encoded cover bytes, shared by palette extraction and shader backgrounds (small LRU). */
+private val imageBytesCache = object : LinkedHashMap<String, ByteArray>(8, 0.75f, true) {
+    override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, ByteArray>?) = size > 6
+}
+
+internal fun fetchImageBytesCached(url: String): ByteArray? {
+    synchronized(imageBytesCache) { imageBytesCache[url] }?.let { return it }
+    val bytes = fetchImageBytes(url) ?: return null
+    synchronized(imageBytesCache) { imageBytesCache[url] = bytes }
+    return bytes
 }
 
 private fun fetchImageBytes(url: String): ByteArray? {

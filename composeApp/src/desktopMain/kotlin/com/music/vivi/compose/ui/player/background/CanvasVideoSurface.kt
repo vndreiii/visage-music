@@ -29,6 +29,8 @@ import org.jetbrains.skia.Bitmap
 import org.jetbrains.skia.ColorAlphaType
 import org.jetbrains.skia.ColorType
 import org.jetbrains.skia.ImageInfo
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import kotlin.math.roundToInt
 
 /** Latest decoded canvas frame; [generation] changes on every new frame so draws invalidate. */
@@ -37,11 +39,12 @@ class CanvasFrame(val image: ImageBitmap, val generation: Long)
 
 /**
  * One muted looping canvas video, shared by every composable showing the same URL
- * (cover slot + blurred background decode once).
+ * (cover slot, lyrics pane and blurred background decode once).
  *
- * Looping is gapless: two decoders alternate. While the active one plays its last
- * [CROSSFADE_SEC], the standby (parked on frame 0) starts and is dissolved in over it,
- * so the picture never freezes or waits on a seek at the seam.
+ * Looping is gapless: two decoders alternate. [CROSSFADE_SEC] before the end of the active clip
+ * the standby one (parked on frame 0) starts and is dissolved in over it, so the picture never
+ * freezes or waits on a seek. The fade is driven by elapsed time, not by the clip reporting its
+ * exact end (clips often stop a few frames short), and a watchdog guarantees the swap happens.
  */
 class CanvasVideo private constructor(val url: String) {
     /** Frame currently on screen (the outgoing clip during a crossfade). */
@@ -54,10 +57,16 @@ class CanvasVideo private constructor(val url: String) {
         private set
     private var crossing by mutableStateOf(false)
 
+    private val lock = Any()
     private var active = 0
     private var refs = 0
     private var pauseVotes = 0
     private val slots = arrayOf(Slot(0), Slot(1))
+
+    private var crossEpoch = 0
+    private var crossElapsed = 0.0
+    private var crossDuration = 0.0
+    private var lastTickNs = 0L
 
     private inner class Slot(val index: Int) : FrameSink {
         var frame by mutableStateOf<CanvasFrame?>(null)
@@ -93,34 +102,52 @@ class CanvasVideo private constructor(val url: String) {
             frame = CanvasFrame(bmp.asComposeImageBitmap(), ++generation)
         }
 
-        override fun onPosition(positionSec: Double, durationSec: Double) {
-            if (index == active) onActivePosition(positionSec, durationSec)
-        }
+        override fun onPosition(positionSec: Double, durationSec: Double) =
+            onSlotFrame(index, positionSec, durationSec)
     }
 
-    private fun onActivePosition(pos: Double, length: Double) {
-        if (length < 1.5) return
-        val fade = minOf(CROSSFADE_SEC, length / 3)
-        val start = length - fade
-        if (pos < start) {
-            if (crossing) { crossing = false; blend = 0f }
+    private fun onSlotFrame(slot: Int, pos: Double, length: Double) = synchronized(lock) {
+        if (!crossing) {
+            if (slot != active || length < 1.5) return@synchronized
+            val fade = minOf(CROSSFADE_SEC, length / 3)
+            if (pos < length - fade) return@synchronized
+            // Fade for exactly the time the outgoing clip has left.
+            crossDuration = maxOf(0.4, length - pos)
+            crossElapsed = 0.0
+            lastTickNs = System.nanoTime()
+            val epoch = ++crossEpoch
+            crossing = true
+            slots[1 - active].renderer?.setHeld(false)
+            watchdog.schedule(
+                { synchronized(lock) { if (crossing && crossEpoch == epoch) finishCrossfade() } },
+                (crossDuration * 1000).toLong() + WATCHDOG_GRACE_MS,
+                TimeUnit.MILLISECONDS,
+            )
+            return@synchronized
+        }
+        // Both decoders tick us; wall time between ticks (capped, so pauses and stalls don't eat
+        // the fade) drives the dissolve.
+        val now = System.nanoTime()
+        crossElapsed += minOf((now - lastTickNs) / 1e9, 0.1)
+        lastTickNs = now
+        val t = (crossElapsed / crossDuration).coerceIn(0.0, 1.0).toFloat()
+        blend = t * t * (3f - 2f * t)
+        if (t >= 1f) finishCrossfade()
+    }
+
+    /** Caller holds [lock]. Swaps roles, or, if the standby never produced a frame, restarts in place. */
+    private fun finishCrossfade() {
+        val old = slots[active]
+        val next = slots[1 - active]
+        crossing = false
+        blend = 0f
+        if (next.frame == null) {
+            old.renderer?.apply { rewind(); setHeld(false) }
+            next.renderer?.setHeld(true)
             return
         }
-        val standby = slots[1 - active]
-        if (!crossing) {
-            crossing = true
-            standby.renderer?.setHeld(false)
-        }
-        val t = ((pos - start) / (fade - END_SLACK_SEC)).coerceIn(0.0, 1.0).toFloat()
-        blend = t * t * (3f - 2f * t)
-        if (pos >= length - END_SLACK_SEC) {
-            // Incoming clip is fully visible: swap roles and park the old one on frame 0.
-            val old = slots[active]
-            active = 1 - active
-            crossing = false
-            blend = 0f
-            old.renderer?.apply { setHeld(true); rewind() }
-        }
+        active = 1 - active
+        old.renderer?.apply { setHeld(true); rewind() }
     }
 
     private fun acquire() {
@@ -149,8 +176,12 @@ class CanvasVideo private constructor(val url: String) {
     }
 
     companion object {
-        private const val CROSSFADE_SEC = 1.0
-        private const val END_SLACK_SEC = 0.12
+        /** How long before the end the next loop starts fading in. */
+        private const val CROSSFADE_SEC = 3.0
+        private const val WATCHDOG_GRACE_MS = 3_000L
+        private val watchdog = Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "canvas-loop-watchdog").apply { isDaemon = true }
+        }
         private val registry = HashMap<String, CanvasVideo>()
 
         internal fun obtain(url: String): CanvasVideo =

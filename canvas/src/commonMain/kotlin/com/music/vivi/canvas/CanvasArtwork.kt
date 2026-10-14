@@ -14,6 +14,11 @@ data class CanvasArtwork(
     val animated: String? = null,
     val videoUrl: String? = null,
     val animatedTall: String? = null,
+    /**
+     * Stable identity of the canvas: `apple:album:<id>` / `tidal:album:<artist>:<album>` are album-level
+     * (one canvas shared by every track on the album), `vivi:<song>:<artist>:<album>` is per song.
+     */
+    val canvasKey: String? = null,
 ) {
     val preferredAnimationUrl: String?
         get() = animated ?: videoUrl

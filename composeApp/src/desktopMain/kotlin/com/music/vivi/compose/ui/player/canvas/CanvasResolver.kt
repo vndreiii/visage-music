@@ -5,6 +5,16 @@ import com.music.vivi.canvas.CanvasArtwork
 import com.music.vivi.canvas.NativeCanvas
 import com.music.vivi.canvas.TidalCanvasProvider
 import com.music.vivi.vivimusiccanvas.ViviMusicCanvasProvider
+import com.music.vivi.compose.prefs.DesktopPrefs
+import com.music.vivi.compose.prefs.PlayerBackgroundStyle
+import com.music.vivi.compose.prefs.PrefKeys
+import com.music.vivi.player.PlaybackController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChangedBy
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 
@@ -94,4 +104,40 @@ object CanvasResolver {
             ?: art?.animated?.takeIf { it.isNotBlank() }
             ?: art?.videoUrl?.takeIf { it.isNotBlank() }
             ?: art?.preferredAnimationUrl
+}
+
+/**
+ * Resolves canvases ahead of time, independent of which screen is showing: the current track as
+ * soon as it starts and, a moment later, the next one in the queue. The Now Playing screen then
+ * finds the result already cached (memory + the helper's disk cache) instead of fetching on open.
+ */
+object CanvasPrefetcher {
+    suspend fun run(controller: PlaybackController, prefs: DesktopPrefs) {
+        combine(controller.nowPlaying, controller.queueTracks, controller.queueIndex) { np, queue, index ->
+            np to queue.getOrNull(index + 1)
+        }
+            .distinctUntilChangedBy { (np, next) -> np?.videoId to next?.videoId }
+            .collectLatest { (np, next) ->
+                val style = runCatching {
+                    PlayerBackgroundStyle.valueOf(
+                        prefs.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name),
+                    )
+                }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
+                if (style != PlayerBackgroundStyle.APPLE_MUSIC || !prefs.getBoolean(PrefKeys.EnableCanvas, true)) {
+                    return@collectLatest
+                }
+                val source = runCatching {
+                    CanvasSource.valueOf(prefs.getString(PrefKeys.CanvasSource, CanvasSource.AUTO.name))
+                }.getOrDefault(CanvasSource.AUTO)
+                withContext(Dispatchers.IO) {
+                    if (np != null && np.title.isNotBlank()) {
+                        CanvasResolver.resolve(np.title, np.artist, np.album, source)
+                    }
+                    delay(1_500) // the playing track first, then warm the next one quietly
+                    if (next != null && next.title.isNotBlank() && next.artist.isNotBlank()) {
+                        CanvasResolver.resolve(next.title, next.artist, next.album, source)
+                    }
+                }
+            }
+    }
 }

@@ -46,6 +46,17 @@ pub struct Artwork {
     pub video_url: Option<String>,
     #[serde(rename = "animatedTall")]
     pub animated_tall: Option<String>,
+    /// Stable identity of the canvas: `apple:album:<id>`, `tidal:album:<artist>:<album>` (both are
+    /// album-level, shared by every track on the album) or `vivi:<song>:<artist>:<album>` (per song).
+    #[serde(rename = "canvasKey")]
+    pub canvas_key: Option<String>,
+}
+
+impl Artwork {
+    /// Album-level canvases (Apple, Tidal) are reused for every track of the album.
+    pub fn is_album_level(&self) -> bool {
+        self.canvas_key.as_deref().map(|k| k.starts_with("apple:album:") || k.starts_with("tidal:album:")).unwrap_or(false)
+    }
 }
 
 impl Artwork {
@@ -262,6 +273,7 @@ fn editorial_url(ev: &Value, prefer_tall: bool) -> Option<String> {
 fn artwork_from_ev(ev: &Value, name: Option<String>, artist: String, album_id: String, album_name: Option<String>) -> Option<Artwork> {
     let url = editorial_url(ev, false)?;
     Some(Artwork {
+        canvas_key: Some(format!("apple:album:{album_id}")),
         name,
         artist: Some(artist),
         album_id: Some(album_id),
@@ -434,7 +446,9 @@ fn tidal_song(song: &str, artist: &str, album: Option<&str>, storefront: &str) -
         }
         let cover = item.pointer("/album/videoCover").and_then(Value::as_str).filter(|c| !c.is_empty());
         if let Some(url) = cover.and_then(tidal_video_url) {
+            let album_title = item.pointer("/album/title").and_then(Value::as_str).unwrap_or("");
             return Ok(Some(Artwork {
+                canvas_key: Some(format!("tidal:album:{}:{}", split_artists(artist).first().cloned().unwrap_or_default(), normalize(album_title))),
                 name: Some(title.unwrap_or(song).to_owned()),
                 artist: Some(if combined.is_empty() { artist.to_owned() } else { combined }),
                 album_name: item.pointer("/album/title").and_then(Value::as_str).map(str::to_owned),
@@ -475,6 +489,7 @@ fn vivi_song(song: &str, artist: &str, album: &str) -> Found {
     Ok(hit.map(|i| {
         let url = st(i, &["url"]).map(str::to_owned);
         Artwork {
+            canvas_key: Some(format!("vivi:{ns}:{na}:{nal}")),
             name: st(i, &["song"]).map(str::to_owned),
             artist: st(i, &["artist"]).map(str::to_owned),
             album_name: st(i, &["album"]).filter(|a| !a.is_empty()).map(str::to_owned),
@@ -531,9 +546,16 @@ pub fn resolve(req: &Request) -> Option<Artwork> {
     let title = clean_title(&req.title);
     let album = req.album.clone().unwrap_or_default();
     let key = format!("{}|{}|{}|{}|{}", req.source, title.to_lowercase(), req.artist.to_lowercase(), album.to_lowercase(), req.storefront);
+    // Apple/Tidal canvases belong to the album, so one resolve serves every track on it.
+    let album_key = (!album.is_empty()).then(|| {
+        format!("album|{}|{}|{}", req.source, split_artists(&req.artist).first().cloned().unwrap_or_default(), normalize(&album))
+    });
     if let Some(d) = &dir {
         if let Some(v) = cache_read(d, &key) {
             return v;
+        }
+        if let Some(hit) = album_key.as_deref().and_then(|k| cache_read(d, k)).flatten() {
+            return Some(hit);
         }
     }
 
@@ -555,6 +577,11 @@ pub fn resolve(req: &Request) -> Option<Artwork> {
     if let Some(d) = &dir {
         if found.is_some() || clean_miss {
             cache_write(d, &key, &found);
+        }
+        if let (Some(art), Some(k)) = (&found, &album_key) {
+            if art.is_album_level() {
+                cache_write(d, k, &found);
+            }
         }
     }
     found
@@ -578,6 +605,15 @@ mod tests {
         assert!(!artists_match("ILLIT", "NewJeans"));
         assert!(artists_match("Drake", "Drake, 21 Savage x Future"));
         assert!(!artists_match("Drake feat. Future", "Drake"));
+    }
+
+    #[test]
+    fn album_level_keys() {
+        let apple = Artwork { canvas_key: Some("apple:album:123".into()), ..Default::default() };
+        let vivi = Artwork { canvas_key: Some("vivi:a:b:c".into()), ..Default::default() };
+        assert!(apple.is_album_level());
+        assert!(!vivi.is_album_level());
+        assert!(!Artwork::default().is_album_level());
     }
 
     #[test]
