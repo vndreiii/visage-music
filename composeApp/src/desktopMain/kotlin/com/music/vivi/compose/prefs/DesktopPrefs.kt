@@ -114,6 +114,8 @@ object PrefKeys {
     const val TopNavStyle = "topNavStyle"
     const val CanvasSource = "canvasSource"
     const val EnableCanvas = "enableCanvas"
+    /** Now Playing: cover (and canvas) with square corners instead of rounded ones. */
+    const val SquareCover = "nowPlayingSquareCover"
     const val PlayerVideoEnabled = "playerVideoEnabled"
     /** Legacy boolean (true = fill); superseded by [PlayerVideoFraming], still read for migration. */
     const val PlayerVideoFill = "playerVideoFill"

@@ -50,6 +50,7 @@ import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MovieFilter
+import androidx.compose.material.icons.outlined.CropSquare
 import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PlayCircle
@@ -658,6 +659,16 @@ fun NowPlayingSettingsScreen(navController: NavController) {
                 title = "Fullscreen player",
                 subtitle = "Layout, cover, controls, auto-hide, background overrides",
                 onClick = { navController.navigate(Routes.SETTINGS_FULLSCREEN_PLAYER) },
+            )
+        }
+
+        SettingsSection("Cover") {
+            SwitchItem(
+                icon = Icons.Outlined.CropSquare,
+                title = "Square cover",
+                subtitle = "Show the cover and canvas with square corners",
+                checked = prefs.getBoolean(PrefKeys.SquareCover, false),
+                onChecked = { prefs.setBoolean(PrefKeys.SquareCover, it) },
             )
         }
 

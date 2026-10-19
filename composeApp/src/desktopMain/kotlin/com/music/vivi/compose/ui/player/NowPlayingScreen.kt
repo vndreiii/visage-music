@@ -109,6 +109,7 @@ import com.music.vivi.compose.LocalWindowState
 import com.music.vivi.compose.WindowFullscreen
 import com.music.vivi.compose.navigation.Routes
 import com.music.vivi.compose.prefs.DesktopPrefs
+import com.music.vivi.compose.ui.settings.rememberPrefsVersion
 import com.music.vivi.compose.prefs.PlayerBackgroundStyle
 import com.music.vivi.compose.prefs.PlayerButtonsStyle
 import com.music.vivi.compose.prefs.PrefKeys
@@ -180,6 +181,9 @@ fun NowPlayingScreen(
 ) {
     val controller = LocalPlaybackController.current
     val prefs = koinInject<DesktopPrefs>()
+    @Suppress("UNUSED_VARIABLE")
+    val observeSquare = rememberPrefsVersion(prefs)
+    val squareCover = prefs.getBoolean(PrefKeys.SquareCover, false)
     val downloads = koinInject<com.music.vivi.compose.download.TrackDownloadService>()
     val scope = rememberCoroutineScope()
     var toastMessage by remember { mutableStateOf<String?>(null) }
@@ -433,7 +437,7 @@ fun NowPlayingScreen(
                                         label = "npArtwork",
                                         modifier = Modifier.fillMaxSize()
                                             .songSwapCover(swap)
-                                            .morphClip { (28f - 8f * coverMorph.progress.coerceIn(0f, 1f)).dp },
+                                            .morphClip { if (squareCover) 0.dp else (28f - 8f * coverMorph.progress.coerceIn(0f, 1f)).dp },
                                     ) { (_, artUrl) ->
                                         Box(Modifier.fillMaxSize().then(Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest))) {
                                             val squareUrl = canvasSquareUrl
@@ -533,7 +537,7 @@ fun NowPlayingScreen(
                                                 modifier = Modifier
                                                     .fillMaxSize()
                                                     .padding(bottom = 16.dp)
-                                                    .clip(RoundedCornerShape(24.dp))
+                                                    .clip(if (squareCover) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(24.dp))
                                                     .graphicsLayer {
                                                         compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
                                                     }
