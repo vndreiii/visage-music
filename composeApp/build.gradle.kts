@@ -118,7 +118,8 @@ compose.desktop {
                 shortcut = true
             }
             windows {
-                packageName = "VIsage"
+                // Only set on Windows: on Linux it would rename the app image folder.
+                if (isWindowsHost) packageName = "VIsage"
                 menuGroup = "VIsage"
                 iconFile.set(rootProject.file("packaging/icons/visage.ico"))
                 // Per-user install: no administrator prompt, and the updater can run the installer silently.

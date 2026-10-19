@@ -273,11 +273,9 @@ mod tests {
         fs::write(dir.join("Artist/Album/readme.txt"), vec![0u8; 9000]).unwrap();
         let found = walk(&dir, 8_192);
         assert_eq!(found.len(), 1, "{found:?}");
-        let out = run(&format!(
-            r#"{{"roots":["{0}"],"covers_dir":"{0}/covers"}}"#,
-            dir.display()
-        ))
-        .unwrap();
+        // Build the JSON with serde: Windows paths contain backslashes, which a format! string would not escape.
+        let req = serde_json::json!({ "roots": [dir.to_string_lossy()], "covers_dir": dir.join("covers").to_string_lossy() });
+        let out = run(&req.to_string()).unwrap();
         assert!(out.contains("unreadable")); // garbage mp3 -> caller falls back
         let _ = fs::remove_dir_all(&dir);
     }
