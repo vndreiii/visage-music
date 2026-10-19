@@ -13,14 +13,15 @@
   <a href="https://ko-fi.com/vndreiii"><img src="https://img.shields.io/badge/Support-Ko--fi-ff5e5b" alt="Support on Ko-fi"></a>
 </p>
 
+<p align="center">
+  <img src="docs/screenshots/01-home.png" width="100%" alt="Home with the queue and library sidebars open">
+</p>
+
 <table>
   <tr>
-    <td width="50%"><img src="docs/screenshots/01-home.png" width="100%" alt="Home with the queue and library sidebars open"></td>
-    <td width="50%"><img src="docs/screenshots/04-now-playing.png" width="100%" alt="Now Playing"></td>
-  </tr>
-  <tr>
-    <td width="50%"><img src="docs/screenshots/02-search.png" width="100%" alt="Search"></td>
-    <td width="50%"><img src="docs/screenshots/03-library.png" width="100%" alt="Library"></td>
+    <td width="33%"><img src="docs/screenshots/04-now-playing.png" width="100%" alt="Now Playing"></td>
+    <td width="33%"><img src="docs/screenshots/02-search.png" width="100%" alt="Search"></td>
+    <td width="33%"><img src="docs/screenshots/03-library.png" width="100%" alt="Library"></td>
   </tr>
 </table>
 
