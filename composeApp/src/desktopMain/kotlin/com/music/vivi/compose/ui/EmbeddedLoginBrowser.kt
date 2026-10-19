@@ -41,7 +41,24 @@ internal fun embeddedBrowserChromiumSwitches(osName: String): List<String> =
 /** One process-wide CEF runtime, with a browser component embedded in the Account page. */
 private object LoginCefRuntime {
     val debugPort = ServerSocket(0).use { it.localPort }
+    @Volatile var started = false
+    private val clearMarker get() = AppPaths.cache().resolve("embedded-login-profile.clear")
+
+    /** Forget the Google sign-in kept by the embedded browser, so "Sign in" starts from a blank page. */
+    fun clearProfile() {
+        if (started) {
+            runCatching { org.cef.network.CefCookieManager.getGlobalManager().deleteCookies("", "") }
+        }
+        // The profile folder is in use while CEF runs, so also delete it at the next start.
+        runCatching { clearMarker.writeText("1") }
+    }
+
     val app: CefApp by lazy {
+        if (clearMarker.exists()) {
+            runCatching { AppPaths.cache().resolve("embedded-login-profile").deleteRecursively() }
+            runCatching { clearMarker.delete() }
+        }
+        started = true
         val builder = CefAppBuilder()
         embeddedBrowserChromiumSwitches(System.getProperty("os.name")).forEach { builder.addJcefArgs(it) }
         builder.setInstallDir(AppPaths.cache().resolve("jcef-152.0.6"))
@@ -55,6 +72,9 @@ private object LoginCefRuntime {
         builder.build()
     }
 }
+
+/** Clears the embedded browser's Google sign-in (used by Sign out). */
+fun clearEmbeddedLoginProfile() = LoginCefRuntime.clearProfile()
 
 class EmbeddedLoginBrowser : LoginBrowserHost {
     override val debugPort: Int get() = LoginCefRuntime.debugPort

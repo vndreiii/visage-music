@@ -8,6 +8,9 @@ interface SessionManager {
     fun loadSession(): YtMusicSession?
     fun loadAccount(): SessionSecretStore.StoredAccount?
     fun applyStoredSession(): Boolean
+
+    /** Forgets the account: deletes the stored session and clears it from the live YouTube client. */
+    fun signOut()
 }
 
 class KeyringSessionManager : SessionManager {
@@ -24,5 +27,12 @@ class KeyringSessionManager : SessionManager {
         val session = SessionSecretStore.loadSession() ?: return false
         session.applyToYouTube()
         return true
+    }
+
+    override fun signOut() {
+        SessionSecretStore.clear()
+        com.music.innertube.YouTube.cookie = null
+        com.music.innertube.YouTube.visitorData = null
+        com.music.innertube.YouTube.dataSyncId = null
     }
 }

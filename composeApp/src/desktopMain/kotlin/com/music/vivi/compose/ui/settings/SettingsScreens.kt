@@ -30,6 +30,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.Logout
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.AccountCircle
@@ -136,7 +137,9 @@ import com.music.vivi.core.youtube.YouTubeMusicService
 import com.music.vivi.database.DatabaseFactory
 import com.music.vivi.player.stream.YtDlpBinary
 import org.koin.compose.koinInject
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /** Forces recomposition of the *caller* when prefs change (not just a child). */
 @Composable
@@ -185,6 +188,27 @@ fun SettingsHubScreen(navController: NavController) {
 
     SettingsPage(title = "Settings", onBack = null) {
         AccountCard(account, error) { navController.navigate(Routes.SETTINGS_ACCOUNT) }
+
+        var confirmSignOut by remember { mutableStateOf(false) }
+        if (account != null) {
+            SettingsSection("Account") {
+                SettingsNavItem(
+                    icon = Icons.AutoMirrored.Outlined.Logout,
+                    title = "Sign out",
+                    subtitle = "Remove your YouTube Music account from this device",
+                    onClick = { confirmSignOut = true },
+                )
+            }
+        }
+        if (confirmSignOut) {
+            SignOutDialog(
+                onDismiss = { confirmSignOut = false },
+                onConfirm = {
+                    confirmSignOut = false
+                    scope.launch { performSignOut(yt) ; account = null; error = "Not signed in" }
+                },
+            )
+        }
 
         SettingsSection("Interface") {
             SettingsNavItem(
@@ -1148,15 +1172,40 @@ fun AccountSettingsScreen(navController: NavController) {
             .onSuccess { account = it }
             .onFailure { error = it.message ?: it.toString() }
     }
+    var confirmSignOut by remember { mutableStateOf(false) }
+    var loginKey by remember { mutableStateOf(0) }
     SettingsPage(title = "Account", onBack = { navController.navigateUp() }) {
-        AccountCard(account, error) {}
+        // Opens the Google account page, where the name and photo are changed.
+        AccountCard(account, error) { if (account != null) openExternalUrl("https://myaccount.google.com/") }
         Text(
-            "Your session is stored in the system keyring. Sign in again below if it expires.",
+            "Your session is stored on this device. Sign in again below if it expires.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp),
         )
-        com.music.vivi.compose.ui.YtLoginPanel(
+        if (account != null) {
+            com.music.vivi.compose.ui.expressive.ExpressiveButton(
+                text = "Sign out",
+                onClick = { confirmSignOut = true },
+                style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Tonal,
+                modifier = Modifier.padding(horizontal = 4.dp).padding(bottom = 16.dp),
+            )
+        }
+        if (confirmSignOut) {
+            SignOutDialog(
+                onDismiss = { confirmSignOut = false },
+                onConfirm = {
+                    confirmSignOut = false
+                    scope.launch {
+                        performSignOut(yt)
+                        account = null
+                        error = "Not signed in"
+                        loginKey++
+                    }
+                },
+            )
+        }
+        androidx.compose.runtime.key(loginKey) { com.music.vivi.compose.ui.YtLoginPanel(
             modifier = Modifier.padding(horizontal = 4.dp),
             onLoggedIn = {
                 scope.launch {
@@ -1164,8 +1213,27 @@ fun AccountSettingsScreen(navController: NavController) {
                     yt.accountInfo().onSuccess { account = it }.onFailure { error = it.message ?: it.toString() }
                 }
             },
-        )
+        ) }
     }
+}
+
+/** Deletes the stored session, the live client session and the embedded browser's Google sign-in. */
+private suspend fun performSignOut(yt: YouTubeMusicService) {
+    withContext(Dispatchers.IO) {
+        yt.signOut()
+        com.music.vivi.compose.ui.clearEmbeddedLoginProfile()
+    }
+}
+
+@Composable
+private fun SignOutDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    androidx.compose.material3.AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Sign out?") },
+        text = { Text("VIsage forgets your YouTube Music account on this device. Local music and downloads stay.") },
+        confirmButton = { androidx.compose.material3.TextButton(onClick = onConfirm) { Text("Sign out") } },
+        dismissButton = { androidx.compose.material3.TextButton(onClick = onDismiss) { Text("Cancel") } },
+    )
 }
 
 // —— shared building blocks ————————————————————————————————

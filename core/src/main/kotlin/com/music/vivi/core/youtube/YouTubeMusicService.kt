@@ -24,9 +24,12 @@ class YouTubeMusicService(
 ) {
     fun ensureSession(): Boolean = sessionManager.applyStoredSession()
 
+    /** Signs out: deletes the stored session and clears it from the live client. */
+    fun signOut() = sessionManager.signOut()
+
     fun requireSession() {
         if (!ensureSession()) {
-            error("Not signed in — run ./gradlew :desktop:run to log in")
+            error("Not signed in — open Settings → Account to sign in")
         }
     }
 
