@@ -64,7 +64,7 @@ kotlin {
     }
 }
 
-val visageVersion: String = (System.getenv("VISAGE_VERSION") ?: "1.0.0").removePrefix("v")
+val visageVersion: String = (System.getenv("VISAGE_VERSION") ?: "1.0.2").removePrefix("v")
 
 // Stage the optional native helper where Compose copies "linux"/"windows" resources from.
 // On Windows, `scripts/package-windows.ps1` also puts libmpv-2.dll and yt-dlp.exe in build/windows-deps.

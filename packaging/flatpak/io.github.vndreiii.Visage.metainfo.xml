@@ -28,6 +28,8 @@
   <url type="bugtracker">https://github.com/vndreiii/visage-music/issues</url>
   <url type="vcs-browser">https://github.com/vndreiii/visage-music</url>
   <releases>
+    <release version="1.0.2" date="2026-10-19"/>
+    <release version="1.0.1" date="2026-10-19"/>
     <release version="1.0.0" date="2026-10-14"/>
   </releases>
   <content_rating type="oars-1.1"/>

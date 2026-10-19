@@ -5,10 +5,10 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
-$version = if ($env:VISAGE_VERSION) { $env:VISAGE_VERSION.TrimStart("v") } else { "1.0.0" }
+$version = if ($env:VISAGE_VERSION) { $env:VISAGE_VERSION.TrimStart("v") } else { "1.0.2" }
 # Windows installers need MAJOR.MINOR.PATCH numbers only.
 $pkgVersion = ($version -split "-")[0]
-if ($pkgVersion -notmatch '^\d+\.\d+\.\d+$') { $pkgVersion = "1.0.0" }
+if ($pkgVersion -notmatch '^\d+\.\d+\.\d+$') { $pkgVersion = "1.0.2" }
 $env:VISAGE_VERSION = $pkgVersion
 
 $deps = Join-Path $root "composeApp\build\windows-deps"
