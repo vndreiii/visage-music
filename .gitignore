@@ -38,3 +38,45 @@ hs_err_pid*.log
 
 # Rust helpers
 native/target/
+
+# Windows / native build output
+native/target/
+*.dll
+*.exe
+*.msi
+*.pdb
+
+# Working notes, design plans and reference captures (local only)
+SUMMARY.md
+summary.md
+TODO-UX.md
+docs/superpowers/
+docs/reference/
+docs/DELEGATION.md
+docs/PORT-LOOP-PLAN.md
+docs/TODO.md
+docs/UI-UX-Improvements.md
+docs/UPSTREAM-UI-INVENTORY.md
+docs/mobile-desktop-gap.md
+docs/porting-report.md
+
+# Personal desktop tooling
+scripts/*hypr-lab*
+scripts/README-hypr-lab.md
+scripts/ui-web.py
+packaging/matugen/
+
+# AI assistant state
+.claude/
+CLAUDE.md
+.gemini/
+.opencode/
+
+# Packaging output
+*.AppImage
+*.deb
+*.rpm
+*.zip
+*.tar.gz
+*.pkg.tar.zst
+*.flatpak

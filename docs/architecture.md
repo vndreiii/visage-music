@@ -1,8 +1,7 @@
 # VIsage — Architecture
 
-Canonical architecture for agents and humans. Session changelog lives in [`summary.md`](summary.md). UX audit / M3E backlog: [`UI-UX-enbetterment.md`](UI-UX-enbetterment.md).
+Canonical architecture overview.
 
-Linux desktop port of [VIVI Music](vivi-music/) (Android). Upstream Android tree is gitignored under `vivi-music/` as a reference clone.
 
 ---
 
