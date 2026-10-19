@@ -10,13 +10,15 @@ on:
         required: true
 
 permissions:
-  contents: write # each job adds its own files to the release
+  contents: read
 
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   build:
+    permissions:
+      contents: write # the package jobs add their own files to the release
     uses: ./.github/workflows/build.yml
     with:
       version: ${{ inputs.tag || github.ref_name }}
@@ -35,6 +37,8 @@ jobs:
           - arch: aarch64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write # adds its file to the release
     container:
       image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-24.08
       options: --privileged
@@ -42,6 +46,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
+          persist-credentials: false
       # Reuse the tar.gz built above instead of compiling twice.
       - uses: actions/download-artifact@v4
         with:
@@ -80,10 +85,13 @@ jobs:
           - arch: aarch64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write # adds its file to the release
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
+          persist-credentials: false
       - name: Install build dependencies
         run: |
           sudo apt-get update
@@ -110,6 +118,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: ${{ env.TAG }}
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
