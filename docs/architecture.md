@@ -1,212 +1,158 @@
 # VIsage — Architecture
 
-Canonical architecture overview.
+VIsage is a Compose Multiplatform desktop app (Kotlin, JVM 21) for Linux and Windows.
+It plays YouTube Music and local files. libmpv decodes the audio. A small Rust library does the work that must be fast.
 
-
----
-
-## Big picture
+## Overview
 
 ```
-┌─────────────┐    cookies/CDP     ┌──────────────────┐
-│ :player     │ ─────────────────► │ Linux keyring    │
-│  (Compose   │    save session    │ (Secret Service) │
-│   login)    │ ◄───────────────── │ vivi-desktop /   │
-└─────────────┘    load session    │ yt-music-session │
-                                   └────────┬─────────┘
-                                            │ applyToYouTube()
-┌─────────────┐    Koin            ┌────────▼─────────┐
-│ :composeApp │ ◄───────────────── │     :core        │
-│  Compose    │  SessionManager    │  DI + facades    │
-│  Desktop    │  PlaybackController│  YouTubeMusicSvc │
-│  (main UI)  │  DesktopPrefs      └────────┬─────────┘
-└──────┬──────┘                             │
-       │ LocalPlaybackController            │
-       ▼                                    ▼
-┌─────────────────────────────────────────────────────┐
-│                      :player                          │
-│  PlaybackController → StreamResolver → libmpv (JNA)  │
-│  queue + radio expand → MPRIS (dbus) → likeVideo     │
-└───────────┬─────────────────────┬───────────────────┘
-            │                     │
-            ▼                     ▼
-     ┌────────────┐        ┌────────────┐
-     │ :innertube │        │ :jiosaavn  │
-     │ YouTube.*  │        │ Saavn CDN  │
-     └────────────┘        └────────────┘
-            │
-            ▼
-     ┌────────────┐
-     │ :database  │  SQLDelight playlist/song cache
-     └────────────┘
-
-Also available (partially wired): :lyrics :lastfm :spotify
-:shazamkit :kizzy :canvas :applecanvas :vivimusiccanvas :artistvideo
+                  ┌────────────────────────────┐
+                  │ :composeApp  (Compose UI)  │
+                  │ screens, prefs, navigation │
+                  └─────────────┬──────────────┘
+                                │ Koin
+                  ┌─────────────▼──────────────┐
+                  │ :core                      │
+                  │ SessionManager             │
+                  │ YouTubeMusicService        │
+                  │ PlaybackController         │
+                  └──────┬───────────────┬─────┘
+                         │               │
+          ┌──────────────▼───┐     ┌─────▼──────────┐
+          │ :player          │     │ :innertube     │
+          │ libmpv (JNA)     │     │ YouTube Music  │
+          │ queue, radio     │     │ API client     │
+          │ stream resolve   │     └────────────────┘
+          │ MPRIS (Linux)    │     ┌────────────────┐
+          │ session storage  │     │ :jiosaavn      │
+          └───────┬──────────┘     │ :lyrics        │
+                  │                │ :canvas  (+2)  │
+          ┌───────▼──────────┐     │ :lastfm :kizzy │
+          │ :database        │     └────────────────┘
+          │ SQLDelight       │
+          └──────────────────┘
+          ┌──────────────────┐
+          │ native/ (Rust)   │  loaded with JNA through :nativelib
+          └──────────────────┘
 ```
 
-| Entry | Role |
-|-------|------|
-| `./gradlew :desktop:run` | Google / YT Music **login** (system Chromium + CDP). Writes session to keyring. |
-| `./gradlew :composeApp:run` | **Main app** — Compose Desktop shell. Entry / WM_CLASS: `com.music.vivi.alex`. |
-| `./gradlew :player-cli:run` | Headless smoke (play / like) for CI-style checks. |
+| Module | Role |
+|--------|------|
+| `:composeApp` | The app: UI, navigation, preferences, update service. Main class `com.music.vivi.alex`. The window class is `visage`. |
+| `:core` | Koin modules and the facades that the UI uses. |
+| `:player` | Playback, stream resolution, queue and radio, session storage, MPRIS, music video. |
+| `:innertube` | YouTube Music API client. |
+| `:jiosaavn` | JioSaavn search and stream URLs. |
+| `:lyrics` | Lyrics providers (LRCLIB, KuGou, Musixmatch, BetterLyrics, YouLy+, Unison, Paxsenix) and the lyrics timing model. |
+| `:canvas`, `:applecanvas`, `:vivimusiccanvas`, `:artistvideo` | Canvas (looping video cover) providers. |
+| `:lastfm`, `:spotify`, `:shazamkit`, `:kizzy` | Scrobbling, Spotify, song recognition, Discord Rich Presence. |
+| `:database` | SQLDelight database: local library, playlists, play history, downloads, library folders. |
+| `:nativelib` | App identity, environment variables, data folders (`AppPaths`), loader for the Rust library. |
+| `:player-cli` | Headless playback smoke test. |
+| `native/` | Rust library `visage_native`. See [`native/README.md`](../native/README.md). |
 
-Hyprland / lab scripts use class `com.music.vivi.alex` (may appear dashed as `com-music-vivi-alex`). Prefer killing by that PID/class, not broad `pkill -f`.
+Versions: Kotlin 2.3, Compose Multiplatform 1.10, Koin, SQLDelight. See `gradle/libs.versions.toml`.
 
-Gradle: Kotlin **2.3.10**, JVM **21**, Compose Multiplatform **1.10.2**, Koin (not Hilt). Version catalog: `gradle/libs.versions.toml`.
+## Platforms
 
----
+| | Linux | Windows |
+|---|---|---|
+| Data folders | XDG (`~/.config/visage`, `~/.local/share/visage`, `~/.cache/visage`) | `%APPDATA%\visage` (settings), `%LOCALAPPDATA%\visage` (data, cache) |
+| libmpv | System package (`libmpv.so.2`) | `libmpv-2.dll`, bundled in the app |
+| yt-dlp | `PATH` | `yt-dlp.exe`, bundled in the app |
+| Rust library | `libvisage_native.so` | `visage_native.dll` |
+| Media keys | MPRIS (Rust `zbus`) | Not supported yet. The Rust MPRIS functions are stubs. |
+| Session storage | Secret Service or KWallet, else an encrypted file | Windows Credential Manager, else an encrypted file |
+| Folder picker | XDG portal, then zenity or kdialog | Swing chooser |
+| Packages | AppImage, deb, rpm, tar.gz, Flatpak, Arch `PKGBUILD` | MSI, setup EXE, portable zip |
 
-## Auth & session
+Platform checks go through `HostOs` in `:nativelib`.
 
-1. `:desktop` opens Chromium (`--app=…`) against Google → music.youtube.com.
-2. CDP scrapes cookies, `visitorData`, `dataSyncId`.
-3. Session validated via Innertube `accountInfo`, stored with **java-keyring** (Secret Service): service `visage`, accounts `yt-music-session` / `yt-music-account`.
-4. `YtMusicSession.applyToYouTube()` sets the global `YouTube` singleton used by Innertube.
-5. `:core`’s `KeyringSessionManager` reloads that session for Compose / player.
+## Sign-in and session
 
-Login runs in `:player` (`YtLoginFlow`: embedded JCEF/Chromium + CDP → keyring); Compose hosts the browser panel in Settings → Account. The AppImage includes the native CEF runtime; existing keyring sessions are restored into the browser.
+1. Settings → Account embeds a JCEF (Chromium) browser. The user signs in to Google.
+2. `YtLoginFlow` reads the cookies, `visitorData` and `dataSyncId` through the Chrome DevTools Protocol.
+3. `InnerTube` validates the session. `SessionSecretStore` saves it. `SecretStoreRouter` picks the system keyring first. If the keyring is not available, it uses `EncryptedFileBackend`.
+4. `YtMusicSession.applyToYouTube()` gives the session to the global `YouTube` object.
+5. Sign-out deletes the keyring entries and the encrypted file.
 
----
+## Playback
 
-## Playback path
+`PlaybackController` is the contract for the UI. It exposes state flows and the actions play, pause, seek, queue and like.
+`DefaultPlaybackController` implements it.
 
-`PlaybackController` (`:player`) is the UI-stable contract (StateFlows + play/pause/seek/favourite/queue) — desktop analogue of Android’s `PlayerConnection`, without Media3 / a bound service.
+1. `StreamResolver` finds a stream. The order is JioSaavn (when on), then Innertube and NewPipe, then yt-dlp.
+2. `MpvPlayer` plays it through libmpv (JNA). Crossfade uses two mpv instances.
+3. Radio expands the queue. Shuffle keeps the original order, so turning it off restores the order.
+4. Each track change has a generation number. Late results from an older change are ignored.
+5. Play calls run in a detached scope, so leaving a screen cannot stop the song.
+6. Music video: `MusicVideoResolver` and `VideoStreamResolver` find a muted video stream. `MpvVideoRenderer` draws frames in software for the player.
+7. On Linux, `MprisService` publishes the player on the session bus as `org.mpris.MediaPlayer2.visage`.
+8. Artwork is cached on disk (`ArtworkCache`).
 
-On `playVideo` / `playQueue`:
+## Local library and tags
 
-1. **Stream resolve** (`StreamResolver`): prefer **JioSaavn** when enabled (`VIVI_SAAVN=0` to disable) → else Innertube / NewPipe → **yt-dlp** on 403 → last resorts.
-2. **libmpv** via JNA (`libmpv.so`; `LC_NUMERIC=C` / setlocale for mpv).
-3. **Queue + radio:** `playQueue` / in-queue jumps keep history, then `expandQueueFromRadio(..., replaceUpcoming = true)`. EOF advances on a coroutine — never `requestIndex` / `halt` on the mpv-events thread.
-4. **Artwork** under `~/.cache/visage/art/` as `file://` URLs.
-5. **MPRIS** bus `org.mpris.MediaPlayer2.vivi`.
-6. **Favourite** → Innertube `YouTube.likeVideo` / unlike.
+- Folders are in the `LibraryFolder` table. `visage_scan` (Rust) walks them. It reads tags and covers with lofty. Unchanged files are skipped.
+- Fuzzy search uses `visage_search_*` (nucleo).
+- The Tag Manager (`ui/tags/`) finds files with missing or bad tags. It suggests fixes from MusicBrainz, Deezer, iTunes and TheAudioDB. It writes through `visage_tags_write`. That call writes to a temporary file, checks it, and renames it over the original. Optional backups allow Undo.
+- Artist pages use `visage_artist_resolve` (Deezer, TheAudioDB, Wikipedia).
 
----
+## User interface
 
-## Module map
-
-| Module | Kind | Responsibility |
-|--------|------|----------------|
-| `:innertube` | KMP JVM | YouTube Music InnerTube client, auth session types, NewPipe helpers |
-| `:lyrics` | KMP JVM | Lyrics providers (LrcLib, etc.) |
-| `:jiosaavn` | KMP JVM | Saavn search + stream URL decrypt |
-| `:lastfm` / `:spotify` / `:shazamkit` / `:kizzy` | KMP JVM | Scrobble / GQL / recognize / Discord RPC |
-| `:canvas` family / `:artistvideo` | KMP JVM | Canvas / background artwork providers |
-| `:player` | JVM | libmpv, MPRIS, stream resolve, queue/radio, like |
-| `:player-cli` | JVM app | CLI smoke |
-| `:database` | JVM | SQLDelight playlist/song cache |
-| `:core` | JVM | Koin: `SessionManager`, `PlaybackController`, `YouTubeMusicService`, chart suggestions |
-| `:composeApp` | CMP desktop | Full shell UI (`com.music.vivi.alex`) |
-
-### Compose connection
-
-- Entry: `composeApp/.../com/music/vivi/alex.kt` (`@file:JvmName("alex")`, `awt.appClassName = com.music.vivi.alex`)
-- `startKoin { modules(coreModule, desktopModule) }`
-- `CompositionLocalProvider(LocalPlaybackController provides controller)`
-- Screens: `LocalPlaybackController.current` / `koinInject<…>()`
-- Prefs: `DesktopPrefs` (`~/.config/visage/settings.properties`) + listeners / `rememberPrefsVersion` for immediate Settings recomposition
-
-### Not in the stack yet
-
-- PoToken / full Android player-utils parity
-- Full local library DB UX parity
-- Packaging (AppImage / Flatpak); runtime needs system **libmpv**
-- Compose-native login (still `:desktop` Chromium+CDP)
-- Shared-element mini→NP transition; NP V2 glassmorph; full LyricsUtils commonMain port
-
----
-
-## Compose UI shell
-
-Undecorated window (`alex.kt`). Root `App` wraps content in `Surface` + `clip(RoundedCornerShape(16.dp))` so player glow/blur cannot bleed past compositor-rounded corners.
+`App` shows a rounded window. `AppScaffold` holds the top bar, the `NavHost`, the sidebars and the mini player.
 
 ```
-┌──────────────────────────────────────────────────────────┐
-│  ViviTopBar   Home · Search · Library · Settings · …     │
-├──────────────────────────────────────────────┬───────────┤
-│  NavHost                                     │ Queue?    │
-│    content + soft bottom fade                │ (pinned)  │
-│    MiniPlayerBar overlays content            │           │
-│    (FLOATING_PILL default — not a dock band) │           │
-└──────────────────────────────────────────────┴───────────┘
+┌─────────────────────────────────────────────────────────────┐
+│ Top bar   Home · Search · Library · Settings · sidebar keys │
+├───────────┬─────────────────────────────────┬───────────────┤
+│ Queue     │ NavHost (MainPane)              │ Library       │
+│ sidebar   │                                 │ sidebar       │
+│           │      ┌───────────────┐          │               │
+│           │      │ Mini player   │          │               │
+└───────────┴──────┴───────────────┴──────────┴───────────────┘
 ```
 
-| Piece | Role |
-|-------|------|
-| `ViviTopBar` | Destinations + window controls |
-| `ViviNavHost` / `AppScaffold` | Routes + optional pinned queue |
-| `MiniPlayerBar` | Overlay on content (hidden on now-playing). Styles below. |
-| `NowPlayingScreen` | Full player; lyrics 2-pane; queue modes |
+| Area | Package | Notes |
+|------|---------|-------|
+| Navigation | `navigation/` | `Routes`, `AppScaffold`, transitions, touchpad and mouse back (`PredictiveBackSwipe`). |
+| Home, Search, Browse | `ui/home`, `ui/search`, `ui/browse` | Region and language setting for search. |
+| Library | `ui/library` | Library home, mixes, genre cards. `sidebar/` is the library sidebar (filters, sort, folders). |
+| Artists and albums | `ui/artist`, `ui/album`, `ui/playlist` | Artist info page with portrait and bio. |
+| Charts, Moods, History | `ui/charts`, `ui/moods`, `ui/history`, `ui/newrelease` | |
+| Now Playing | `ui/player` | Player, fullscreen player, queue panel, track menu, audio output. |
+| Lyrics | `ui/player/lyrics` | Word-by-word renderer, gap indicator, styles. `fetchLyrics` asks the chosen provider first, then the others. |
+| Song swap | `ui/player/swap` | Animations for song change: Camera pan, Slide, Crossfade, Zoom through, Flip, Stack, Vinyl, Wipe. |
+| Backgrounds | `ui/player/background` | SkSL shaders and Canvas video. |
+| Keyboard | `keys/` | `ShortcutAction`, rebindable `Keymap`, `ShortcutEngine`, overlay. |
+| Settings | `ui/settings` | Hub: Interface (Theme, Top bar and mini-player, Now Playing, Song swappings, Sidebars, Keyboard shortcuts), Playback, Library and storage, Support, Updates, About. |
+| Theme | `theme/` | Dynamic colour from artwork, matugen colours, contrast. |
+| Preferences | `prefs/` | `DesktopPrefs` (`settings.properties`) with `PrefKeys`, plus `SidebarPrefs` and `FullscreenPlayerPrefs`. |
+| Errors | `crash/` | Log, crash dialog, problem report. |
 
-Route names stay aligned with upstream (`Routes.kt`).
+Mini player styles (`MiniPlayerStyle`): `FLOATING_PILL` (default, a notch attached to the bottom edge with its own seek row), `FULL_WIDTH_BAR`, `COMPACT_EDGE`.
 
-| Route | Screen |
-|-------|--------|
-| `home` | `HomeScreen` |
-| `search_input` | `SearchScreen` |
-| `library` | `LibraryScreen` |
-| `settings`… | `SettingsScreens` (hub → Account / Appearance / Theme / Player) |
-| `now_playing` / fullscreen | `NowPlayingScreen` / `NowPlayingFullscreenScreen` |
-| `album/{id}` / `artist/{id}` / `online_playlist/{id}` / `browse/{id}` | Online browse |
-| `smoke` | `SmokePlaybackScreen` |
+Rules for the UI:
+- Every change animates. Use the springs in `VisageMotion`. See [`ui-kit.md`](ui-kit.md).
+- Back buttons use `VisageBackButton`.
+- Space plays and pauses everywhere, except in a text field.
+- Generated covers are flat and have no gradients. Text does not sit on the art, except on Moods and genres cards.
+- Do not call `YouTube.*` from the UI. Use `YouTubeMusicService`.
 
-### Mini player
+## Updates
 
-Canonical pref: `miniPlayerStyle` (`PrefKeys.MiniPlayerStyle`).
+`UpdateService` checks the latest GitHub release every six hours. The release has `latest.json` and `latest.json.sig`. The app checks the Ed25519 signature with the key in `update-public-key.b64`. Then it checks the version, the asset URL and the SHA-256.
 
-| `MiniPlayerStyle` | Look |
-|-------------------|------|
-| `FLOATING_PILL` (**default**) | Centered pill (`RoundedCornerShape(50)`), inset + shadow, thin progress |
-| `FULL_WIDTH_BAR` | Edge-docked classic bar |
-| `COMPACT_EDGE` | Small card bottom-trailing (legacy “Apple mini”) |
+| Install | Update |
+|---------|--------|
+| AppImage | Replaces its own file, then restarts. |
+| Windows installer | Downloads `VIsage-x64.msi`, runs it for the current user, then restarts. |
+| Windows portable zip (has a `portable` file) | Opens the release page. |
+| Flatpak | Off. Flatpak updates it. |
+| deb, rpm, tar.gz, Arch | Opens the release page. |
 
-Resolution: `resolveMiniPlayerStyle(prefs)` — prefers `miniPlayerStyle` string; falls back to `UseAppleMiniPlayer` / `UseNewMiniPlayerDesign`. `MiniPlayerBar` listens to prefs so Appearance changes apply live.
+## Build and release
 
-Scaffold: soft gradient fade only — **no** solid full-width band under the bar (that made FLOATING_PILL look glued).
-
-Thumb: `Surface(shape = CircleShape, onClick)` so hover/ripple stay circular (hard-square bug).
-
-### Now playing & lyrics
-
-- **Non-lyrics:** large art column (`BoxWithConstraints`, ~96% of column) + centered title / seek / transport; bottom chrome is a **sibling** row (never overlaps Pause).
-- **Lyrics on:** 2-pane — `LyricsPanel` left, compact thumb+title + controls right; compact circular play in lyrics mode.
-- **LyricsPanel** (`ui/player/lyrics/`): floating text on backdrop (no Surface panel). Pref `lyricsTextAlign` (`LEFT` / `CENTER` / `RIGHT`, default **CENTER**) + in-pane align chips. Hierarchy = scale + opacity (+ light text shadow on active). **No** distance blur, **no** top/bottom black edge fades.
-- **Track ···:** `TrackActionsMenu` = bounded `Popup` + `heightIn` + `verticalScroll` (Material `DropdownMenu` crashes on Desktop with infinite max height).
-- **Backgrounds:** `PlayerBackgroundLayer` uses `clipToBounds()`; styles from prefs (`GRADIENT`, `GLOW_ANIMATED`, …).
-
-### Settings (Appearance)
-
-- Accordion `SettingsSection` (expand/collapse).
-- Mini-player + mini-player background: one large `LiveMiniPlayerHeroPreview` card per section (real `MiniPlayerBar`, scaled); radios only — selection swaps via `AnimatedContent`. No tiny unreadable row thumbnails.
-- Lyrics alignment radios; theme / top-nav / slider / buttons mockups as elsewhere.
-
-### Lists / M3E patterns in force
-
-- Continuous lists: **no** per-item `HorizontalDivider` (semantic section dividers only).
-- Interactive rows: pill `Surface(shape = RoundedCornerShape(12.dp), onClick)`.
-- Playlist / album `LazyColumn` `contentPadding(bottom = 120.dp)` so last tracks clear the floating mini.
-- Loaders: `ViviLoadingIndicator` — Morph port of M3 Expressive indeterminate indicator (`graphics-shapes`; official CMP `LoadingIndicator` still **internal**).
-
-### Mapping Android → desktop
-
-| Upstream (Android) | Desktop |
-|--------------------|---------|
-| Hilt / `@HiltViewModel` | Koin in `:core` + `koinInject` |
-| `MusicService` + bind | Process-local `:player` singleton |
-| `PlayerConnection` | `PlaybackController` |
-| `LocalPlayerConnection` | `LocalPlaybackController` |
-| `YouTube.*` from VMs | `YouTubeMusicService` (`ensureSession` then `YouTube.*`) |
-| Room + DataStore | SQLDelight + `DesktopPrefs` |
-| Media3 / ExoPlayer | libmpv |
-| Google login WebView | `:desktop` Chromium+CDP |
-
----
-
-## Hard rules (porting)
-
-1. Do **not** add Android Gradle plugin, Hilt, Timber, or Media3 to desktop modules.
-3. Do **not** call `YouTube.*` from UI without session applied.
-4. Prefer extending `PlaybackController` / `:core` facades over leaking `:player` into screens.
-5. Port one screen/route cluster per change; `./gradlew :composeApp:compileKotlinDesktop` after each.
-6. Update `TODO.txt` + `summary.md` when a slice lands; keep **this file** in sync when shell/player contracts change.
-7. Do not commit / force-push unless the human asks.
+- `.github/workflows/build.yml` builds all packages. `ci.yml` (each push) and `release.yml` (each `v*` tag) call it.
+- `scripts/package-linux.sh` builds deb, rpm, tar.gz and AppImage. `scripts/package-windows.ps1` builds the zip, MSI and EXE.
+- `release.yml` also builds Flatpak, writes a `PKGBUILD` for the release, signs `latest.json`, and publishes the release.
+- The secret `VISAGE_UPDATE_SIGNING_KEY` holds the signing key.

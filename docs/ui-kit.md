@@ -23,13 +23,34 @@ Compose Multiplatform doesn't expose the official Expressive components on deskt
 - `ExpressiveSplitButton(...)` — action + chevron menu trigger.
 - `ExpressiveCard(onClick, restRadius, pressedRadius, ...)` — tappable container whose corners tighten while pressed (Library cards/tiles use it).
 - `ChipsRow` (ui/component) — filter rows built from `ExpressiveButton` toggles; the top nav chips use the same press morph.
-- Existing Expressive-style pieces: `VisageLoadingIndicator` (morphing shapes via graphics-shapes), `PlayerSeekBar` (wavy/squiggly), `ShaderBackground`.
+- Existing Expressive-style pieces: `VisageLoadingIndicator` (morphing shapes via graphics-shapes), `PlayerSeekBar` (wavy track and pill handle; the wave flattens when paused), `ShaderBackground`.
 
 `ExpressiveGallery()` shows everything. **Adding or changing a component:** edit it, add it to the gallery, then render and look:
 
 ```bash
 VIVI_RENDER_OUT=/tmp/ui ./gradlew :composeApp:desktopTest --tests "*ExpressiveGalleryTest*"   # -> /tmp/ui/expressive-gallery.png
 ```
+
+## Shared components — `ui/component/`
+| Component | Use |
+|-----------|-----|
+| `VisageBackButton` | The one round "<" back button. Use it on every page. |
+| `MainPane` | The content area between the sidebars. Toasts and overlays centre on it. |
+| `VisageToast` | Short messages, centred on the main pane. |
+| `GeneratedCover`, `CoverTiles`, `CoverLayout` | Cover art for items with no image. Flat colours, no gradients, no overlap. Tiles show up to four covers. |
+| `MoodCard`, `MoodArt` | Moods and genres cards. Shapes fill the card. The title sits on a solid plate at the bottom. |
+| `DetailPageHeader` | Header of album, artist and playlist pages. |
+| `HorizontalWheelScroll`, `SmoothWheelScroll`, `WheelInput` | Wheel and touchpad scrolling. `WheelClassifier` tells a wheel from a touchpad. Tilt wheels and side buttons work. |
+| `interactiveScale` | Hover and press scale for clickable items. |
+| `YouTubeItems`, `ChipsRow`, `PageStates` | Item rows and cards, filter chips, loading, empty and error states. |
+
+Rules: every state change animates (use `VisageMotion`). Use generous padding. Do not draw borders on cover tiles.
+
+## Lists and pages
+- Continuous lists have no per-item divider.
+- Clickable rows use `RoundedClickable` or a `Surface` with `RoundedCornerShape(12.dp)`.
+- Scrolling lists leave 120 dp at the bottom for the mini player.
+- The library sidebar and the queue sidebar are always available, except on Now Playing and Settings.
 
 ## Backgrounds — `ui/player/background/`
 `ShaderBackground(kind, palette, artworkUrl)` draws one of `BackgroundShader` (Aurora, Glow, Mesh, Wave, XMB, Blur, Distort) from the cover palette; sources are in `Shaders.kt` (SkSL). Shared inputs: `iResolution`, `iTime`, `c0..c4` (palette), optionally `img`/`imgSize` (shrunk cover).
@@ -40,4 +61,6 @@ VIVI_SHADER_OUT=/tmp/shaders ./gradlew :composeApp:desktopTest --tests "*ShaderR
 The test also fails if a shader doesn't compile, renders blank, or doesn't animate. **New shader:** add the SkSL body + a `BackgroundShader` entry, wire it in `PlayerBackgroundLayer`, run the test.
 
 ## Native helpers — `native/`
-See `native/README.md` (scan, search, MPRIS, canvas).
+See [`native/README.md`](../native/README.md) (scan, search, MPRIS, canvas, artist lookup, tags).
+
+Related: [`architecture.md`](architecture.md).
