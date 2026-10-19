@@ -1,0 +1,143 @@
+# Builds every distributable. ci.yml (each push) and release.yml (each tag) both call it,
+# so the files that CI tests are the files that a release ships.
+name: build
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "Version number to build, for example v1.2.3"
+        type: string
+        default: "0.0.0-ci"
+      ref:
+        description: "Git ref to build. Empty means the calling ref."
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+env:
+  VISAGE_VERSION: ${{ inputs.version }}
+
+jobs:
+  rust:
+    name: Rust helpers (Linux and Windows)
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: native
+      - name: Build and test
+        run: |
+          cargo build --release --locked --manifest-path native/Cargo.toml
+          cargo test --release --locked --manifest-path native/Cargo.toml
+
+  linux:
+    name: Linux ${{ matrix.arch }} (deb, rpm, tar.gz, AppImage)
+    needs: rust
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: native
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends fakeroot rpm dpkg-dev binutils desktop-file-utils libfuse2t64 || \
+            sudo apt-get install -y --no-install-recommends fakeroot rpm dpkg-dev binutils desktop-file-utils libfuse2
+      - name: Package
+        run: ./scripts/package-linux.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  arch:
+    name: Arch Linux package
+    needs: rust
+    runs-on: ubuntu-24.04
+    container: archlinux:base-devel
+    steps:
+      - name: Install build dependencies
+        run: pacman -Syu --noconfirm --needed git jdk21-openjdk rust mpv desktop-file-utils libxtst libxrender libxi fontconfig
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: makepkg
+        run: |
+          useradd -m builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          sudo -u builder git config --global --add safe.directory '*'
+          (cd packaging/arch && sudo -u builder env VISAGE_VERSION="$VISAGE_VERSION" makepkg --noconfirm --cleanbuild)
+          mkdir -p dist
+          cp packaging/arch/visage-*.pkg.tar.zst dist/
+          ls -la dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          path: dist/*.pkg.tar.zst
+          if-no-files-found: error
+
+  windows:
+    name: Windows (portable zip, msi, setup exe)
+    needs: rust
+    # windows-2022 has the WiX Toolset 3 that jpackage needs for installers.
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
+      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
+      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
+        with:
+          workspaces: native
+      - name: Package
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/package-windows.ps1
+      - name: Check the portable build contents
+        shell: pwsh
+        run: |
+          Expand-Archive dist/*-portable.zip -DestinationPath check
+          $missing = @("libmpv-2.dll", "visage_native.dll", "yt-dlp.exe") | Where-Object {
+            -not (Get-ChildItem check -Recurse -Filter $_)
+          }
+          if ($missing) { throw "Missing from the portable build: $missing" }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: dist/*
+          if-no-files-found: error

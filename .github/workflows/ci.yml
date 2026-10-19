@@ -2,30 +2,19 @@ name: CI
 
 on:
   push:
-    branches: [main]
+    branches: ["**"]
   pull_request:
 
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-jobs:
-  native:
-    name: Rust helpers
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        with:
-          workspaces: native
-      - name: Build + test
-        run: |
-          cargo build --release --manifest-path native/Cargo.toml
-          cargo test --release --manifest-path native/Cargo.toml
+permissions:
+  contents: read
 
+jobs:
   jvm:
-    name: Compile + test
+    name: Compile and test
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -48,30 +37,7 @@ jobs:
           name: test-reports
           path: "**/build/reports/tests/**"
 
-  package:
-    name: Package smoke test (deb, rpm, tar.gz, AppImage)
-    needs: [native, jvm]
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 21
-      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
-      - uses: dtolnay/rust-toolchain@686976e191b89faba57d3206551f0f330d8cb249 # stable
-      - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-        with:
-          workspaces: native
-      - name: Tools
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends fakeroot rpm dpkg-dev binutils desktop-file-utils
-      - run: ./scripts/package-linux.sh
-        env:
-          VISAGE_VERSION: 0.0.0-ci
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-packages
-          path: dist/*
-          retention-days: 7
+  build:
+    uses: ./.github/workflows/build.yml
+    with:
+      version: 0.0.0-ci
