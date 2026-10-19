@@ -38,6 +38,8 @@ jobs:
           path: "**/build/reports/tests/**"
 
   build:
+    permissions:
+      contents: write # build.yml can add files to a release; this run does not use it
     uses: ./.github/workflows/build.yml
     with:
       version: 0.0.0-ci

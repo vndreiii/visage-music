@@ -10,7 +10,7 @@ on:
         required: true
 
 permissions:
-  contents: read
+  contents: write # each job adds its own files to the release
 
 env:
   TAG: ${{ inputs.tag || github.ref_name }}
@@ -21,6 +21,7 @@ jobs:
     with:
       version: ${{ inputs.tag || github.ref_name }}
       ref: ${{ inputs.tag || github.ref_name }}
+      release: true
 
   flatpak:
     name: ${{ matrix.arch }} — Flatpak
@@ -62,6 +63,10 @@ jobs:
         with:
           name: flatpak-${{ matrix.arch }}
           path: VIsage-${{ matrix.arch }}.flatpak
+      - name: Add to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-release-upload.sh "$TAG" VIsage-${{ matrix.arch }}.flatpak
 
   libmpv:
     # The app downloads this bundle on first start when the system has no libmpv.
@@ -89,14 +94,18 @@ jobs:
         with:
           name: libmpv-${{ matrix.arch }}
           path: dist/visage-libmpv-linux-${{ matrix.arch }}.tar.gz
+      - name: Add to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-release-upload.sh "$TAG" dist/visage-libmpv-linux-${{ matrix.arch }}.tar.gz
 
   publish:
-    needs: [build, flatpak, libmpv]
-    # A Flatpak failure must not block the release of the other packages.
+    # The Flatpak job adds its own file when it is done; the manifest does not wait for it.
+    needs: [build, libmpv]
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
-      contents: write # only this job creates the release
+      contents: write # adds the manifest files and finishes the release
     steps:
       - uses: actions/checkout@v4
         with:
@@ -140,11 +149,16 @@ jobs:
           mv latest.json artifacts/
           [[ -f latest.json.sig ]] && mv latest.json.sig artifacts/ || true
           cd artifacts && sha256sum * | grep -v SHA256SUMS > SHA256SUMS && ls -lh
-      - uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
-        with:
-          tag_name: ${{ env.TAG }}
-          name: VIsage ${{ env.TAG }}
-          generate_release_notes: true
-          files: artifacts/*
-          fail_on_unmatched_files: true
-          prerelease: ${{ contains(env.TAG, '-') }}
+      - name: Add the manifest files, then turn the pre-release into the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          scripts/ci-release-upload.sh "$TAG" artifacts/PKGBUILD artifacts/latest.json artifacts/SHA256SUMS $(ls artifacts/latest.json.sig 2>/dev/null || true)
+          # The manifest is there now, so updaters may see this release. Tags with a "-" stay pre-releases.
+          if [[ "$TAG" == *-* ]]; then
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease
+          else
+            gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --prerelease=false --latest
+          fi
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json assets,isPrerelease -q '.isPrerelease, (.assets[] | .name)'

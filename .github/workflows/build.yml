@@ -13,9 +13,13 @@ on:
         description: "Git ref to build. Empty means the calling ref."
         type: string
         default: ""
+      release:
+        description: "Add each package to the GitHub release as soon as its job ends"
+        type: boolean
+        default: false
 
 permissions:
-  contents: read
+  contents: write # only used when `release` is true; the calling workflow must allow it
 
 env:
   VISAGE_VERSION: ${{ inputs.version }}
@@ -78,6 +82,11 @@ jobs:
           name: linux-${{ matrix.arch }}
           path: dist/*
           if-no-files-found: error
+      - name: Add to the release
+        if: ${{ inputs.release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-release-upload.sh "${{ inputs.version }}" dist/*.deb dist/*.rpm dist/*.tar.gz "dist/VIsage-${{ matrix.arch }}.AppImage"
 
   arch:
     name: Arch Linux package
@@ -86,7 +95,7 @@ jobs:
     container: archlinux:base-devel
     steps:
       - name: Install build dependencies
-        run: pacman -Syu --noconfirm --needed git jdk21-openjdk rust mpv desktop-file-utils libxtst libxrender libxi fontconfig
+        run: pacman -Syu --noconfirm --needed github-cli git jdk21-openjdk rust mpv desktop-file-utils libxtst libxrender libxi fontconfig
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
@@ -104,6 +113,11 @@ jobs:
           name: arch-package
           path: dist/*.pkg.tar.zst
           if-no-files-found: error
+      - name: Add to the release
+        if: ${{ inputs.release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-release-upload.sh "${{ inputs.version }}" dist/*.pkg.tar.zst
 
   windows:
     name: Windows (portable zip, msi, setup exe)
@@ -141,3 +155,9 @@ jobs:
           name: windows
           path: dist/*
           if-no-files-found: error
+      - name: Add to the release
+        shell: bash
+        if: ${{ inputs.release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: scripts/ci-release-upload.sh "${{ inputs.version }}" dist/*
