@@ -36,10 +36,13 @@ if (-not (Test-Path "$deps\libmpv-2.dll")) {
 if (-not (Test-Path "$deps\yt-dlp.exe")) {
     $base = "https://github.com/yt-dlp/yt-dlp/releases/latest/download"
     Invoke-WebRequest "$base/yt-dlp.exe" -OutFile "$deps\yt-dlp.exe"
-    $sums = (Invoke-WebRequest "$base/SHA2-256SUMS").Content
-    $want = ($sums -split "`n" | Where-Object { $_ -match '\s\*?yt-dlp\.exe$' } | Select-Object -First 1) -split '\s+' | Select-Object -First 1
+    $resp = Invoke-WebRequest "$base/SHA2-256SUMS"
+    # The checksum file may arrive as text or as bytes, depending on the content type.
+    $sums = if ($resp.Content -is [byte[]]) { [Text.Encoding]::UTF8.GetString($resp.Content) } else { [string]$resp.Content }
+    $line = ($sums -split "\r?\n" | Where-Object { $_ -match '^[0-9a-fA-F]{64}\s+\*?yt-dlp\.exe\s*$' } | Select-Object -First 1)
+    $want = ($line.Trim() -split '\s+')[0].ToLower()
     $have = (Get-FileHash "$deps\yt-dlp.exe" -Algorithm SHA256).Hash.ToLower()
-    if ($want -ne $have) { Remove-Item "$deps\yt-dlp.exe"; throw "yt-dlp checksum mismatch" }
+    if ($want -ne $have) { Remove-Item "$deps\yt-dlp.exe"; throw "yt-dlp checksum mismatch: expected [$want], got [$have]" }
 }
 
 # 4. App image, installers.
