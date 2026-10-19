@@ -1,85 +1,95 @@
 <p align="center">
-  <img src="packaging/icons/visage-128.png" width="96" alt="VIsage logo">
+  <img src="packaging/icons/visage-128.png" width="120" alt="VIsage icon" />
 </p>
 
 <h1 align="center">VIsage</h1>
 
+<p align="center">A desktop music player for YouTube Music, on Linux and Windows.</p>
+
 <p align="center">
-  A desktop music player for YouTube Music. It runs on Windows and Linux.
+  <a href="https://github.com/vndreiii/visage-music/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/vndreiii/visage-music?style=for-the-badge&logo=github&color=f2b8d2&labelColor=1d1b20" /></a>
+  <a href="https://github.com/vndreiii/visage-music/actions/workflows/ci.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/vndreiii/visage-music/ci.yml?style=for-the-badge&label=build&labelColor=1d1b20" /></a>
+  <img alt="Platforms: Linux and Windows" src="https://img.shields.io/badge/platform-Linux%20%7C%20Windows-f2b8d2?style=for-the-badge&labelColor=1d1b20" />
+  <a href="https://ko-fi.com/vndreiii"><img alt="Support on Ko-fi" src="https://img.shields.io/badge/support-Ko--fi-f2b8d2?style=for-the-badge&logo=ko-fi&logoColor=white&labelColor=1d1b20" /></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/vndreiii/visage-music/actions/workflows/ci.yml"><img src="https://github.com/vndreiii/visage-music/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <a href="https://ko-fi.com/vndreiii"><img src="https://img.shields.io/badge/Support-Ko--fi-ff5e5b" alt="Support on Ko-fi"></a>
+  <a href="https://github.com/vndreiii/visage-music/releases/latest"><b>Download</b></a> ·
+  <a href="https://ko-fi.com/vndreiii"><b>Support</b></a> ·
+  <a href="docs/architecture.md"><b>Architecture</b></a>
 </p>
 
 <p align="center">
-  <img src="docs/screenshots/01-home.png" width="100%" alt="Home with the queue and library sidebars open">
+  <img src="docs/screenshots/01-home.png" alt="Home, with the queue and library sidebars open" width="840" />
 </p>
 
-<table>
-  <tr>
-    <td width="33%"><img src="docs/screenshots/05-lyrics.png" width="100%" alt="Synced lyrics"></td>
-    <td width="33%"><img src="docs/screenshots/02-search.png" width="100%" alt="Search"></td>
-    <td width="33%"><img src="docs/screenshots/03-library.png" width="100%" alt="Library"></td>
-  </tr>
-</table>
+---
 
 ## Features
 
-- Browse Home, Search, artists, albums and playlists from your YouTube Music account.
-- Play local music folders. A Rust helper scans the files and edits their tags.
-- Show synced lyrics, with word-by-word highlighting.
-- Show animated Canvas covers and music videos.
-- Save songs for offline use.
-- Use the keyboard and media keys. Linux supports MPRIS.
-- Update itself (AppImage and Windows installer).
+- **Browse.** See Home, Search, artists, albums and playlists from your YouTube Music account.
+- **Local music.** Play your music folders. A Rust helper scans the files and edits their tags.
+- **Lyrics.** Read synced lyrics, with word-by-word highlighting. If one provider fails, VIsage asks the next one.
+- **Now Playing.** See animated Canvas covers and music videos. Change how the player moves when the song changes.
+- **Sidebars.** Keep the queue on one side and your library on the other.
+- **Offline.** Save songs to your disk.
+- **Keyboard.** Control the player with keys. Change any key in Settings.
+- **Colours.** The app uses Material 3 Expressive and dynamic colour.
+- **Updates.** The AppImage and the Windows installer update themselves. Each update is signed.
 
-## Install
+<p align="center">
+  <img src="docs/screenshots/05-lyrics.png" alt="Synced lyrics" width="410" />
+  <img src="docs/screenshots/02-search.png" alt="Search" width="410" />
+</p>
 
-Download a file from the [Releases page](https://github.com/vndreiii/visage-music/releases).
+<p align="center">
+  <img src="docs/screenshots/03-library.png" alt="Library" width="410" />
+</p>
 
-| System | File |
-|--------|------|
-| Windows, installer | `VIsage-x64.msi` or `VIsage-<version>-windows-x64-setup.exe` |
-| Windows, portable | `VIsage-<version>-windows-x64-portable.zip` (unzip and run `VIsage.exe`) |
-| Any Linux | `VIsage-x86_64.AppImage` or `VIsage-aarch64.AppImage` |
-| Debian, Ubuntu | `.deb` |
-| Fedora, openSUSE | `.rpm` |
-| Arch Linux | `PKGBUILD` (installs the release) or `packaging/arch/PKGBUILD` (builds from source) |
-| Other | `.tar.gz` or Flatpak |
+## Download
 
-Windows builds include libmpv and yt-dlp.
+Get the latest version from the [Releases page](https://github.com/vndreiii/visage-music/releases/latest).
 
-On Linux, install **libmpv** (package `mpv` or `libmpv2`). Install **yt-dlp** for the stream fallback and for offline saves.
+| Platform | File | How to install |
+|---|---|---|
+| Linux (all distributions) | `VIsage-x86_64.AppImage` or `VIsage-aarch64.AppImage` | Run `chmod +x` on the file. Then run it. |
+| Debian, Ubuntu | `visage_<version>_amd64.deb` | Run `sudo apt install ./` with the file. |
+| Fedora, openSUSE | `visage-<version>-1.x86_64.rpm` | Run `sudo dnf install` with the file. |
+| Arch Linux | `PKGBUILD` | Put the file in an empty folder. Run `makepkg -si`. |
+| Linux (other) | `visage-<version>-linux-<arch>.tar.gz` | Unpack the file. Run `visage/bin/visage`. |
+| Windows 10 and 11 | `VIsage-x64.msi` or `VIsage-<version>-windows-x64-setup.exe` | Run the installer. You do not need administrator rights. |
+| Windows 10 and 11 (portable) | `VIsage-<version>-windows-x64-portable.zip` | Unzip the file anywhere. Run `VIsage.exe`. |
+
+The Windows files include libmpv and yt-dlp.
+On Linux, install **libmpv** (the `mpv` or `libmpv2` package). Install **yt-dlp** to save songs and to use the stream fallback.
 
 ## Build from source
 
 You need **JDK 21** and **Rust**.
 
 ```bash
-# Run in development
-./gradlew :composeApp:run
-
-# Build the Linux packages into dist/
-scripts/package-linux.sh
+./gradlew :composeApp:run        # run the app
+scripts/package-linux.sh         # make the Linux packages in dist/
 ```
+
+On Arch Linux, build the package:
+
+```bash
+cd packaging/arch && makepkg -si
+```
+
+On Windows, use PowerShell. You also need WiX Toolset 3, 7-Zip and the GitHub CLI:
 
 ```powershell
-# Build the Windows packages into dist\
-.\scripts\package-windows.ps1
+.\scripts\package-windows.ps1    # makes the .zip, .msi and .exe in dist\
 ```
 
-The Windows build also needs WiX Toolset 3, 7-Zip and the GitHub CLI.
+## Links
 
-## Documentation
-
-- [Architecture](docs/architecture.md)
-- [UI kit](docs/ui-kit.md)
-
-## Support
-
-VIsage is free. You can [support the project on Ko-fi](https://ko-fi.com/vndreiii).
+- Releases: <https://github.com/vndreiii/visage-music/releases>
+- Support: <https://ko-fi.com/vndreiii>
+- Architecture: [docs/architecture.md](docs/architecture.md)
+- UI kit: [docs/ui-kit.md](docs/ui-kit.md)
 
 ## License
 
