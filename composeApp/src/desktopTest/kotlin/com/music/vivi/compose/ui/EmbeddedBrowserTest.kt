@@ -28,7 +28,9 @@ class EmbeddedBrowserTest {
     fun linuxEmbeddedBrowserForcesX11OzoneBackend() {
         val linux = embeddedBrowserChromiumSwitches("Linux")
         assertTrue("--ozone-platform=x11" in linux, "Missing X11 Ozone switch: $linux")
-        assertTrue(embeddedBrowserChromiumSwitches("Windows 11").isEmpty())
+        val windows = embeddedBrowserChromiumSwitches("Windows 11")
+        assertTrue("--no-first-run" in windows)
+        assertTrue(windows.none { it.startsWith("--ozone-platform") })
     }
 
     @Test

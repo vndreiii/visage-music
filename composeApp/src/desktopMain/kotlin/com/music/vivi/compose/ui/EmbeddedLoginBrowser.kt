@@ -26,17 +26,21 @@ import javax.swing.SwingUtilities
  * backend ignores that and creates its own top-level xdg_toplevel, which is the separate window the user
  * sees. Forcing the X11 backend (XWayland under a Wayland session) makes the browser a child of the canvas.
  */
-internal fun embeddedBrowserChromiumSwitches(osName: String): List<String> =
-    if (osName.startsWith("Linux", ignoreCase = true)) {
-        listOf(
+internal fun embeddedBrowserChromiumSwitches(osName: String): List<String> {
+    // Without these, a fresh browser profile opens Chromium's "first run" window (a blank terms-of-service
+    // dialog in this build) before the sign-in page.
+    val common = listOf("--no-first-run", "--no-default-browser-check")
+    return if (osName.startsWith("Linux", ignoreCase = true)) {
+        common + listOf(
             // Use the active Secret Service (GNOME Keyring or compatible KDE provider),
             // rather than Chromium guessing a wallet from desktop environment variables.
             "--password-store=gnome-libsecret",
             "--ozone-platform=x11",
         )
     } else {
-        emptyList()
+        common
     }
+}
 
 /** One process-wide CEF runtime, with a browser component embedded in the Account page. */
 private object LoginCefRuntime {
