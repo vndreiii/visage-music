@@ -323,13 +323,34 @@ fun SettingsHubScreen(navController: NavController) {
 }
 
 @Composable
-private fun AccountCard(account: AccountInfo?, error: String?, onClick: () -> Unit) {
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer,
-        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-    ) {
+private fun AccountCard(account: AccountInfo?, error: String?, onClick: (() -> Unit)?) {
+    // With no onClick the card is informational: no ripple and no chevron.
+    val card: @Composable (@Composable () -> Unit) -> Unit = { content ->
+        if (onClick != null) {
+            Surface(
+                onClick = onClick,
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                content = content,
+            )
+        } else {
+            Surface(
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                content = content,
+            )
+        }
+    }
+    card {
+        AccountCardRow(account, error, showChevron = onClick != null)
+    }
+}
+
+@Composable
+private fun AccountCardRow(account: AccountInfo?, error: String?, showChevron: Boolean) {
+    run {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             val thumb = account?.thumbnailUrl
             if (thumb != null) {
@@ -364,11 +385,13 @@ private fun AccountCard(account: AccountInfo?, error: String?, onClick: () -> Un
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Icon(
-                Icons.Outlined.ChevronRight,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
+            if (showChevron) {
+                Icon(
+                    Icons.Outlined.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
         }
     }
 }
@@ -1175,8 +1198,7 @@ fun AccountSettingsScreen(navController: NavController) {
     var confirmSignOut by remember { mutableStateOf(false) }
     var loginKey by remember { mutableStateOf(0) }
     SettingsPage(title = "Account", onBack = { navController.navigateUp() }) {
-        // Opens the Google account page, where the name and photo are changed.
-        AccountCard(account, error) { if (account != null) openExternalUrl("https://myaccount.google.com/") }
+        AccountCard(account, error, onClick = null)
         Text(
             "Your session is stored on this device. Sign in again below if it expires.",
             style = MaterialTheme.typography.bodySmall,
@@ -1184,12 +1206,18 @@ fun AccountSettingsScreen(navController: NavController) {
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp),
         )
         if (account != null) {
-            com.music.vivi.compose.ui.expressive.ExpressiveButton(
-                text = "Sign out",
-                onClick = { confirmSignOut = true },
-                style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Tonal,
-                modifier = Modifier.padding(horizontal = 4.dp).padding(bottom = 16.dp),
-            )
+            Row(Modifier.padding(horizontal = 4.dp).padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                com.music.vivi.compose.ui.expressive.ExpressiveButton(
+                    text = "Manage Google account",
+                    onClick = { openExternalUrl("https://myaccount.google.com/") },
+                    style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Tonal,
+                )
+                com.music.vivi.compose.ui.expressive.ExpressiveButton(
+                    text = "Sign out",
+                    onClick = { confirmSignOut = true },
+                    style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Outlined,
+                )
+            }
         }
         if (confirmSignOut) {
             SignOutDialog(
