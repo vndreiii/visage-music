@@ -21,6 +21,12 @@ object UpdateUrls {
 
     fun isTrustedApi(url: String): Boolean = url == RELEASES_API
 
+    /**
+     * The newest release's copy of [name]. GitHub redirects it to the real asset. Unlike the API, this is not
+     * rate limited (the API allows 60 anonymous requests per hour per IP, and shared networks use that up).
+     */
+    fun latestAsset(name: String): String = "https://github.com/$OWNER/$REPO/releases/latest/download/$name"
+
     /** A release asset of this repository, as the first hop (no redirect yet). */
     fun isTrustedDownload(url: String): Boolean {
         val uri = parseHttps(url) ?: return false

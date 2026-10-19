@@ -209,26 +209,26 @@ class UpdateService internal constructor(
     private fun fetchOffer(): UpdateOffer? {
         val key = publicKey ?: throw UpdateRejected("This build has no update signing key.")
         val installed = current ?: return null
-        val body = UpdateHttp.readBounded(
-            start = UpdateUrls.RELEASES_API,
-            accept = "application/vnd.github+json",
-            maxBytes = UpdateLimits.MAX_METADATA_BYTES,
-            trustedStart = UpdateUrls::isTrustedApi,
-            allowMissing = true,
+        // The manifest of the newest release, and its signature. No GitHub API call: see UpdateUrls.latestAsset.
+        val manifestUrl = UpdateUrls.latestAsset(UpdateAssets.MANIFEST)
+        val signatureUrl = UpdateUrls.latestAsset(UpdateAssets.SIGNATURE)
+        val manifestBytes = UpdateHttp.readBounded(
+            start = manifestUrl, accept = "application/octet-stream", maxBytes = UpdateLimits.MAX_METADATA_BYTES,
+            trustedStart = { it == manifestUrl }, allowMissing = true,
         ) ?: return null
-        val release = GitHubRelease.parse(body)
-        if (release.draft || release.prerelease) return null
-        val version = SemVer.parseOrNull(release.tag) ?: return null
-        if (version <= installed) return null
-
-        val manifestUrl = release.trustedAssetUrl(UpdateAssets.MANIFEST) ?: return null
-        val signatureUrl = release.trustedAssetUrl(UpdateAssets.SIGNATURE) ?: return null
-        val manifestBytes = fetchTrusted(manifestUrl, UpdateLimits.MAX_METADATA_BYTES, release.tag, UpdateAssets.MANIFEST)
-        val signature = fetchTrusted(signatureUrl, UpdateLimits.MAX_SIGNATURE_BYTES, release.tag, UpdateAssets.SIGNATURE)
-            .toString(Charsets.UTF_8)
+        val signature = (UpdateHttp.readBounded(
+            start = signatureUrl, accept = "application/octet-stream", maxBytes = UpdateLimits.MAX_SIGNATURE_BYTES,
+            trustedStart = { it == signatureUrl }, allowMissing = true,
+        ) ?: throw UpdateRejected("The latest release has no signature and was ignored.")).toString(Charsets.UTF_8)
         if (!UpdateSignature.verify(manifestBytes, signature, key)) {
-            throw UpdateRejected("Release ${release.tag} failed signature verification and was ignored.")
+            throw UpdateRejected("The latest release failed signature verification and was ignored.")
         }
+        // Signed, so the version can be trusted. The release tag is always v<version>.
+        val version = SemVer.parseOrNull(
+            MiniJson.parse(manifestBytes.toString(Charsets.UTF_8)).asObject().string("version").orEmpty(),
+        ) ?: return null
+        if (version <= installed) return null
+        val release = object { val tag = "v$version" }
         val manifest = UpdateManifest.parse(manifestBytes, release.tag)
         val arch = UpdateAssets.appImageName(System.getProperty("os.arch").orEmpty())
         val winName = UpdateAssets.windowsInstallerName(System.getProperty("os.arch").orEmpty())

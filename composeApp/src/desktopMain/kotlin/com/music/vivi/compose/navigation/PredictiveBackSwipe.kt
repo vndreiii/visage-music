@@ -132,7 +132,7 @@ fun Modifier.predictiveBackSwipe(navController: NavHostController): Modifier = c
     val classifier = remember { com.music.vivi.compose.ui.component.WheelClassifier() }
 
     fun dispatch(progress: Float, x: Float, y: Float) {
-        input.backProgressed(NavigationEvent(NavigationEvent.EDGE_LEFT, x, y, progress.coerceIn(0f, 1f)))
+        input.backProgressed(NavigationEvent(touchX = x, touchY = y, progress = progress.coerceIn(0f, 1f), swipeEdge = NavigationEvent.EDGE_LEFT))
     }
 
     fun finish(commit: Boolean) {
@@ -197,7 +197,7 @@ fun Modifier.predictiveBackSwipe(navController: NavHostController): Modifier = c
             if (!state.active) {
                 if (state.events >= 3 && state.acc >= 14f && px > 0f) {
                     state.active = true
-                    input.backStarted(NavigationEvent(NavigationEvent.EDGE_LEFT, state.x, state.y, 0f))
+                    input.backStarted(NavigationEvent(touchX = state.x, touchY = state.y, progress = 0f, swipeEdge = NavigationEvent.EDGE_LEFT))
                 } else {
                     scheduleIdle()
                     return@onPointerEvent
