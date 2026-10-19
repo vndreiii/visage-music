@@ -65,6 +65,8 @@ jobs:
 
   publish:
     needs: [build, flatpak]
+    # A Flatpak failure must not block the release of the other packages.
+    if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04
     permissions:
       contents: write # only this job creates the release

@@ -71,7 +71,6 @@ modules:
       - -Dauto_features=disabled
       - -Dlibmpv=true
       - -Dcplayer=false
-      - -Dffmpeg=enabled
       - -Dpulse=enabled
     cleanup:
       - /bin
