@@ -45,6 +45,10 @@ class UpdateSignatureTest {
         assertNull(UpdateSignature.parsePublicKey("TODO-REPLACE-WITH-BASE64-ED25519-PUBLIC-KEY"))
         assertNull(UpdateSignature.parsePublicKey(""))
         assertNull(UpdateSignature.parsePublicKey(Base64.getEncoder().encodeToString(ByteArray(31))))
-        assertNull(UpdateSignature.embeddedPublicKey(), "the shipped placeholder resource must not load as a key")
+    }
+
+    @Test
+    fun shippedPublicKeyLoads() {
+        assertNotNull(UpdateSignature.embeddedPublicKey(), "the shipped update key must parse")
     }
 }

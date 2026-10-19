@@ -18,11 +18,11 @@ object NativeLibLoader {
         if (com.music.vivi.nativelib.AppEnv.get("NATIVE_DISABLE") == "1") return null
         val candidates = buildList {
             com.music.vivi.nativelib.AppEnv.get("NATIVE_LIB")?.takeIf { it.isNotBlank() }?.let(::add)
-            System.getProperty("compose.application.resources.dir")?.let { add(File(it, "libvisage_native.so").path) }
+            HostOs.resourcesDir()?.let { add(File(it, HostOs.nativeLibName).path) }
             add("visage_native")
         }
         for (name in candidates) {
-            if (name.contains('/') && !trusted(File(name))) continue
+            if (File(name).isAbsolute && !trusted(File(name))) continue
             try {
                 return Native.load(name, api)
             } catch (_: Throwable) {
@@ -33,6 +33,8 @@ object NativeLibLoader {
 
     private fun trusted(f: File): Boolean {
         if (!f.isAbsolute || !f.isFile) return false
+        // Windows has no POSIX modes; the per-user install directory is already access-controlled.
+        if (HostOs.isWindows) return true
         return runCatching {
             val perms = Files.getPosixFilePermissions(f.toPath())
             PosixFilePermission.GROUP_WRITE !in perms && PosixFilePermission.OTHERS_WRITE !in perms

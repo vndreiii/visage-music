@@ -29,12 +29,12 @@ class MprisService(
     private val onShuffle: (Boolean) -> Unit = {},
 ) : AutoCloseable {
     // Preferred: Rust/zbus service (dbus-java never got its well-known name on some setups).
-    private val native: NativeMpris? = run {
+    private val native: NativeMpris? = if (!com.music.vivi.nativelib.HostOs.isLinux) null else run {
         MprisDesktopIntegration.ensureInstalled()
         NativeMpris.start(::onNativeCommand)
     }?.also { System.err.println("MPRIS: native service on ${it.busName}") }
 
-    private val connection: DBusConnection? = if (native != null) null else runCatching {
+    private val connection: DBusConnection? = if (native != null || !com.music.vivi.nativelib.HostOs.isLinux) null else runCatching {
         DBusConnectionBuilder.forSessionBus()
             .withShared(false)
             .build()

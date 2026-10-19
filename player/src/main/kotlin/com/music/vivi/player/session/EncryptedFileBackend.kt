@@ -158,11 +158,22 @@ class EncryptedFileBackend(
         fun forCurrentUser(file: File): EncryptedFileBackend = EncryptedFileBackend(file, currentUserKeyMaterial())
 
         internal fun currentUserKeyMaterial(): ByteArray {
-            val machineId = listOf("/etc/machine-id", "/var/lib/dbus/machine-id")
-                .firstNotNullOfOrNull { path -> runCatching { File(path).readText().trim() }.getOrNull()?.takeIf { it.isNotEmpty() } }
-                ?: "no-machine-id"
+            val machineId = (
+                if (com.music.vivi.nativelib.HostOs.isWindows) windowsMachineGuid()
+                else listOf("/etc/machine-id", "/var/lib/dbus/machine-id")
+                    .firstNotNullOfOrNull { path -> runCatching { File(path).readText().trim() }.getOrNull()?.takeIf { it.isNotEmpty() } }
+                ) ?: "no-machine-id"
             return "visage|$machineId|${System.getProperty("user.name")}|${System.getProperty("user.home")}".toByteArray(Charsets.UTF_8)
         }
+
+        /** `MachineGuid` from the registry; the Windows counterpart of `/etc/machine-id`. */
+        private fun windowsMachineGuid(): String? = runCatching {
+            val process = ProcessBuilder("reg", "query", "HKLM\\SOFTWARE\\Microsoft\\Cryptography", "/v", "MachineGuid")
+                .redirectErrorStream(true).start()
+            val out = process.inputStream.bufferedReader().use { it.readText() }
+            process.waitFor()
+            out.lineSequence().firstOrNull { "MachineGuid" in it }?.trim()?.split(Regex("\\s+"))?.lastOrNull()
+        }.getOrNull()?.takeIf { it.isNotEmpty() }
 
         /** RFC 5869 HKDF with HMAC-SHA256 (the JDK only gained a KDF API after Java 21). */
         internal fun hkdfSha256(ikm: ByteArray, salt: ByteArray, info: ByteArray, length: Int): ByteArray {

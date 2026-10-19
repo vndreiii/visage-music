@@ -24,6 +24,7 @@ import org.freedesktop.dbus.types.Variant
 object XdgPortalFolderPicker {
     suspend fun pickDirectory(title: String = "Choose music folder"): File? =
         withContext(Dispatchers.IO) {
+            if (com.music.vivi.nativelib.HostOs.isWindows) return@withContext pickViaSwing(title)
             // A successful null result means the user cancelled. Only failures fall back.
             runCatching { pickViaPortal(title) }.getOrElse {
                 runCatching { pickViaZenity(title) }.getOrElse { pickViaKdialog(title) }
@@ -86,6 +87,23 @@ object XdgPortalFolderPicker {
         val decoded = URI(null, null, path, null).path
         File(decoded).absoluteFile
     }.getOrNull()
+
+    /** Windows (and any host without a portal): the Swing chooser in the system look and feel. */
+    private fun pickViaSwing(title: String): File? {
+        var picked: File? = null
+        javax.swing.SwingUtilities.invokeAndWait {
+            runCatching { javax.swing.UIManager.setLookAndFeel(javax.swing.UIManager.getSystemLookAndFeelClassName()) }
+            val chooser = javax.swing.JFileChooser(System.getProperty("user.home")).apply {
+                dialogTitle = title
+                fileSelectionMode = javax.swing.JFileChooser.DIRECTORIES_ONLY
+                isAcceptAllFileFilterUsed = false
+            }
+            if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
+                picked = chooser.selectedFile?.absoluteFile
+            }
+        }
+        return picked?.takeIf { it.isDirectory }
+    }
 
     private fun pickViaZenity(title: String): File? {
         val proc = ProcessBuilder(

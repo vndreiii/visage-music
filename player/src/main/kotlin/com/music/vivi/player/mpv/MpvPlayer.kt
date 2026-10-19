@@ -21,7 +21,7 @@ class MpvPlayer(
 
     private val lib = MpvLib.INSTANCE
     private val handle: Pointer = lib.mpv_create()
-        ?: error("mpv_create failed — is libmpv.so installed?")
+        ?: error("mpv_create failed — is libmpv installed?")
     private val running = AtomicBoolean(true)
     private val lastEndError = AtomicReference<String?>(null)
     @Volatile private var ready = CompletableDeferred<Unit>()

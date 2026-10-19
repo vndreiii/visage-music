@@ -58,13 +58,7 @@ interface MpvLib : Library {
             runCatching {
                 CLib.INSTANCE.setlocale(CLib.LC_NUMERIC, "C")
             }
-            val candidates = listOf(
-                com.music.vivi.nativelib.AppEnv.get("LIBMPV"),
-                "mpv",
-                "libmpv.so.2",
-                "/usr/lib/libmpv.so.2",
-                "/usr/lib/libmpv.so",
-            ).filterNotNull()
+            val candidates = libraryCandidates()
             var last: Throwable? = null
             for (name in candidates) {
                 try {
@@ -81,13 +75,35 @@ interface MpvLib : Library {
     }
 }
 
+/** Where to look for libmpv, best first. Shared with the video renderer. */
+internal fun libraryCandidates(): List<String> {
+    val bundled = com.music.vivi.nativelib.HostOs.resourcesDir()
+    return if (com.music.vivi.nativelib.HostOs.isWindows) {
+        listOfNotNull(
+            com.music.vivi.nativelib.AppEnv.get("LIBMPV"),
+            bundled?.let { java.io.File(it, "libmpv-2.dll").path }?.takeIf { java.io.File(it).isFile },
+            "libmpv-2",
+            "mpv-2",
+            "libmpv",
+        )
+    } else {
+        listOfNotNull(
+            com.music.vivi.nativelib.AppEnv.get("LIBMPV"),
+            "mpv",
+            "libmpv.so.2",
+            "/usr/lib/libmpv.so.2",
+            "/usr/lib/libmpv.so",
+        )
+    }
+}
+
 @Suppress("FunctionName")
 private interface CLib : Library {
     fun setlocale(category: Int, locale: String): String?
 
     companion object {
         const val LC_NUMERIC = 1
-        val INSTANCE: CLib = Native.load("c", CLib::class.java)
+        val INSTANCE: CLib = Native.load(if (com.music.vivi.nativelib.HostOs.isWindows) "msvcrt" else "c", CLib::class.java)
     }
 }
 

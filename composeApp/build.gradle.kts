@@ -7,6 +7,8 @@ plugins {
     alias(libs.plugins.compose.multiplatform)
 }
 
+val isWindowsHost = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+
 kotlin {
     jvmToolchain(21)
     jvm("desktop")
@@ -28,7 +30,8 @@ kotlin {
                     "aarch64" -> "arm64"
                     else -> error("Unsupported embedded browser architecture")
                 }
-                runtimeOnly("me.friwi:jcef-natives-linux-$cefArch:jcef-17e805a+cef-152.0.6+g708dc14+chromium-152.0.7977.83")
+                val cefOs = if (isWindowsHost) "windows" else "linux"
+                runtimeOnly("me.friwi:jcef-natives-$cefOs-$cefArch:jcef-17e805a+cef-152.0.6+g708dc14+chromium-152.0.7977.83")
                 implementation(project(":core"))
                 implementation(project(":nativelib"))
                 implementation(project(":lyrics"))
@@ -63,14 +66,26 @@ kotlin {
 
 val visageVersion: String = (System.getenv("VISAGE_VERSION") ?: "1.0.0").removePrefix("v")
 
-// Stage the optional native helper where Compose copies "linux" resources from.
+// Stage the optional native helper where Compose copies "linux"/"windows" resources from.
+// On Windows, `scripts/package-windows.ps1` also puts libmpv-2.dll and yt-dlp.exe in build/windows-deps.
 val nativeResources = layout.buildDirectory.dir("native-resources")
 val stageNativeLib by tasks.registering(Copy::class) {
-    val lib = rootProject.file("native/target/release/libvisage_native.so")
-    onlyIf { lib.isFile }
-    from(lib)
-    into(nativeResources.map { it.dir("linux") })
+    if (isWindowsHost) {
+        val lib = rootProject.file("native/target/release/visage_native.dll")
+        val deps = layout.buildDirectory.dir("windows-deps")
+        if (lib.isFile) from(lib)
+        from(deps)
+        into(nativeResources.map { it.dir("windows") })
+    } else {
+        val lib = rootProject.file("native/target/release/libvisage_native.so")
+        onlyIf { lib.isFile }
+        from(lib)
+        into(nativeResources.map { it.dir("linux") })
+    }
 }
+
+// Linux-only JVM flags: the X11 toolkit package does not exist in the Windows JDK.
+val x11Opens = if (isWindowsHost) emptyList() else listOf("--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED")
 
 compose.desktop {
     application {
@@ -82,10 +97,10 @@ compose.desktop {
             // Keyring/D-Bus and Discord load JDK classes dynamically; jlink's
             // inferred module set misses jdk.security.auth and java.management.
             includeAllModules = true
-            targetFormats(TargetFormat.Deb, TargetFormat.Rpm)
+            if (isWindowsHost) targetFormats(TargetFormat.Msi, TargetFormat.Exe) else targetFormats(TargetFormat.Deb, TargetFormat.Rpm)
             packageName = "visage"
             packageVersion = visageVersion
-            description = "YouTube Music player for Linux"
+            description = "YouTube Music player for desktop"
             copyright = "© VIsage contributors"
             vendor = "VIsage"
             // Rust helper (libvisage_native.so) lands in the app's resources dir when it has been built
@@ -102,14 +117,24 @@ compose.desktop {
                 rpmPackageVersion = visageVersion
                 shortcut = true
             }
+            windows {
+                packageName = "VIsage"
+                menuGroup = "VIsage"
+                iconFile.set(rootProject.file("packaging/icons/visage.ico"))
+                // Per-user install: no administrator prompt, and the updater can run the installer silently.
+                perUserInstall = true
+                dirChooser = true
+                shortcut = true
+                // Fixed id so each new installer upgrades the old one instead of installing beside it.
+                upgradeUuid = "6f1c7a52-3b8e-4f0d-9a47-5d2b8c1e7a90"
+            }
         }
         jvmArgs += listOf(
             "--add-opens=java.desktop/java.awt=ALL-UNNAMED",
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
-            "--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED",
             "-Dawt.appClassName=visage",
             "-Dvisage.version=$visageVersion",
-        )
+        ) + x11Opens
     }
 }
 
@@ -121,16 +146,17 @@ afterEvaluate {
             jvmArgs(
                 "--add-opens=java.desktop/java.awt=ALL-UNNAMED",
                 "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
-                "--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED",
                 "-Dawt.appClassName=visage",
             )
+            jvmArgs(x11Opens)
         }
     }
 }
 
 tasks.withType<Test>().configureEach {
     environment("DISABLE_LSFGVK", "1")
-    jvmArgs("--add-opens=java.desktop/sun.awt=ALL-UNNAMED", "--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED")
+    jvmArgs("--add-opens=java.desktop/sun.awt=ALL-UNNAMED")
+    jvmArgs(x11Opens)
 }
 
 tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(stageNativeLib) }
@@ -146,7 +172,7 @@ tasks.withType<AbstractJPackageTask>().configureEach {
 val toolchainHome: String = javaToolchains.launcherFor {
     languageVersion.set(JavaLanguageVersion.of(21))
 }.get().metadata.installationPath.asFile.absolutePath
-tasks.matching { it.name == "createDistributable" || it.name == "createReleaseDistributable" }.configureEach {
+tasks.matching { !isWindowsHost && (it.name == "createDistributable" || it.name == "createReleaseDistributable") }.configureEach {
     doLast {
         val launcher = rootProject.file("packaging/launcher/visage")
         layout.buildDirectory.dir("compose/binaries").get().asFile.walkTopDown()

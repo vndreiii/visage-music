@@ -15,6 +15,19 @@ object AppIdentity {
     const val LEGACY_ID = "vivi-desktop"
 }
 
+/** Host operating system checks and platform file names. */
+object HostOs {
+    val isWindows: Boolean = System.getProperty("os.name").startsWith("Windows", ignoreCase = true)
+    val isLinux: Boolean = System.getProperty("os.name").startsWith("Linux", ignoreCase = true)
+
+    /** File name of the Rust helper library on this platform. */
+    val nativeLibName: String = if (isWindows) "visage_native.dll" else "libvisage_native.so"
+
+    /** The folder with the files that ship with the app (Compose resources dir), if known. */
+    fun resourcesDir(): java.io.File? =
+        System.getProperty("compose.application.resources.dir")?.takeIf { it.isNotBlank() }?.let(::File)
+}
+
 /** `VISAGE_<NAME>`, falling back to the legacy `VIVI_<NAME>`. */
 object AppEnv {
     fun get(name: String): String? =
@@ -34,6 +47,12 @@ object AppPaths {
 
     private fun base(kind: Kind): File {
         val home = System.getProperty("user.home")
+        if (HostOs.isWindows) {
+            // Roaming for settings, local for data that is large or can be rebuilt.
+            val roaming = System.getenv("APPDATA")?.takeIf { it.isNotBlank() } ?: File(home, "AppData/Roaming").path
+            val local = System.getenv("LOCALAPPDATA")?.takeIf { it.isNotBlank() } ?: File(home, "AppData/Local").path
+            return File(if (kind == Kind.Config) roaming else local)
+        }
         val (env, fallback) = when (kind) {
             Kind.Data -> "XDG_DATA_HOME" to ".local/share"
             Kind.Cache -> "XDG_CACHE_HOME" to ".cache"

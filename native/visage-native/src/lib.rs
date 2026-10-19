@@ -4,6 +4,10 @@
 
 mod artist;
 mod canvas;
+#[cfg(unix)]
+mod mpris;
+#[cfg(not(unix))]
+#[path = "mpris_stub.rs"]
 mod mpris;
 mod scan;
 mod search;

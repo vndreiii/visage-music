@@ -49,6 +49,7 @@ import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MovieFilter
+import androidx.compose.material.icons.outlined.Favorite
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Restore
@@ -268,10 +269,28 @@ fun SettingsHubScreen(navController: NavController) {
             )
         }
 
+        SettingsSection("Support") {
+            SettingsNavItem(
+                icon = Icons.Outlined.Favorite,
+                title = "Support VIsage",
+                subtitle = "Buy the developer a coffee on Ko-fi",
+                onClick = { openExternalUrl(SUPPORT_URL) },
+            )
+        }
+
         com.music.vivi.compose.update.UpdateSettingsSection()
 
+        SettingsSection("About") {
+            SettingsNavItem(
+                icon = Icons.Outlined.Favorite,
+                title = "Support VIsage",
+                subtitle = "VIsage is free software. Donations pay for development.",
+                onClick = { openExternalUrl(SUPPORT_URL) },
+            )
+        }
+
         Text(
-            "VIsage — Linux port of VIVI Music",
+            "VIsage — desktop port of VIVI Music",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(horizontal = 4.dp, vertical = 20.dp),
@@ -1390,4 +1409,19 @@ internal fun PrefSecondsSlider(
             modifier = Modifier.widthIn(min = 40.dp),
         )
     }
+}
+
+private const val SUPPORT_URL = "https://ko-fi.com/vndreiii"
+
+/** Opens [url] in the default browser. Failure is ignored: there is nothing useful to show. */
+internal fun openExternalUrl(url: String) {
+    Thread {
+        runCatching {
+            if (java.awt.Desktop.isDesktopSupported() && java.awt.Desktop.getDesktop().isSupported(java.awt.Desktop.Action.BROWSE)) {
+                java.awt.Desktop.getDesktop().browse(java.net.URI(url))
+            } else {
+                ProcessBuilder(if (com.music.vivi.nativelib.HostOs.isWindows) "explorer" else "xdg-open", url).start()
+            }
+        }
+    }.apply { isDaemon = true }.start()
 }

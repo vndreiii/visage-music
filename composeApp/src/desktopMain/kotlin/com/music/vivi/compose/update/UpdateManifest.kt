@@ -61,4 +61,10 @@ object UpdateAssets {
         "aarch64", "arm64" -> "VIsage-aarch64.AppImage"
         else -> null
     }
+
+    /** The Windows installer built by the release workflow: VIsage-x64.msi. */
+    fun windowsInstallerName(osArch: String): String? = when (osArch.lowercase()) {
+        "amd64", "x86_64" -> "VIsage-x64.msi"
+        else -> null
+    }
 }

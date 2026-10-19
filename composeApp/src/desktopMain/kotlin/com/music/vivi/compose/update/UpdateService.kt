@@ -31,6 +31,9 @@ data class UpdateOffer(
     /** Set when this install can replace its AppImage and the release has a build for this arch. */
     val appImage: ManifestAsset?,
     val appImageName: String?,
+    /** Set on a Windows installer install when the release has an installer for this CPU. */
+    val installer: ManifestAsset? = null,
+    val installerName: String? = null,
 )
 
 enum class UpdatePhase { Disabled, Idle, Checking, Downloading, Restarting }
@@ -105,6 +108,7 @@ class UpdateService internal constructor(
 
     fun primaryAction(offer: UpdateOffer): UpdateAction =
         if (installMode is InstallMode.AppImage && offer.appImage != null) UpdateAction.InstallAndRestart
+        else if (installMode is InstallMode.WindowsInstaller && offer.installer != null) UpdateAction.InstallAndRestart
         else UpdateAction.OpenReleasePage
 
     fun checkNow() {
@@ -135,8 +139,11 @@ class UpdateService internal constructor(
         when (primaryAction(offer)) {
             UpdateAction.OpenReleasePage -> openReleasePage()
             UpdateAction.InstallAndRestart -> {
-                val mode = installMode as? InstallMode.AppImage ?: return
-                scope.launch { installAppImage(offer, mode) }
+                when (val mode = installMode) {
+                    is InstallMode.AppImage -> scope.launch { installAppImage(offer, mode) }
+                    is InstallMode.WindowsInstaller -> scope.launch { installWindows(offer, mode) }
+                    else -> return
+                }
             }
         }
     }
@@ -224,6 +231,7 @@ class UpdateService internal constructor(
         }
         val manifest = UpdateManifest.parse(manifestBytes, release.tag)
         val arch = UpdateAssets.appImageName(System.getProperty("os.arch").orEmpty())
+        val winName = UpdateAssets.windowsInstallerName(System.getProperty("os.arch").orEmpty())
         return UpdateOffer(
             version = manifest.version,
             tag = release.tag,
@@ -231,6 +239,8 @@ class UpdateService internal constructor(
             pubDate = manifest.pubDate,
             appImage = arch?.let { manifest.assets[it] },
             appImageName = arch,
+            installer = winName?.let { manifest.assets[it] },
+            installerName = winName,
         )
     }
 
@@ -280,6 +290,65 @@ class UpdateService internal constructor(
             partial?.delete()
             work.unlock()
         }
+    }
+
+    /**
+     * Downloads the signed MSI, then lets a helper process wait for this one to exit, run the
+     * installer (per-user, so no admin prompt) and start the new VIsage.
+     */
+    private suspend fun installWindows(offer: UpdateOffer, mode: InstallMode.WindowsInstaller) {
+        val asset = offer.installer ?: return
+        val name = offer.installerName ?: return
+        if (!work.tryLock()) return
+        var partial: File? = null
+        try {
+            _status.update { it.copy(phase = UpdatePhase.Downloading, progress = 0f, message = null) }
+            val msi = withContext(Dispatchers.IO) {
+                val dir = File(com.music.vivi.nativelib.AppPaths.cache(), "updates").apply { mkdirs() }
+                val part = File(dir, "VIsage-${offer.version}.msi.part")
+                partial = part
+                UpdateHttp.download(asset, offer.tag, name, part) { progress ->
+                    _status.update { it.copy(progress = progress) }
+                }
+                check(part.length() == asset.size)
+                val target = File(dir, "VIsage-${offer.version}.msi")
+                Files.move(part.toPath(), target.toPath(), StandardCopyOption.REPLACE_EXISTING)
+                partial = null
+                target
+            }
+            _status.update { it.copy(phase = UpdatePhase.Restarting, message = "Installing the update…") }
+            if (!spawnWindowsInstaller(msi, mode.exe)) {
+                _status.update { it.copy(phase = UpdatePhase.Idle, message = "Update downloaded. Run ${msi.name} to finish.") }
+                return
+            }
+            onRestart()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("[update] install failed: ${e.message}")
+            _status.update {
+                it.copy(phase = UpdatePhase.Idle, progress = 0f, message = "Couldn't install the update. Try again.")
+            }
+        } finally {
+            partial?.delete()
+            work.unlock()
+        }
+    }
+
+    private fun spawnWindowsInstaller(msi: File, exe: File): Boolean = runCatching {
+        fun q(path: String) = "'" + path.replace("'", "''") + "'"
+        val pid = ProcessHandle.current().pid()
+        val script = "Wait-Process -Id $pid -ErrorAction SilentlyContinue; " +
+            "Start-Process msiexec -ArgumentList '/i',${q(msi.absolutePath)},'/passive','/norestart' -Wait; " +
+            "Start-Process ${q(exe.absolutePath)}"
+        ProcessBuilder("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script)
+            .redirectOutput(ProcessBuilder.Redirect.DISCARD)
+            .redirectError(ProcessBuilder.Redirect.DISCARD)
+            .start()
+        true
+    }.getOrElse {
+        System.err.println("[update] could not start the installer: ${it.message}")
+        false
     }
 
     private fun spawnRelaunchAfterExit(file: File): Boolean = runCatching {
