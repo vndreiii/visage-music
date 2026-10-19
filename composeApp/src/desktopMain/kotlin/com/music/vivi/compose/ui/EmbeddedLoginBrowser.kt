@@ -46,6 +46,9 @@ internal fun embeddedBrowserChromiumSwitches(osName: String): List<String> {
 private object LoginCefRuntime {
     val debugPort = ServerSocket(0).use { it.localPort }
     @Volatile var started = false
+
+    /** What the browser runtime is doing while it is fetched and started, or null when idle. */
+    val progress = MutableStateFlow<String?>(null)
     private val clearMarker get() = AppPaths.cache().resolve("embedded-login-profile.clear")
 
     /** Forget the Google sign-in kept by the embedded browser, so "Sign in" starts from a blank page. */
@@ -64,6 +67,19 @@ private object LoginCefRuntime {
         }
         started = true
         val builder = CefAppBuilder()
+        // The Chromium runtime is not part of the app. jcefmaven downloads it (checked against a hash) on the first use.
+        builder.setProgressHandler { state, percent ->
+            val pct = if (percent in 0f..100f) " ${percent.toInt()}%" else ""
+            progress.value = when (state) {
+                me.friwi.jcefmaven.EnumProgress.LOCATING -> "Looking for the browser component…"
+                me.friwi.jcefmaven.EnumProgress.DOWNLOADING -> "Downloading the browser component (about 150 MB, one time)…$pct"
+                me.friwi.jcefmaven.EnumProgress.EXTRACTING -> "Unpacking the browser component…$pct"
+                me.friwi.jcefmaven.EnumProgress.INSTALL -> "Installing the browser component…"
+                me.friwi.jcefmaven.EnumProgress.INITIALIZING -> "Starting the browser…"
+                me.friwi.jcefmaven.EnumProgress.INITIALIZED -> null
+                else -> null
+            }
+        }
         embeddedBrowserChromiumSwitches(System.getProperty("os.name")).forEach { builder.addJcefArgs(it) }
         builder.setInstallDir(AppPaths.cache().resolve("jcef-152.0.6"))
         builder.cefSettings.apply {
@@ -82,6 +98,8 @@ fun clearEmbeddedLoginProfile() = LoginCefRuntime.clearProfile()
 
 class EmbeddedLoginBrowser : LoginBrowserHost {
     override val debugPort: Int get() = LoginCefRuntime.debugPort
+    /** Download and start-up progress of the browser component; null when there is nothing to show. */
+    val progress get() = LoginCefRuntime.progress.asStateFlow()
     private val _panel = MutableStateFlow<JPanel?>(null)
     val panel = _panel.asStateFlow()
     private var client: CefClient? = null

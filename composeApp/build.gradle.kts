@@ -19,12 +19,6 @@ kotlin {
                 implementation(libs.junit)
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.6")
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.9.6")
-            }
-        }
-        val desktopMain by getting {
-            dependencies {
-                implementation("com.github.jagrosh:DiscordIPC:master-SNAPSHOT")
-                implementation("me.friwi:jcefmaven:152.0.6")
                 val cefArch = when (System.getProperty("os.arch")) {
                     "amd64", "x86_64" -> "amd64"
                     "aarch64" -> "arm64"
@@ -32,6 +26,14 @@ kotlin {
                 }
                 val cefOs = if (isWindowsHost) "windows" else "linux"
                 runtimeOnly("me.friwi:jcef-natives-$cefOs-$cefArch:jcef-17e805a+cef-152.0.6+g708dc14+chromium-152.0.7977.83")
+            }
+        }
+        val desktopMain by getting {
+            dependencies {
+                implementation("com.github.jagrosh:DiscordIPC:master-SNAPSHOT")
+                implementation("me.friwi:jcefmaven:152.0.6")
+                // The Chromium runtime (about 150 MB) is not bundled. jcefmaven downloads it the first time the
+                // user opens the sign-in page (see EmbeddedLoginBrowser). Tests bundle it, below.
                 implementation(project(":core"))
                 implementation(project(":nativelib"))
                 implementation(project(":lyrics"))
@@ -158,6 +160,75 @@ tasks.withType<Test>().configureEach {
     environment("DISABLE_LSFGVK", "1")
     jvmArgs("--add-opens=java.desktop/sun.awt=ALL-UNNAMED")
     jvmArgs(x11Opens)
+}
+
+// --- Slimmed copies of two large jars, used only by the app (not by tests) -------------------------------------
+// material-icons-extended holds thousands of icons (37 MB); the app imports about 250. sqlite-jdbc carries native
+// libraries for every OS and CPU (14 MB); one platform is enough.
+val slimDir = layout.buildDirectory.dir("slim-jars")
+val iconImport = Regex("""import androidx\.compose\.material\.icons\.([a-z.]+)\.([A-Za-z0-9_]+)\b""")
+val usedIconClasses: Set<String> = fileTree("src") { include("**/*.kt") }.files
+    .flatMap { f -> iconImport.findAll(f.readText()).map { "androidx/compose/material/icons/" + it.groupValues[1].replace('.', '/') + "/" + it.groupValues[2] + "Kt" }.toList() }
+    .toSet()
+
+// The original jars, resolved on their own because the app's runtime classpath no longer holds them.
+val fullJars by configurations.creating {
+    isCanBeConsumed = false
+    isCanBeResolved = true
+    isTransitive = false
+}
+dependencies {
+    fullJars("org.jetbrains.compose.material:material-icons-extended-desktop:1.7.3")
+    fullJars("org.xerial:sqlite-jdbc:3.49.1.0")
+}
+
+val slimIcons by tasks.registering(Jar::class) {
+    archiveFileName.set("material-icons-extended-slim.jar")
+    destinationDirectory.set(slimDir)
+    inputs.files(fileTree("src") { include("**/*.kt") })
+    val original = { zipTree(fullJars.files.first { it.name.startsWith("material-icons-extended-desktop") }) }
+    // Everything except the per-icon files (the Icons.Outlined/Rounded/... objects and manifests stay) ...
+    from(original) {
+        exclude("androidx/compose/material/icons/filled/**", "androidx/compose/material/icons/outlined/**",
+            "androidx/compose/material/icons/rounded/**", "androidx/compose/material/icons/sharp/**",
+            "androidx/compose/material/icons/twotone/**", "androidx/compose/material/icons/automirrored/**")
+    }
+    // ... plus the icons the app imports.
+    from(original) {
+        usedIconClasses.forEach { include("$it.class", "$it$*.class") }
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+val slimSqlite by tasks.registering(Jar::class) {
+    archiveFileName.set("sqlite-jdbc-slim.jar")
+    destinationDirectory.set(slimDir)
+    from({
+        val jar = fullJars.files.first { it.name.startsWith("sqlite-jdbc-") }
+        zipTree(jar)
+    }) {
+        exclude("org/sqlite/native/**")
+        // The Linux and Windows x86-64 and arm64 libraries the app can run on.
+        include("**")
+    }
+    from({
+        val jar = fullJars.files.first { it.name.startsWith("sqlite-jdbc-") }
+        zipTree(jar)
+    }) {
+        if (isWindowsHost) include("org/sqlite/native/Windows/x86_64/**")
+        else include("org/sqlite/native/Linux/x86_64/**", "org/sqlite/native/Linux/aarch64/**")
+    }
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+}
+
+configurations.matching { it.name == "desktopRuntimeClasspath" }.configureEach {
+    exclude(group = "org.jetbrains.compose.material", module = "material-icons-extended-desktop")
+    exclude(group = "org.xerial", module = "sqlite-jdbc")
+}
+kotlin.sourceSets.getByName("desktopMain").dependencies {
+    // The core icons are a dependency of the full set that was excluded above; keep them.
+    runtimeOnly("org.jetbrains.compose.material:material-icons-core:1.7.3")
+    runtimeOnly(files(slimDir.map { it.file("material-icons-extended-slim.jar") }, slimDir.map { it.file("sqlite-jdbc-slim.jar") }).builtBy(slimIcons, slimSqlite))
 }
 
 tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(stageNativeLib) }

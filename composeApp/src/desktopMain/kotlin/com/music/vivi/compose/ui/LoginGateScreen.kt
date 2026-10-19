@@ -48,11 +48,12 @@ fun YtLoginPanel(modifier: Modifier = Modifier, onLoggedIn: (String) -> Unit = {
     Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Text(
             "Sign in below using the browser embedded in VIsage; " +
-                "your session is stored in the system keyring.",
+                "your session is stored on this device.",
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(state.status, style = MaterialTheme.typography.bodyLarge)
+        val browserProgress by browser.progress.collectAsState()
+        Text(browserProgress ?: state.status, style = MaterialTheme.typography.bodyLarge)
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
             FilledTonalButton(onClick = flow::open, enabled = !state.busy) {
                 Text(if (state.browserOpen) "Reload sign-in" else "Sign in with Google")
