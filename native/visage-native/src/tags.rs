@@ -238,6 +238,16 @@ fn text(tag: &mut Tag, key: ItemKey, v: &str) {
     }
 }
 
+/// Copy `src` to a new file at `dst`. Fails if `dst` already exists (including as a symlink), so a
+/// planted link in the music folder cannot redirect the write.
+fn copy_new(src: &Path, dst: &Path) -> std::io::Result<()> {
+    let _ = fs::remove_file(dst); // removes a stale temp or a link itself, never its target
+    let mut from = fs::File::open(src)?;
+    let mut to = fs::OpenOptions::new().write(true).create_new(true).open(dst)?;
+    std::io::copy(&mut from, &mut to)?;
+    to.sync_all()
+}
+
 fn tmp_sibling(path: &Path) -> PathBuf {
     let name = path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
     // Keep the real extension last so format probing still works on the temp copy.
@@ -302,7 +312,7 @@ pub fn write(req: &WriteRequest) -> WriteResult {
 }
 
 fn write_via_temp(path: &Path, tmp: &Path, req: &WriteRequest, cover: Option<Vec<u8>>) -> Result<(), String> {
-    fs::copy(path, tmp).map_err(|e| format!("cannot create temporary copy (folder not writable?): {e}"))?;
+    copy_new(path, tmp).map_err(|e| format!("cannot create temporary copy (folder not writable?): {e}"))?;
     let mut f = lofty::read_from_path(tmp).map_err(|e| format!("unsupported or unreadable file: {e}"))?;
     let ty = target_type(&f);
     if f.tag(ty).is_none() {
@@ -365,7 +375,7 @@ fn write_via_temp(path: &Path, tmp: &Path, req: &WriteRequest, cover: Option<Vec
 pub fn restore(backup: &str, dest: &str) -> Result<(), String> {
     let dest = fs::canonicalize(dest).unwrap_or_else(|_| PathBuf::from(dest));
     let tmp = tmp_sibling(&dest);
-    fs::copy(backup, &tmp).map_err(|e| e.to_string())?;
+    copy_new(Path::new(backup), &tmp).map_err(|e| e.to_string())?;
     fs::rename(&tmp, &dest).map_err(|e| {
         let _ = fs::remove_file(&tmp);
         e.to_string()

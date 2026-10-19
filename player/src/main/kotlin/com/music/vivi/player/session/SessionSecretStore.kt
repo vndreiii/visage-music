@@ -90,11 +90,14 @@ object SessionSecretStore {
                 for (service in listOf(SERVICE, LEGACY_SERVICE)) {
                     for (account in listOf(ACCOUNT_SESSION, ACCOUNT_PROFILE)) {
                         runCatching { keyring.delete(service, account) }
+                            .onFailure { System.err.println("[session] could not delete $service/$account from the keyring: ${it.message}") }
                     }
                 }
             },
             onFile = { file -> file.deleteFile() },
         )
+        // Also remove the encrypted fallback file, so an unreachable keyring cannot leave a copy that a later fallback read would use.
+        runCatching { File(AppPaths.config(), "session.vault").delete() }
     }
 
     /**
