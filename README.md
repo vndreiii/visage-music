@@ -19,9 +19,12 @@
 
 <table>
   <tr>
-    <td width="33%"><img src="docs/screenshots/04-now-playing.png" width="100%" alt="Now Playing"></td>
-    <td width="33%"><img src="docs/screenshots/02-search.png" width="100%" alt="Search"></td>
-    <td width="33%"><img src="docs/screenshots/03-library.png" width="100%" alt="Library"></td>
+    <td width="50%"><img src="docs/screenshots/04-now-playing.png" width="100%" alt="Now Playing"></td>
+    <td width="50%"><img src="docs/screenshots/05-lyrics.png" width="100%" alt="Synced lyrics"></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/02-search.png" width="100%" alt="Search"></td>
+    <td width="50%"><img src="docs/screenshots/03-library.png" width="100%" alt="Library"></td>
   </tr>
 </table>
 

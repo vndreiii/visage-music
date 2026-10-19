@@ -8,6 +8,8 @@ import com.music.unison.Unison
 import com.music.vivi.betterlyrics.BetterLyrics
 import com.music.vivi.compose.prefs.LyricsProvider
 import com.music.youlyplus.YouLyPlus
+import kotlinx.coroutines.TimeoutCancellationException
+import kotlinx.coroutines.withTimeout
 
 /**
  * Dispatches title/artist lyrics fetch to the selected [LyricsProvider].
@@ -20,6 +22,42 @@ suspend fun fetchLyrics(
     durationMs: Long,
     album: String? = null,
     videoId: String? = null,
+): Result<String> {
+    var last: Result<String>? = null
+    // The chosen provider first, then the others. A provider that is down (HTTP 503) or has no
+    // match must not leave the player without lyrics while another one has them.
+    for (candidate in listOf(provider) + FALLBACK_ORDER.filter { it != provider }) {
+        val result = try {
+            withTimeout(PROVIDER_TIMEOUT_MS) { fetchFrom(candidate, title, artist, durationMs, album, videoId) }
+        } catch (e: TimeoutCancellationException) {
+            Result.failure(e)
+        }
+        if (result.getOrNull()?.isNotBlank() == true) return result
+        last = result
+    }
+    return last ?: Result.failure(IllegalStateException("no lyrics provider available"))
+}
+
+private const val PROVIDER_TIMEOUT_MS = 8_000L
+
+/** Fallback order: the ones that answer fastest and match best come first. */
+private val FALLBACK_ORDER = listOf(
+    LyricsProvider.LRCLIB,
+    LyricsProvider.BETTER_LYRICS,
+    LyricsProvider.KUGOU,
+    LyricsProvider.YOULY_PLUS,
+    LyricsProvider.PAXSENIX,
+    LyricsProvider.MUSIXMATCH,
+    LyricsProvider.UNISON,
+)
+
+private suspend fun fetchFrom(
+    provider: LyricsProvider,
+    title: String,
+    artist: String,
+    durationMs: Long,
+    album: String?,
+    videoId: String?,
 ): Result<String> {
     val durationSec = if (durationMs > 0L) (durationMs / 1000L).toInt() else -1
     return when (provider) {
