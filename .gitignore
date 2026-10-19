@@ -80,3 +80,6 @@ CLAUDE.md
 *.tar.gz
 *.pkg.tar.zst
 *.flatpak
+
+# Local dev launcher
+run-dev.sh

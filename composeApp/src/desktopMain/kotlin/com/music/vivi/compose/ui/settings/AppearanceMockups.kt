@@ -563,7 +563,7 @@ private fun SliderStyleCanvas(
             }
             
             // Thumb
-            val thumbLeft = (tx - thumbW/2f).coerceIn(0f, size.width - thumbW)
+            val thumbLeft = (tx - thumbW/2f).coerceIn(0f, (size.width - thumbW).coerceAtLeast(0f))
             drawRoundRect(
                 color = primary,
                 topLeft = Offset(thumbLeft, midY - thumbH/2f),
