@@ -68,7 +68,7 @@ interface MpvLib : Library {
                 }
             }
             throw IllegalStateException(
-                "Could not load libmpv (install mpv / libmpv). Tried: $candidates",
+                "Could not load libmpv. Install mpv (libmpv), or set VISAGE_LIBMPV to the full path of libmpv.so.2. Tried: $candidates",
                 last,
             )
         }
@@ -87,13 +87,23 @@ internal fun libraryCandidates(): List<String> {
             "libmpv",
         )
     } else {
-        listOfNotNull(
-            com.music.vivi.nativelib.AppEnv.get("LIBMPV"),
-            "mpv",
-            "libmpv.so.2",
-            "/usr/lib/libmpv.so.2",
-            "/usr/lib/libmpv.so",
-        )
+        val names = listOf("libmpv.so.2", "libmpv.so.1", "libmpv.so")
+        // Systems without a standard library path (NixOS, Guix, some AppImage runners) keep libraries elsewhere.
+        val dirs = buildList {
+            System.getenv("LD_LIBRARY_PATH")?.split(':')?.filter { it.isNotBlank() }?.let(::addAll)
+            addAll(
+                listOf(
+                    "/usr/lib", "/usr/lib64", "/usr/lib/x86_64-linux-gnu", "/usr/lib/aarch64-linux-gnu", "/lib64", "/lib",
+                    "/usr/local/lib", "/run/current-system/sw/lib", "/run/opengl-driver/lib",
+                    "/nix/var/nix/profiles/default/lib", "/app/lib",
+                    "${System.getProperty("user.home")}/.nix-profile/lib",
+                    "${System.getProperty("user.home")}/.guix-profile/lib",
+                ),
+            )
+        }
+        val found = dirs.asSequence().flatMap { d -> names.asSequence().map { java.io.File(d, it) } }
+            .filter { it.isFile }.map { it.path }.toList()
+        listOfNotNull(com.music.vivi.nativelib.AppEnv.get("LIBMPV")) + listOf("mpv", "libmpv.so.2") + found
     }
 }
 

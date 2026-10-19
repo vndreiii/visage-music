@@ -61,6 +61,12 @@ Get the latest version from the [Releases page](https://github.com/vndreiii/visa
 | Windows 10 and 11 (portable) | `VIsage-<version>-windows-x64-portable.zip` | Unzip the file anywhere. Run `VIsage.exe`. |
 
 The Windows files include libmpv and yt-dlp.
+On NixOS, `appimage-run` does not include libmpv. Install `mpv-unwrapped` and set `VISAGE_LIBMPV` to the full path of its `libmpv.so.2`, for example:
+
+```bash
+VISAGE_LIBMPV=$(nix-build '<nixpkgs>' -A mpv-unwrapped --no-out-link)/lib/libmpv.so.2 appimage-run VIsage-x86_64.AppImage
+```
+
 On Linux, install **libmpv** (the `mpv` or `libmpv2` package). Install **yt-dlp** to save songs and to use the stream fallback.
 
 ## Build from source

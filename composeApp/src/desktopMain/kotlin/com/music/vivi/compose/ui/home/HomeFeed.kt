@@ -7,7 +7,11 @@ import com.music.innertube.pages.HomePage
 /** Combine real recommendations into a fuller Quick Picks shelf and avoid repeated playlists. */
 internal fun prepareHomeSections(sections: List<HomePage.Section>, savedPlaylistIds: Set<String>): List<HomePage.Section> {
     val quick = sections.filter { it.title.equals("Quick picks", ignoreCase = true) }
-    val songs = (quick + sections).flatMap { it.items }.filterIsInstance<SongItem>().distinctBy { it.id }.take(60)
+    // YouTube Music's own "Quick picks" shelf is the personalised one (it is what the website shows). Pool songs from
+    // the other shelves only when the feed has no such shelf, because those shelves are mostly region-wide charts.
+    val fromQuick = quick.flatMap { it.items }.filterIsInstance<SongItem>().distinctBy { it.id }
+    val songs = if (fromQuick.isNotEmpty()) fromQuick.take(60)
+    else sections.flatMap { it.items }.filterIsInstance<SongItem>().distinctBy { it.id }.take(60)
     val playlistIds = savedPlaylistIds.toMutableSet()
     val shelves = sections.filterNot { it in quick }.mapNotNull { section ->
         val items = section.items.distinctBy { it.id }.filter { it !is PlaylistItem || playlistIds.add(it.id) }
