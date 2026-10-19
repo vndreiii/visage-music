@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 import androidx.compose.ui.graphics.graphicsLayer
+import com.music.vivi.compose.ui.motion.VisageMotion
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import androidx.graphics.shapes.CornerRounding
@@ -164,9 +165,12 @@ private fun GlowCoverBg(palette: ArtworkPalette?, artworkUrl: String?, sksl: Str
     val glow = palette?.glowColors?.takeIf { it.isNotEmpty() }
         ?: palette?.gradient
         ?: listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.tertiary)
-    val c1 = glow.getOrElse(0) { MaterialTheme.colorScheme.primary }
-    val c2 = glow.getOrElse(1) { c1 }
-    val c3 = glow.getOrElse(2) { c2 }
+    val t1 = glow.getOrElse(0) { MaterialTheme.colorScheme.primary }
+    val t2 = glow.getOrElse(1) { t1 }
+    val t3 = glow.getOrElse(2) { t2 }
+    val c1 by androidx.compose.animation.animateColorAsState(t1, VisageMotion.ambient(), label = "glowC1")
+    val c2 by androidx.compose.animation.animateColorAsState(t2, VisageMotion.ambient(), label = "glowC2")
+    val c3 by androidx.compose.animation.animateColorAsState(t3, VisageMotion.ambient(), label = "glowC3")
     
     val infinite = rememberInfiniteTransition(label = "glowCover")
     val rot by infinite.animateFloat(
@@ -196,10 +200,8 @@ private fun GlowCoverBg(palette: ArtworkPalette?, artworkUrl: String?, sksl: Str
     }
     Box(Modifier.fillMaxSize().background(Color(0xFF0A0A0A))) {
         if (artworkUrl != null) {
-            AsyncImage(
-                model = artworkUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
+            SmoothCover(
+                url = artworkUrl,
                 colorFilter = ColorFilter.colorMatrix(dimMatrix),
                 modifier = Modifier
                     .fillMaxSize()
@@ -355,12 +357,7 @@ fun MiniPlayerBackgroundLayer(
             PlayerBackgroundStyle.LIVE_MESH -> ShaderBackground(BackgroundShader.MESH, palette, artworkUrl)
             PlayerBackgroundStyle.APPLE_MUSIC -> {
                 if (artworkUrl != null) {
-                    AsyncImage(
-                        model = artworkUrl,
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize().blur(40.dp),
-                    )
+                    SmoothCover(url = artworkUrl, modifier = Modifier.fillMaxSize().blur(40.dp))
                 } else {
                     Box(Modifier.fillMaxSize().background(themeSurface))
                 }
@@ -384,9 +381,12 @@ private fun MiniGlowCoverBg(palette: ArtworkPalette?, artworkUrl: String?, sksl:
     val glow = palette?.glowColors?.takeIf { it.isNotEmpty() }
         ?: palette?.gradient
         ?: listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.secondary, MaterialTheme.colorScheme.tertiary)
-    val c1 = glow.getOrElse(0) { MaterialTheme.colorScheme.primary }
-    val c2 = glow.getOrElse(1) { c1 }
-    val c3 = glow.getOrElse(2) { c2 }
+    val t1 = glow.getOrElse(0) { MaterialTheme.colorScheme.primary }
+    val t2 = glow.getOrElse(1) { t1 }
+    val t3 = glow.getOrElse(2) { t2 }
+    val c1 by androidx.compose.animation.animateColorAsState(t1, VisageMotion.ambient(), label = "glowC1")
+    val c2 by androidx.compose.animation.animateColorAsState(t2, VisageMotion.ambient(), label = "glowC2")
+    val c3 by androidx.compose.animation.animateColorAsState(t3, VisageMotion.ambient(), label = "glowC3")
     
     val infinite = rememberInfiniteTransition(label = "miniGlow")
     val rot by infinite.animateFloat(
@@ -416,10 +416,8 @@ private fun MiniGlowCoverBg(palette: ArtworkPalette?, artworkUrl: String?, sksl:
     }
     Box(Modifier.fillMaxSize().background(Color(0xFF101010))) {
         if (artworkUrl != null) {
-            AsyncImage(
-                model = artworkUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
+            SmoothCover(
+                url = artworkUrl,
                 colorFilter = ColorFilter.colorMatrix(dimMatrix),
                 modifier = Modifier
                     .fillMaxSize()

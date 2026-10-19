@@ -2,10 +2,13 @@
 //! (`*mut c_char`, release with [`vivi_free_string`]) so the boundary stays tiny and the
 //! Kotlin side can fall back to its pure-JVM implementation when this library is absent.
 
+mod artist;
 mod canvas;
 mod mpris;
 mod scan;
 mod search;
+mod tags;
+mod tagsearch;
 
 use std::ffi::{c_char, CStr, CString};
 
@@ -113,5 +116,88 @@ pub unsafe extern "C" fn visage_canvas_resolve(request: *const c_char) -> *mut c
         .map(|r| canvas::resolve(&r))
         .and_then(|a| serde_json::to_string(&a).ok())
         .unwrap_or_else(|| "null".to_string());
+    into_c(out)
+}
+
+/// Artist imagery/bio: `{name, cache_dir}` -> ArtistInfo JSON, or the string `null` when nothing was
+/// found. Blocks (network), call off the UI thread.
+///
+/// # Safety
+/// `request` must be a valid NUL-terminated string.
+#[no_mangle]
+pub unsafe extern "C" fn visage_artist_resolve(request: *const c_char) -> *mut c_char {
+    let out = from_c(request)
+        .and_then(|j| serde_json::from_str::<artist::Request>(j).ok())
+        .and_then(|r| artist::resolve(&r))
+        .and_then(|a| serde_json::to_string(&a).ok())
+        .unwrap_or_else(|| "null".to_string());
+    into_c(out)
+}
+
+fn json_or_error<T: serde::Serialize>(r: Result<T, String>) -> String {
+    match r {
+        Ok(v) => serde_json::to_string(&v).unwrap_or_else(|_| "null".into()),
+        Err(e) => format!(r#"{{"error":{}}}"#, serde_json::to_string(&e).unwrap_or_default()),
+    }
+}
+
+/// Tag reader: `{path, covers_dir?}` -> TagInfo JSON, or `{"error": ...}`.
+///
+/// # Safety
+/// `request` must be a valid NUL-terminated string.
+#[no_mangle]
+pub unsafe extern "C" fn visage_tags_read(request: *const c_char) -> *mut c_char {
+    let out = match from_c(request).map(serde_json::from_str::<tags::ReadRequest>) {
+        Some(Ok(r)) => json_or_error(tags::read(&r)),
+        _ => r#"{"error":"bad request"}"#.to_string(),
+    };
+    into_c(out)
+}
+
+/// Safe tag writer (temp copy + verify + atomic replace, optional backup):
+/// `{path, fields, cover_path?, remove_cover?, id3v23?, backup_path?}` -> `{ok, error?, size, mtimeMs}`.
+///
+/// # Safety
+/// `request` must be a valid NUL-terminated string.
+#[no_mangle]
+pub unsafe extern "C" fn visage_tags_write(request: *const c_char) -> *mut c_char {
+    let out = match from_c(request).map(serde_json::from_str::<tags::WriteRequest>) {
+        Some(Ok(r)) => serde_json::to_string(&tags::write(&r)).unwrap_or_default(),
+        _ => r#"{"ok":false,"error":"bad request","size":0,"mtimeMs":0}"#.to_string(),
+    };
+    into_c(out)
+}
+
+/// Undo helper: `{backup, dest}` -> `{ok, error?}`; atomically puts the backup back.
+///
+/// # Safety
+/// `request` must be a valid NUL-terminated string.
+#[no_mangle]
+pub unsafe extern "C" fn visage_tags_restore(request: *const c_char) -> *mut c_char {
+    #[derive(serde::Deserialize)]
+    struct R {
+        backup: String,
+        dest: String,
+    }
+    let out = match from_c(request).map(serde_json::from_str::<R>) {
+        Some(Ok(r)) => match tags::restore(&r.backup, &r.dest) {
+            Ok(()) => r#"{"ok":true}"#.to_string(),
+            Err(e) => format!(r#"{{"ok":false,"error":{}}}"#, serde_json::to_string(&e).unwrap_or_default()),
+        },
+        _ => r#"{"ok":false,"error":"bad request"}"#.to_string(),
+    };
+    into_c(out)
+}
+
+/// Metadata candidates from MusicBrainz/Deezer/iTunes/TheAudioDB(/AcoustID): blocks (network).
+///
+/// # Safety
+/// `request` must be a valid NUL-terminated string.
+#[no_mangle]
+pub unsafe extern "C" fn visage_tags_lookup(request: *const c_char) -> *mut c_char {
+    let out = match from_c(request).map(serde_json::from_str::<tagsearch::Request>) {
+        Some(Ok(r)) => serde_json::to_string(&tagsearch::search(&r)).unwrap_or_default(),
+        _ => r#"{"candidates":[],"errors":["bad request"]}"#.to_string(),
+    };
     into_c(out)
 }

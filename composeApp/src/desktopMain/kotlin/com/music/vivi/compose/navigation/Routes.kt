@@ -15,10 +15,16 @@ object Routes {
     const val SETTINGS_THEME = "settings/appearance/theme"
     const val SETTINGS_PLAYER = "settings/player"
     const val SETTINGS_NOW_PLAYING = "settings/now_playing"
+    const val SETTINGS_LYRICS = "settings/lyrics"
+    const val SETTINGS_SONG_SWAP = "settings/song_swap"
+    const val SETTINGS_FULLSCREEN_PLAYER = "settings/fullscreen_player"
     const val SETTINGS_DOWNLOADS = "settings/downloads"
     const val SETTINGS_LOCAL_OFFLINE = "settings/local_offline"
     const val SETTINGS_DIAGNOSTICS = "settings/diagnostics"
+    const val SETTINGS_KEYBINDS = "settings/keybinds"
     const val SMOKE = "smoke"
+    /** Tag Manager for local files (browse, edit, auto-tag, write). */
+    const val TAG_MANAGER = "tag_manager"
     /** Full-page player (tablet Now Playing) — not a dialog. */
     const val NOW_PLAYING = "now_playing"
     /** Immersive fullscreen player (no Up-next strip). */
@@ -26,7 +32,12 @@ object Routes {
 
     const val ALBUM = "album/{albumId}"
     const val ARTIST = "artist/{artistId}"
+    /** Helper-backed artist page (portrait/bio from the Rust helper + local tracks), keyed by display name. */
+    const val ARTIST_INFO = "artist_info/{name}"
     const val ONLINE_PLAYLIST = "online_playlist/{playlistId}"
+    /** User-created playlist stored in the local database. */
+    const val LOCAL_PLAYLIST = "local_playlist/{playlistId}"
+    const val SETTINGS_SIDEBARS = "settings/sidebars"
     const val BROWSE = "browse/{browseId}?params={params}"
     const val CHARTS = "charts_screen"
     const val MOOD_AND_GENRES = "mood_and_genres"
@@ -37,7 +48,9 @@ object Routes {
     fun searchResult(query: String) = "search/${query.encodeURLPathSegment()}"
     fun album(albumId: String) = "album/${albumId.encodeURLPathSegment()}"
     fun artist(artistId: String) = "artist/${artistId.encodeURLPathSegment()}"
+    fun artistInfo(name: String) = "artist_info/${name.encodeURLPathSegment()}"
     fun onlinePlaylist(playlistId: String) = "online_playlist/${playlistId.encodeURLPathSegment()}"
+    fun localPlaylist(playlistId: String) = "local_playlist/${playlistId.encodeURLPathSegment()}"
     fun browse(browseId: String, params: String? = null) =
         "browse/${browseId.encodeURLPathSegment()}" + (params?.let { "?params=${it.encodeURLPathSegment()}" } ?: "")
 

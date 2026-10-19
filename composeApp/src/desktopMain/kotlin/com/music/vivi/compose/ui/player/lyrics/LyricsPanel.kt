@@ -1,32 +1,20 @@
 package com.music.vivi.compose.ui.player.lyrics
 
-import com.music.vivi.compose.ui.component.smoothWheelScroll
-
-import androidx.compose.runtime.derivedStateOf
-
-import androidx.compose.foundation.gestures.animateScrollBy
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.height
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,52 +33,89 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Shadow
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import com.music.lyricsync.LyricsParser
+import com.music.lyricsync.LyricsTimeline
+import com.music.lyricsync.ParsedLyrics
+import com.music.lyricsync.PositionInterpolator
 import com.music.vivi.compose.LocalPlaybackController
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.LyricsProvider
 import com.music.vivi.compose.prefs.LyricsTextAlign
+import com.music.vivi.compose.prefs.PlayerBackgroundStyle
 import com.music.vivi.compose.prefs.PrefKeys
+import com.music.vivi.compose.theme.IdleArtworkPalette
+import com.music.vivi.compose.theme.LocalArtworkPalette
 import com.music.vivi.compose.ui.component.VisageLoadingIndicator
-import kotlinx.coroutines.delay
+import com.music.vivi.player.PlaybackState
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
-import kotlin.math.abs
-
-data class LyricLine(val timeMs: Long?, val text: String)
 
 private const val IDLE_COLLAPSE_MS = 2_400L
 
 /**
- * Floating lyrics over the player backdrop.
- *
- * Readable first: no edge blackouts, no distance blur mush.
- * Hierarchy = scale + opacity (+ soft text shadow on the active line only).
+ * Smoothed playback position (ms, per frame) for lyric rendering. The coarse player position is
+ * extrapolated with the wall clock while playing; writes only invalidate draw / derived readers.
+ */
+@Composable
+internal fun rememberLyricsClock(position: StateFlow<Long>, playing: Boolean, offsetMs: Int): State<Float> {
+    val out = remember { mutableFloatStateOf(0f) }
+    val interp = remember { PositionInterpolator() }
+    val offset by rememberUpdatedState(offsetMs)
+    LaunchedEffect(position) {
+        position.collect {
+            val now = System.nanoTime()
+            interp.report(it, now)
+            out.floatValue = interp.estimate(now) + offset
+        }
+    }
+    LaunchedEffect(playing) {
+        interp.setPlaying(playing, System.nanoTime())
+        if (playing) {
+            while (true) withFrameNanos { out.floatValue = interp.estimate(System.nanoTime()) + offset }
+        } else {
+            out.floatValue = interp.estimate(System.nanoTime()) + offset
+        }
+    }
+    return out
+}
+
+/** Accent used for glow / gradient / gap indicator. */
+@Composable
+internal fun lyricsAccent(mode: LyricsAccent): Color {
+    val palette = LocalArtworkPalette.current ?: IdleArtworkPalette
+    return when (mode) {
+        LyricsAccent.WHITE -> Color.White
+        LyricsAccent.THEME -> MaterialTheme.colorScheme.primary
+        LyricsAccent.ARTWORK -> androidx.compose.ui.graphics.lerp(palette.glowColors.firstOrNull() ?: palette.seed, Color.White, 0.2f)
+    }
+}
+
+/**
+ * Lyrics over the player backdrop: per-word karaoke sync, glow, springy focus, optional background.
+ * All look & feel comes from [DesktopPrefs] (Settings -> Now Playing -> Lyrics) and applies live.
  */
 @Composable
 fun LyricsPanel(
@@ -100,50 +125,35 @@ fun LyricsPanel(
     val controller = LocalPlaybackController.current
     val prefs = koinInject<DesktopPrefs>()
     val nowPlaying by controller.nowPlaying.collectAsState()
-    val positionState = controller.positionMs.collectAsState()
     val durationMs by controller.durationMs.collectAsState()
+    val playbackState by controller.state.collectAsState()
     var prefsTick by remember { mutableStateOf(0) }
     DisposableEffect(prefs) {
         val listener = { prefsTick += 1 }
         prefs.addListener(listener)
         onDispose { prefs.removeListener(listener) }
     }
-    @Suppress("UNUSED_VARIABLE")
-    val observePrefs = prefsTick
+    val cfg = remember(prefsTick) { prefs.lyricsConfig() }
 
-    var lines by remember { mutableStateOf<List<LyricLine>>(emptyList()) }
+    var parsed by remember { mutableStateOf(ParsedLyrics.Empty) }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
-    val listState = rememberLazyListState()
-    val density = androidx.compose.ui.platform.LocalDensity.current.density
 
-    val alignPref = runCatching {
-        LyricsTextAlign.valueOf(
-            prefs.getString(PrefKeys.LyricsTextAlign, LyricsTextAlign.CENTER.name),
-        )
-    }.getOrDefault(LyricsTextAlign.CENTER)
-    var align by remember(alignPref) { mutableStateOf(alignPref) }
-    val textAlign = when (align) {
-        LyricsTextAlign.LEFT -> TextAlign.Start
-        LyricsTextAlign.CENTER -> TextAlign.Center
-        LyricsTextAlign.RIGHT -> TextAlign.End
+    val provider = remember(prefsTick) {
+        runCatching {
+            LyricsProvider.valueOf(prefs.getString(PrefKeys.LyricsProvider, LyricsProvider.LRCLIB.name))
+        }.getOrDefault(LyricsProvider.LRCLIB)
     }
-
-    val provider = runCatching {
-        LyricsProvider.valueOf(
-            prefs.getString(PrefKeys.LyricsProvider, LyricsProvider.LRCLIB.name),
-        )
-    }.getOrDefault(LyricsProvider.LRCLIB)
 
     LaunchedEffect(nowPlaying?.videoId, nowPlaying?.title, provider, durationMs) {
         val track = nowPlaying
         if (track == null) {
-            lines = emptyList()
+            parsed = ParsedLyrics.Empty
             return@LaunchedEffect
         }
         loading = true
         error = null
-        lines = emptyList()
+        parsed = ParsedLyrics.Empty
         val localLyrics = withContext(Dispatchers.IO) {
             val file = track.lyricsPath?.let { java.io.File(it) }
                 ?: track.localPath?.let { java.io.File(it).let { audio -> java.io.File(audio.parentFile, audio.nameWithoutExtension + ".lrc") } }
@@ -160,59 +170,39 @@ fun LyricsPanel(
         )
         loading = false
         result.onSuccess { raw ->
-            lines = parseLrc(raw)
-            if (lines.isEmpty()) error = "No lyrics found"
+            parsed = withContext(Dispatchers.Default) { LyricsParser.parse(raw) }
+            if (parsed.lines.isEmpty()) error = "No lyrics found"
         }.onFailure {
             error = it.message ?: "Lyrics lookup failed"
-            lines = emptyList()
+            parsed = ParsedLyrics.Empty
         }
     }
 
-    // derivedStateOf: recompose only when the active line changes, not on every position tick.
-    val activeIndex by remember(lines) {
-        derivedStateOf {
-            val positionMs = positionState.value
-            var idx = -1
-            for (i in lines.indices) {
-                val t = lines[i].timeMs ?: continue
-                if (t <= positionMs) idx = i else break
-            }
-            idx
-        }
+    val timeline = remember(parsed, cfg.estimateWords, cfg.showBackgroundVocals, cfg.gapStyle) {
+        LyricsTimeline.build(
+            parsed,
+            estimateWords = cfg.estimateWords,
+            minGapMs = if (cfg.gapStyle == LyricsGapStyle.NONE) Long.MAX_VALUE / 4 else LyricsTimeline.DEFAULT_MIN_GAP_MS,
+            showBackground = cfg.showBackgroundVocals,
+        )
+    }
+    val clock = rememberLyricsClock(controller.positionMs, playbackState == PlaybackState.Playing, cfg.syncOffsetMs)
+    val accent = lyricsAccent(cfg.accent)
+    val bgStyle = remember(prefsTick) {
+        runCatching { PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name)) }
+            .getOrDefault(PlayerBackgroundStyle.GRADIENT)
     }
 
-    // Pause auto-follow while the user scrolls the lyrics by hand; resume shortly after.
-    var userScrolledAt by remember { mutableStateOf(0L) }
-    val dragging = listState.isScrollInProgress
-    var autoScrolling by remember { mutableStateOf(false) }
-    LaunchedEffect(dragging) {
-        if (dragging && !autoScrolling) userScrolledAt = System.currentTimeMillis()
-    }
-
-    LaunchedEffect(activeIndex, lines) {
-        if (activeIndex < 0) return@LaunchedEffect
-        if (System.currentTimeMillis() - userScrolledAt < 3500) return@LaunchedEffect
-        autoScrolling = true
-        try {
-            val target = activeIndex + 1 // +1 for the leading spacer item
-            val info = listState.layoutInfo
-            val item = info.visibleItemsInfo.firstOrNull { it.index == target }
-            if (item == null) {
-                listState.scrollToItem(target)
-            }
-            val fresh = listState.layoutInfo
-            val placed = fresh.visibleItemsInfo.firstOrNull { it.index == target } ?: return@LaunchedEffect
-            val delta = placed.offset + placed.size / 2f - fresh.viewportSize.height / 2f
-            listState.animateScrollBy(
-                delta,
-                com.music.vivi.compose.ui.motion.VisageMotion.rail(),
-            )
-        } finally {
-            autoScrolling = false
-        }
-    }
+    var align by remember(cfg.align) { mutableStateOf(cfg.align) }
 
     Box(modifier.fillMaxSize()) {
+        LyricsBackground(
+            mode = cfg.background,
+            intensity = cfg.backgroundIntensity,
+            artworkUrl = nowPlaying?.artworkUrl,
+            palette = LocalArtworkPalette.current,
+            playerBackgroundStyle = bgStyle,
+        )
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 VisageLoadingIndicator(color = Color.White)
@@ -220,42 +210,16 @@ fun LyricsPanel(
             error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text(error ?: "", color = Color.White.copy(alpha = 0.55f), textAlign = TextAlign.Center)
             }
-            lines.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            timeline.lines.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("No lyrics available", color = Color.White.copy(alpha = 0.5f))
             }
-            else -> {
-                LazyColumn(
-                    state = listState,
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    modifier = Modifier.fillMaxSize()
-                        .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
-                        .drawWithContent {
-                            drawContent()
-                            drawRect(
-                                brush = Brush.verticalGradient(
-                                    0f to Color.Transparent,
-                                    0.1f to Color.Black,
-                                    0.9f to Color.Black,
-                                    1f to Color.Transparent,
-                                ),
-                                blendMode = BlendMode.DstIn
-                            )
-                        }
-                        .smoothWheelScroll(listState)
-                ) {
-                    item { Spacer(Modifier.height(350.dp)) }
-                    itemsIndexed(lines, key = { i, line -> "${line.timeMs}-$i-${line.text}" }) { index, line ->
-                        LyricLineItem(
-                            text = line.text,
-                            active = index == activeIndex,
-                            distance = if (activeIndex < 0) 1 else abs(index - activeIndex),
-                            textAlign = textAlign,
-                            onClick = line.timeMs?.let { ms -> { userScrolledAt = 0L; controller.seekTo(ms) } },
-                        )
-                    }
-                    item { Spacer(Modifier.height(350.dp)) }
-                }
-            }
+            else -> LyricsList(
+                timeline = timeline,
+                cfg = cfg.copy(align = align),
+                clock = clock,
+                accent = accent,
+                onSeek = { controller.seekTo(it) },
+            )
         }
 
         Row(
@@ -500,120 +464,4 @@ private fun alignIcon(align: LyricsTextAlign): ImageVector = when (align) {
     LyricsTextAlign.LEFT -> Icons.AutoMirrored.Outlined.FormatAlignLeft
     LyricsTextAlign.CENTER -> Icons.Outlined.FormatAlignCenter
     LyricsTextAlign.RIGHT -> Icons.AutoMirrored.Outlined.FormatAlignRight
-}
-
-@Composable
-private fun LyricLineItem(
-    text: String,
-    active: Boolean,
-    distance: Int,
-    textAlign: TextAlign,
-    onClick: (() -> Unit)? = null,
-) {
-    val targetScale = when {
-        active -> 1.06f
-        distance == 1 -> 0.97f
-        else -> 0.94f
-    }
-    val targetAlpha = when {
-        active -> 1f
-        distance == 1 -> 0.55f
-        distance == 2 -> 0.32f
-        else -> 0.18f
-    }
-    val scale by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = targetScale,
-        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
-        label = "lyricScale",
-    )
-    val alpha by androidx.compose.animation.core.animateFloatAsState(
-        targetValue = targetAlpha,
-        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
-        label = "lyricAlpha",
-    )
-    Text(
-        text = text,
-        textAlign = textAlign,
-        style = TextStyle(
-            color = Color.White,
-            fontSize = 26.sp,
-            fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-            shadow = if (active) {
-                Shadow(Color.Black.copy(alpha = 0.45f), Offset(0f, 2f), 8f)
-            } else {
-                null
-            },
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (onClick != null) Modifier.clickable(
-                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                    indication = null,
-                    onClick = onClick,
-                ) else Modifier
-            )
-            .padding(vertical = 10.dp)
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-                this.alpha = alpha
-                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(
-                    when (textAlign) {
-                        TextAlign.Left, TextAlign.Start -> 0f
-                        TextAlign.Right, TextAlign.End -> 1f
-                        else -> 0.5f
-                    },
-                    0.5f,
-                )
-            },
-    )
-}
-
-internal fun parseLrc(raw: String): List<LyricLine> {
-    if (raw.isBlank()) return emptyList()
-    val timed = Regex("""\[(\d{1,2}):(\d{2})(?:[.:](\d{1,3}))?]\s*(.*)""")
-    val out = mutableListOf<LyricLine>()
-    raw.lineSequence().forEach { line ->
-        val trimmed = line.trim()
-        if (trimmed.isEmpty()) return@forEach
-        // Paxsenix / TTML rich-sync word rows: <Walk:7.022:7.291|into:7.291:7.657|…>
-        if (isRichSyncWordLine(trimmed)) return@forEach
-
-        val m = timed.find(trimmed)
-        if (m != null) {
-            val min = m.groupValues[1].toLong()
-            val sec = m.groupValues[2].toLong()
-            val frac = m.groupValues[3].ifBlank { "0" }
-            val msPart = when (frac.length) {
-                1 -> frac.toLong() * 100
-                2 -> frac.toLong() * 10
-                else -> frac.take(3).toLong()
-            }
-            val text = stripLyricsMeta(m.groupValues[4])
-            if (text.isNotEmpty()) out += LyricLine(min * 60_000 + sec * 1000 + msPart, text)
-        } else if (!trimmed.startsWith("[")) {
-            val plain = stripLyricsMeta(trimmed)
-            if (plain.isNotEmpty()) out += LyricLine(null, plain)
-        }
-    }
-    return out
-}
-
-/** Strip Paxsenix/TTML agent + background markers from a lyric line body. */
-private fun stripLyricsMeta(text: String): String =
-    text
-        .replace(Regex("""\{agent:[^}]+\}"""), "")
-        .replace(Regex("""\{bg\}"""), "")
-        .trim()
-
-/** Word-level sync payload on its own line (not shown in the desktop lyrics list). */
-private fun isRichSyncWordLine(line: String): Boolean {
-    if (!line.startsWith("<") || !line.endsWith(">")) return false
-    val inner = line.removeSurrounding("<", ">")
-    // Paxsenix: word:start:end|word:start:end (single word may not have a pipe)
-    if (inner.contains(':') && (inner.contains('|') || inner.count { it == ':' } >= 2)) return true
-    // Alternate rich LRC: <00:01.23> word …
-    if (Regex("""^\d{1,2}:\d{2}""").containsMatchIn(inner)) return true
-    return false
 }

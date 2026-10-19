@@ -7,9 +7,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
@@ -28,8 +27,7 @@ fun VisageToast(
     }
     if (message == null) return
     Popup(
-        alignment = Alignment.BottomCenter,
-        offset = IntOffset(0, -96),
+        popupPositionProvider = rememberToastPositionProvider(bottomGapPx = with(LocalDensity.current) { 96.dp.roundToPx() }),
         properties = PopupProperties(focusable = false),
     ) {
         Surface(

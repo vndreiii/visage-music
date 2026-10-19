@@ -5,12 +5,12 @@ import kotlin.test.assertEquals
 
 class AlbumGestureTest {
     @Test fun quickSwipesSkipButShakesAndSmallDragsDoNot() {
-        assertEquals(CardReleaseAction.NEXT, cardReleaseAction(200, -90f, 72f, true, false))
+        assertEquals(CardReleaseAction.NEXT, cardReleaseAction(200, 90f, 72f, true, false))
         assertEquals(CardReleaseAction.NONE, cardReleaseAction(900, -90f, 72f, true, true))
         assertEquals(CardReleaseAction.NONE, cardReleaseAction(900, -30f, 72f, true, false))
-        assertEquals(CardReleaseAction.NEXT, cardReleaseAction(900, -90f, 72f, true, false))
-        assertEquals(CardReleaseAction.PREVIOUS, cardReleaseAction(900, 90f, 72f, true, false))
-        assertEquals(CardReleaseAction.PREVIEW, cardReleaseAction(900, 0f, 72f, false, false))
+        assertEquals(CardReleaseAction.NEXT, cardReleaseAction(900, 90f, 72f, true, false))
+        assertEquals(CardReleaseAction.PREVIOUS, cardReleaseAction(900, -90f, 72f, true, false))
+        assertEquals(CardReleaseAction.NONE, cardReleaseAction(900, 0f, 72f, false, false))
     }
     @Test fun previewsFollowDirectionAndStopAtQueueEdges() {
         assertEquals(listOf(3, 2, 1), queuePreviewIndices(4, 8, true, 3))

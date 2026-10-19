@@ -53,6 +53,8 @@ fun YouTubeGridItem(
     isActive: Boolean = false,
     isPlaying: Boolean = false,
     thumbnailRatio: Float = if (item is SongItem) 16f / 9f else 1f,
+    /** Fill the parent's width (grid cells) instead of the fixed shelf width. */
+    fillWidth: Boolean = false,
 ) {
     val thumbShape =
         if (item is ArtistItem) CircleShape else RoundedCornerShape(ThumbnailCornerRadius)
@@ -60,7 +62,7 @@ fun YouTubeGridItem(
         onClick = onClick,
         shape = RoundedCornerShape(InteractionCornerRadius),
         color = Color.Transparent,
-        modifier = modifier.width(GridThumbnailHeight + 16.dp),
+        modifier = if (fillWidth) modifier.fillMaxWidth() else modifier.width(GridThumbnailHeight + 16.dp),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
@@ -72,12 +74,7 @@ fun YouTubeGridItem(
                     .aspectRatio(thumbnailRatio)
                     .clip(thumbShape),
             ) {
-                AsyncImage(
-                    model = item.thumbnail,
-                    contentDescription = item.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.matchParentSize(),
-                )
+                CoverImage(item.thumbnail, item.id, Modifier.matchParentSize(), label = item.title)
                 if (isActive) {
                     Box(
                         modifier = Modifier
@@ -158,13 +155,14 @@ fun YouTubeListItem(
         },
         onClick = onClick,
         modifier = modifier
+            .padding(horizontal = 8.dp)
             .fillMaxWidth()
             .height(ListItemHeight),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 8.dp),
+                .padding(horizontal = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
@@ -172,12 +170,7 @@ fun YouTubeListItem(
                     .size(ListThumbnailSize)
                     .clip(shape),
             ) {
-                AsyncImage(
-                    model = item.thumbnail,
-                    contentDescription = item.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.matchParentSize(),
-                )
+                CoverImage(item.thumbnail, item.id, Modifier.matchParentSize())
                 if (isActive) {
                     Box(
                         modifier = Modifier

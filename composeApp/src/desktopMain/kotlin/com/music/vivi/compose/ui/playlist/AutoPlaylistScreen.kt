@@ -102,12 +102,7 @@ fun AutoPlaylistScreen(
         }
         else -> {
             Column(modifier = Modifier.fillMaxSize()) {
-                TextButton(
-                    onClick = { navController.navigateUp() },
-                    modifier = Modifier.padding(start = 8.dp, top = 8.dp)
-                ) {
-                    Text("← Back")
-                }
+                com.music.vivi.compose.ui.component.VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = 16.dp, top = 8.dp))
                 
                 NavigationTitle(
                     title = if (type == "liked") "Liked Songs" else "Auto Playlist",

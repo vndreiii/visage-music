@@ -61,6 +61,9 @@ interface PlaybackController {
 
     /** True while follow-up tracks (radio) for the current song are being fetched. */
     val queueLoading: StateFlow<Boolean>
+
+    /** True once the user started a radio; the upcoming tracks then come from that radio. */
+    val radioActive: StateFlow<Boolean>
     /** Linear volume 0f..1f (UI); applied to mpv as 0–100. */
     val volume: StateFlow<Float>
     val shuffleEnabled: StateFlow<Boolean>
@@ -112,7 +115,7 @@ fun com.music.innertube.models.YTItem.toQueueTrack(): QueueTrack = when (this) {
         artworkUrl = thumbnail,
         durationMs = (duration?.toLong() ?: 0L) * 1000L,
         album = album?.name,
-    )
+    ).also { ArtistIdRegistry.remember(artists) }
     else -> QueueTrack(
         videoId = id,
         title = title,

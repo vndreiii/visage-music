@@ -21,11 +21,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
-import coil3.compose.AsyncImage
 import com.music.vivi.player.PlaybackController
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.Job
 import kotlin.math.abs
 
 /** Card gestures operate on the real queue, without interrupting playback for previews. */
@@ -35,15 +32,8 @@ internal fun AlbumGestureCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit,
 ) {
-    val queue by controller.queueTracks.collectAsState()
-    val index by controller.queueIndex.collectAsState()
-    val scope = rememberCoroutineScope()
     var displacement by remember { mutableStateOf(Offset.Zero) }
     var grabbed by remember { mutableStateOf(false) }
-    var preview by remember { mutableStateOf(false) }
-    var previous by remember { mutableStateOf(false) }
-    var count by remember { mutableIntStateOf(3) }
-    var options by remember { mutableStateOf(false) }
     var hint by remember { mutableStateOf<String?>(null) }
     var cardHeight by remember { mutableIntStateOf(0) }
     val toastGap = with(LocalDensity.current) { 12.dp.roundToPx() }
@@ -70,10 +60,6 @@ internal fun AlbumGestureCard(
                     var shaken = false
                     var moved = false
                     grabbed = true
-                    var holdJob: Job? = scope.launch {
-                        delay(550)
-                        if (!moved && grabbed) { preview = true; options = true }
-                    }
                     try {
                         while (true) {
                             val event = awaitPointerEvent()
@@ -81,7 +67,6 @@ internal fun AlbumGestureCard(
                             val held = change.uptimeMillis - down.uptimeMillis
                             if (!change.pressed) {
                                 when (cardReleaseAction(held, total.x, commit, moved, shaken)) {
-                                    CardReleaseAction.PREVIEW -> preview = true
                                     CardReleaseAction.NEXT -> controller.next()
                                     CardReleaseAction.PREVIOUS -> controller.previous()
                                     CardReleaseAction.NONE -> Unit
@@ -92,8 +77,6 @@ internal fun AlbumGestureCard(
                             total += delta
                             if (total.getDistance() > viewConfiguration.touchSlop) {
                                 moved = true
-                                holdJob?.cancel()
-                                holdJob = null
                             }
                             if (moved) change.consume()
                             displacement = Offset(total.x.coerceIn(-limit, limit), total.y.coerceIn(-limit, limit))
@@ -112,13 +95,12 @@ internal fun AlbumGestureCard(
                             }
                             hint = when {
                                 shaken -> null
-                                total.x <= -commit -> "Release for next: ${controller.queueTracks.value.getOrNull(controller.queueIndex.value + 1)?.title ?: "end of queue"}"
-                                total.x >= commit -> "Release for previous: ${controller.queueTracks.value.getOrNull(controller.queueIndex.value - 1)?.title ?: "start of queue"}"
+                                total.x >= commit -> "Release for next: ${controller.queueTracks.value.getOrNull(controller.queueIndex.value + 1)?.title ?: "end of queue"}"
+                                total.x <= -commit -> "Release for previous: ${controller.queueTracks.value.getOrNull(controller.queueIndex.value - 1)?.title ?: "start of queue"}"
                                 else -> null
                             }
                         }
                     } finally {
-                        holdJob?.cancel()
                         grabbed = false
                         rotationTarget = 0f
                         displacement = Offset.Zero
@@ -127,7 +109,7 @@ internal fun AlbumGestureCard(
                 }
             }) { content() }
     if (toast != null || toastProgress > 0.001f) {
-        Popup(alignment = Alignment.TopCenter, offset = IntOffset(0, cardHeight + toastGap), properties = PopupProperties(focusable = false)) {
+        Popup(popupPositionProvider = com.music.vivi.compose.ui.component.rememberToastPositionProvider(belowAnchor = true, gapPx = toastGap), properties = PopupProperties(focusable = false)) {
             Surface(modifier = Modifier.graphicsLayer {
                 alpha = toastProgress
                 translationY = (1f - toastProgress) * -toastGap
@@ -147,42 +129,13 @@ internal fun AlbumGestureCard(
     LaunchedEffect(toast) {
         if (toast != null) { lastToast = toast.orEmpty(); delay(2200); toast = null }
     }
-    if (preview) {
-        AlertDialog(
-            onDismissRequest = { preview = false },
-            title = { Text("Queue preview") },
-            text = {
-                Column {
-                    Box {
-                        TextButton(onClick = { options = true }) { Text("${if (previous) "Previous" else "Next"} $count songs ▾") }
-                        DropdownMenu(expanded = options, onDismissRequest = { options = false }) {
-                            for (back in listOf(true, false)) for (n in listOf(3, 5)) {
-                                DropdownMenuItem(text = { Text("${if (back) "Previous" else "Next"} $n songs") }, onClick = { previous = back; count = n; options = false })
-                            }
-                        }
-                    }
-                    val indices = queuePreviewIndices(index, queue.size, previous, count)
-                    if (indices.isEmpty()) Text("No ${if (previous) "previous" else "upcoming"} tracks")
-                    for (i in indices) {
-                        TextButton(onClick = { preview = false; scope.launch { controller.playQueue(queue, i) } }) {
-                            AsyncImage(queue[i].artworkUrl, null, Modifier.size(40.dp))
-                            Spacer(Modifier.width(12.dp))
-                            Column(Modifier.weight(1f)) { Text(queue[i].title); Text(queue[i].artist, style = MaterialTheme.typography.bodySmall) }
-                        }
-                    }
-                }
-            },
-            confirmButton = { TextButton(onClick = { preview = false }) { Text("Close") } },
-        )
-    }
 }
 
-internal enum class CardReleaseAction { NONE, PREVIEW, NEXT, PREVIOUS }
+internal enum class CardReleaseAction { NONE, NEXT, PREVIOUS }
 internal fun cardReleaseAction(heldMs: Long, x: Float, threshold: Float, moved: Boolean, shaken: Boolean): CardReleaseAction = when {
     shaken -> CardReleaseAction.NONE
-    !moved && heldMs >= 450 -> CardReleaseAction.PREVIEW
-    moved && x <= -threshold -> CardReleaseAction.NEXT
-    moved && x >= threshold -> CardReleaseAction.PREVIOUS
+    moved && x >= threshold -> CardReleaseAction.NEXT
+    moved && x <= -threshold -> CardReleaseAction.PREVIOUS
     else -> CardReleaseAction.NONE
 }
 internal fun queuePreviewIndices(index: Int, size: Int, previous: Boolean, count: Int): List<Int> {

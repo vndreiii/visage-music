@@ -10,4 +10,7 @@ interface PlaybackEngine : AutoCloseable {
     fun halt()
     fun setVolume(percent: Int)
     fun seek(positionSec: Double)
+
+    /** Whether the engine itself is paused right now (independent of what the controller asked for). */
+    fun isPaused(): Boolean = false
 }

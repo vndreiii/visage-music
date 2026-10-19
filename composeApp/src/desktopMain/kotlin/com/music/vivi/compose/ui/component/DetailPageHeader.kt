@@ -36,9 +36,7 @@ fun DetailPageHeader(
         modifier.fillMaxWidth().padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        IconButton(onClick = onBack) {
-            Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
-        }
+        com.music.vivi.compose.ui.component.VisageBackButton(onClick = onBack)
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Text(

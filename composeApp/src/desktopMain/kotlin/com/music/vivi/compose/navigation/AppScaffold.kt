@@ -3,6 +3,7 @@ package com.music.vivi.compose.navigation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +25,26 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.LibraryMusic
+import androidx.compose.material.icons.outlined.QueueMusic
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import com.music.vivi.compose.prefs.LibrarySidebarState
+import com.music.vivi.compose.prefs.SidebarConfig
+import com.music.vivi.compose.prefs.SidebarKeys
+import com.music.vivi.compose.prefs.SidebarSide
+import com.music.vivi.compose.prefs.Sidebars
+import com.music.vivi.compose.prefs.reader
+import com.music.vivi.compose.ui.library.sidebar.AnimatedLibrarySidebar
+import com.music.vivi.compose.ui.library.sidebar.SidebarToggleButton
+import com.music.vivi.compose.ui.motion.VisageMotion
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowState
@@ -31,7 +52,6 @@ import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
-import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
@@ -48,6 +68,7 @@ import com.music.vivi.compose.ui.VisageTopBar
 import com.music.vivi.compose.ui.resolveMiniPlayerStyle
 import com.music.vivi.compose.ui.album.OnlineAlbumScreen
 import com.music.vivi.compose.ui.artist.ArtistScreen
+import com.music.vivi.compose.ui.artist.openArtistByName
 import com.music.vivi.compose.ui.home.HomeScreen
 import com.music.vivi.compose.ui.library.LibraryScreen
 import com.music.vivi.compose.ui.player.NowPlayingFullscreenScreen
@@ -64,6 +85,7 @@ import com.music.vivi.compose.ui.settings.NowPlayingSettingsScreen
 import com.music.vivi.compose.ui.settings.PlayerSettingsScreen
 import com.music.vivi.compose.ui.settings.SettingsHubScreen
 import com.music.vivi.compose.ui.settings.ThemeSettingsScreen
+import com.music.vivi.compose.ui.component.trackMainPane
 import com.music.vivi.core.session.SessionManager
 import org.koin.compose.koinInject
 
@@ -84,6 +106,7 @@ fun FrameWindowScope.AppScaffold(
     val current = backStack?.destination?.route
     val onNowPlaying = current == Routes.NOW_PLAYING || current == Routes.NOW_PLAYING_FULLSCREEN
     val onFullscreenPlayer = current == Routes.NOW_PLAYING_FULLSCREEN
+    LaunchedEffect(Unit) { com.music.vivi.compose.ui.search.ContentRegion.apply(prefs) }
     var pinnedQueue by remember { mutableStateOf(false) }
     var fullscreenQueue by remember { mutableStateOf(false) }
     var prefsTick by remember { mutableIntStateOf(0) }
@@ -111,7 +134,43 @@ fun FrameWindowScope.AppScaffold(
         fullscreenQueue = true
     }
 
-    Column(Modifier.fillMaxSize()) {
+    // Sidebars: library (Your Library panel) + pinned queue, each dockable left or right.
+    val sidebarCfg = SidebarConfig.resolve(prefs.reader())
+    var queueDismissedOnHome by remember { mutableStateOf(false) }
+    LaunchedEffect(sidebarCfg.queueOnHome) { queueDismissedOnHome = false }
+    val libraryAllowed = Sidebars.libraryAllowedOn(current, sidebarCfg)
+    val libraryState = if (libraryAllowed) sidebarCfg.libraryState else LibrarySidebarState.HIDDEN
+    val queueAuto = Sidebars.queueAutoOpenOnHome(current, sidebarCfg, queueDismissedOnHome)
+    val queueRailOn = (pinnedQueue || queueAuto) && !fullscreenQueue && !onFullscreenPlayer
+    fun closePinnedQueue() {
+        pinnedQueue = false
+        if (queueAuto) queueDismissedOnHome = true
+    }
+    fun setLibraryState(state: LibrarySidebarState) = prefs.setString(SidebarKeys.LibraryState, state.name)
+    fun toggleLibrary() {
+        if (libraryAllowed) setLibraryState(Sidebars.toggled(sidebarCfg.libraryState, sidebarCfg.libraryDefaultState))
+    }
+    fun toggleQueueSidebar() {
+        if (queueRailOn) closePinnedQueue() else { queueDismissedOnHome = false; openPinnedQueue() }
+    }
+
+    // Global keyboard shortcuts (AWT-level dispatcher) + the screen-owned effects they trigger.
+    com.music.vivi.compose.keys.KeyboardShortcutHost(navController, windowState)
+    com.music.vivi.compose.keys.ShortcutEventEffect { event ->
+        when (event) {
+            com.music.vivi.compose.keys.ShortcutEvent.ToggleQueue -> toggleQueueSidebar()
+            com.music.vivi.compose.keys.ShortcutEvent.ToggleLibrarySidebar -> toggleLibrary()
+            else -> Unit
+        }
+    }
+
+    Column(
+        Modifier.fillMaxSize().onPreviewKeyEvent { e ->
+            if (e.type == KeyEventType.KeyDown && e.key == Key.L && e.isCtrlPressed && e.isShiftPressed && libraryAllowed) {
+                toggleLibrary(); true
+            } else false
+        },
+    ) {
         val osFullscreen = windowState.placement == WindowPlacement.Fullscreen
         // Hide chrome for immersive NP route and whenever the window is OS-fullscreen.
         val hideTopBar =
@@ -128,6 +187,24 @@ fun FrameWindowScope.AppScaffold(
                 },
                 windowState = windowState,
                 onClose = onClose,
+                extraActions = {
+                    if (current == Routes.HOME && sidebarCfg.queueOnHome) {
+                        SidebarToggleButton(
+                            icon = Icons.Outlined.QueueMusic,
+                            description = if (queueRailOn) "Hide queue sidebar" else "Show queue sidebar",
+                            active = queueRailOn,
+                            onClick = { toggleQueueSidebar() },
+                        )
+                    }
+                    if (Sidebars.libraryAllowedOn(current, sidebarCfg)) {
+                        SidebarToggleButton(
+                            icon = Icons.Outlined.LibraryMusic,
+                            description = if (libraryState == LibrarySidebarState.HIDDEN) "Show library (Ctrl+Shift+L)" else "Hide library (Ctrl+Shift+L)",
+                            active = libraryState != LibrarySidebarState.HIDDEN,
+                            onClick = { toggleLibrary() },
+                        )
+                    }
+                },
             )
         }
         Box(
@@ -136,70 +213,113 @@ fun FrameWindowScope.AppScaffold(
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background),
         ) {
-            Row(Modifier.fillMaxSize()) {
-                // Round + inset the main pane whenever the rail is open (NP and every other page).
-                val besidePinnedQueue = pinnedQueue && !fullscreenQueue
-                Column(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxSize()
-                        .then(
-                            if (besidePinnedQueue) {
-                                Modifier
-                                    .padding(start = 8.dp, top = 8.dp, bottom = 8.dp, end = 4.dp)
-                                    .clip(RoundedCornerShape(20.dp))
-                            } else {
-                                Modifier
-                            },
-                        ),
-                ) {
-                    val bandColor = MaterialTheme.colorScheme.background
-                    val miniStyle = resolveMiniPlayerStyle(prefs)
-                    Box(Modifier.weight(1f).fillMaxSize()) {
-                        VisageNavHost(
-                            navController = navController,
-                            startDestination = if (sessionManager.isLoggedIn()) Routes.HOME else Routes.LIBRARY,
-                            onOpenPinnedQueue = { openPinnedQueue() },
-                            onOpenFullscreenQueue = { openFullscreenQueue() },
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                        if (!onNowPlaying) {
-                            Box(
-                                Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .fillMaxWidth()
-                                    .height(120.dp)
-                                    .background(
-                                        Brush.verticalGradient(
-                                            0f to Color.Transparent,
-                                            0.45f to bandColor.copy(alpha = 0.35f),
-                                            1f to bandColor.copy(alpha = 0.85f),
-                                        ),
-                                    ),
-                            )
-                            MiniPlayerBar(
-                                onExpand = {
-                                    navController.navigate(Routes.NOW_PLAYING) {
-                                        launchSingleTop = true
-                                    }
+            BoxWithConstraints(Modifier.fillMaxSize()) {
+                val libVisible = libraryState != LibrarySidebarState.HIDDEN
+                val libLeft = libVisible && sidebarCfg.librarySide == SidebarSide.LEFT
+                val libRight = libVisible && sidebarCfg.librarySide == SidebarSide.RIGHT
+                val queueLeft = queueRailOn && sidebarCfg.queueSide == SidebarSide.LEFT
+                val queueRight = queueRailOn && sidebarCfg.queueSide == SidebarSide.RIGHT
+                val libWidth = Sidebars.libraryWidthFor(
+                    available = maxWidth.value.toInt(),
+                    queueWidth = if (queueRailOn) SidebarConfig.QueueWidth else 0,
+                    desired = sidebarCfg.libraryWidthDp,
+                ).dp
+                // Round + inset the main pane whenever a sidebar is open (NP and every other page).
+                // Insets spring in and out together with the rails instead of jumping.
+                val leftFrac by animateFloatAsState(if (libLeft || queueLeft) 1f else 0f, VisageMotion.rail(), label = "insetLeft")
+                val rightFrac by animateFloatAsState(if (libRight || queueRight) 1f else 0f, VisageMotion.rail(), label = "insetRight")
+                val inset = maxOf(leftFrac, rightFrac)
+                Row(Modifier.fillMaxSize()) {
+                    AnimatedLibrarySidebar(
+                        state = if (sidebarCfg.librarySide == SidebarSide.LEFT) libraryState else LibrarySidebarState.HIDDEN,
+                        side = SidebarSide.LEFT,
+                        expandedWidth = libWidth,
+                        navController = navController,
+                        onStateChange = ::setLibraryState,
+                    )
+                    AnimatedQueuePinnedRail(
+                        visible = queueLeft,
+                        onDismiss = { closePinnedQueue() },
+                        onExpandFullscreen = { openFullscreenQueue() },
+                        fromStart = true,
+                    )
+                    Column(
+                        Modifier
+                            .weight(1f)
+                            .fillMaxSize()
+                            .then(
+                                if (inset > 0.001f) {
+                                    Modifier
+                                        .padding(
+                                            start = (8f * inset - 4f * leftFrac).dp,
+                                            top = (8f * inset).dp,
+                                            bottom = (8f * inset).dp,
+                                            end = (8f * inset - 4f * rightFrac).dp,
+                                        )
+                                        .clip(RoundedCornerShape((20f * inset).dp))
+                                } else {
+                                    Modifier
                                 },
-                                styleOverride = miniStyle,
-                                modifier = Modifier.align(
-                                    if (miniStyle == MiniPlayerStyle.COMPACT_EDGE) {
-                                        Alignment.BottomEnd
-                                    } else {
-                                        Alignment.BottomCenter
-                                    },
-                                ),
+                            ),
+                    ) {
+                        val bandColor = MaterialTheme.colorScheme.background
+                        val miniStyle = resolveMiniPlayerStyle(prefs)
+                        Box(Modifier.weight(1f).fillMaxSize().trackMainPane()) {
+                            VisageNavHost(
+                                navController = navController,
+                                startDestination = if (sessionManager.isLoggedIn()) Routes.HOME else Routes.LIBRARY,
+                                onOpenPinnedQueue = { openPinnedQueue() },
+                                onOpenFullscreenQueue = { openFullscreenQueue() },
+                                queueOpen = queueRailOn || fullscreenQueue,
+                                onCloseQueue = { closePinnedQueue(); fullscreenQueue = false },
+                                modifier = Modifier.fillMaxSize(),
                             )
+                            if (!onNowPlaying) {
+                                Box(
+                                    Modifier
+                                        .align(Alignment.BottomCenter)
+                                        .fillMaxWidth()
+                                        .height(120.dp)
+                                        .background(
+                                            Brush.verticalGradient(
+                                                0f to Color.Transparent,
+                                                0.45f to bandColor.copy(alpha = 0.35f),
+                                                1f to bandColor.copy(alpha = 0.85f),
+                                            ),
+                                        ),
+                                )
+                                MiniPlayerBar(
+                                    onExpand = {
+                                        navController.navigate(Routes.NOW_PLAYING) {
+                                            launchSingleTop = true
+                                        }
+                                    },
+                                    onOpenArtist = { navController.openArtistByName(it) },
+                                    styleOverride = miniStyle,
+                                    modifier = Modifier.align(
+                                        if (miniStyle == MiniPlayerStyle.COMPACT_EDGE) {
+                                            Alignment.BottomEnd
+                                        } else {
+                                            Alignment.BottomCenter
+                                        },
+                                    ),
+                                )
+                            }
                         }
                     }
+                    AnimatedQueuePinnedRail(
+                        visible = queueRight,
+                        onDismiss = { closePinnedQueue() },
+                        onExpandFullscreen = { openFullscreenQueue() },
+                    )
+                    AnimatedLibrarySidebar(
+                        state = if (sidebarCfg.librarySide == SidebarSide.RIGHT) libraryState else LibrarySidebarState.HIDDEN,
+                        side = SidebarSide.RIGHT,
+                        expandedWidth = libWidth,
+                        navController = navController,
+                        onStateChange = ::setLibraryState,
+                    )
                 }
-                AnimatedQueuePinnedRail(
-                    visible = pinnedQueue && !fullscreenQueue,
-                    onDismiss = { pinnedQueue = false },
-                    onExpandFullscreen = { openFullscreenQueue() },
-                )
             }
             AnimatedQueueBottomTray(
                 visible = fullscreenQueue,
@@ -240,11 +360,13 @@ fun VisageNavHost(
     modifier: Modifier = Modifier,
     onOpenPinnedQueue: (() -> Unit)? = null,
     onOpenFullscreenQueue: (() -> Unit)? = null,
+    queueOpen: Boolean = false,
+    onCloseQueue: (() -> Unit)? = null,
 ) {
     NavHost(
         navController = navController,
         startDestination = startDestination,
-        modifier = modifier,
+        modifier = modifier.predictiveBackSwipe(navController),
         enterTransition = visageEnterTransition,
         exitTransition = visageExitTransition,
         popEnterTransition = visagePopEnterTransition,
@@ -259,8 +381,13 @@ fun VisageNavHost(
         composable(Routes.SETTINGS_THEME) { ThemeSettingsScreen(navController) }
         composable(Routes.SETTINGS_PLAYER) { PlayerSettingsScreen(navController) }
         composable(Routes.SETTINGS_NOW_PLAYING) { NowPlayingSettingsScreen(navController) }
+        composable(Routes.SETTINGS_LYRICS) { com.music.vivi.compose.ui.settings.LyricsSettingsScreen(navController) }
+        composable(Routes.SETTINGS_SONG_SWAP) { com.music.vivi.compose.ui.settings.SongSwapSettingsScreen(navController) }
+        composable(Routes.SETTINGS_FULLSCREEN_PLAYER) { com.music.vivi.compose.ui.settings.FullscreenPlayerSettingsScreen(navController) }
         composable(Routes.SETTINGS_DOWNLOADS) { DownloadsSettingsScreen(navController) }
         composable(Routes.SETTINGS_LOCAL_OFFLINE) { LocalOfflineSettingsScreen(navController) }
+        composable(Routes.TAG_MANAGER) { com.music.vivi.compose.ui.tags.TagManagerScreen(navController) }
+        composable(Routes.SETTINGS_KEYBINDS) { com.music.vivi.compose.ui.settings.KeybindsSettingsScreen(navController) }
         composable(Routes.SETTINGS_DIAGNOSTICS) { com.music.vivi.compose.ui.settings.DiagnosticsScreen(navController) }
         composable(Routes.SMOKE) { SmokePlaybackScreen() }
         composable(Routes.NOW_PLAYING) {
@@ -268,6 +395,8 @@ fun VisageNavHost(
                 navController = navController,
                 onOpenPinnedQueue = onOpenPinnedQueue,
                 onOpenFullscreenQueue = onOpenFullscreenQueue,
+                queueOpen = queueOpen,
+                onCloseQueue = onCloseQueue,
             )
         }
         composable(Routes.NOW_PLAYING_FULLSCREEN) {
@@ -295,6 +424,14 @@ fun VisageNavHost(
             }
         }
         composable(
+            route = Routes.ARTIST_INFO,
+            arguments = listOf(navArgument("name") { type = NavType.StringType }),
+        ) { entry ->
+            val name = entry.arguments?.read { getStringOrNull("name") }
+            if (name.isNullOrBlank()) PlaceholderScreen("Missing artist")
+            else com.music.vivi.compose.ui.artist.ArtistInfoScreen(name = name, navController = navController)
+        }
+        composable(
             route = Routes.ONLINE_PLAYLIST,
             arguments = listOf(
                 navArgument("playlistId") { type = NavType.StringType },
@@ -307,6 +444,15 @@ fun VisageNavHost(
                 OnlinePlaylistScreen(playlistId = playlistId, navController = navController)
             }
         }
+        composable(
+            route = Routes.LOCAL_PLAYLIST,
+            arguments = listOf(navArgument("playlistId") { type = NavType.StringType }),
+        ) { entry ->
+            val playlistId = entry.arguments?.read { getStringOrNull("playlistId") }
+            if (playlistId.isNullOrBlank()) PlaceholderScreen("Missing playlist id")
+            else com.music.vivi.compose.ui.playlist.LocalPlaylistScreen(playlistId, navController)
+        }
+        composable(Routes.SETTINGS_SIDEBARS) { com.music.vivi.compose.ui.settings.SidebarsSettingsScreen(navController) }
         composable(
             route = Routes.BROWSE,
             arguments = listOf(

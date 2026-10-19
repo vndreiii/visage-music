@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.search
 
+import com.music.vivi.compose.ui.component.CoverImage
+import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 
 import androidx.compose.animation.core.animateDpAsState
@@ -161,6 +163,11 @@ fun SearchScreen(navController: NavController) {
         }
     }
 
+    val prefs = org.koin.compose.koinInject<com.music.vivi.compose.prefs.DesktopPrefs>()
+    var showRegion by remember { mutableStateOf(false) }
+    var regionTick by remember { mutableStateOf(0) }
+    val regionCode = remember(regionTick) { ContentRegion.region(prefs) }
+
     fun runSearch(target: String) {
         val q = target.trim()
         if (q.isEmpty()) return
@@ -236,10 +243,11 @@ fun SearchScreen(navController: NavController) {
 
     fun loadIdleCharts() {
         if (loadingCharts) return
+        val chartCountry = ContentRegion.region(prefs)
         scope.launch {
             loadingCharts = true
             chartsError = null
-            yt.suggestionCharts(Locale.getDefault().country)
+            yt.suggestionCharts(chartCountry)
                 .onSuccess { idleCharts = it }
                 .onFailure { chartsError = it.message ?: it.toString() }
             loadingCharts = false
@@ -249,6 +257,22 @@ fun SearchScreen(navController: NavController) {
     LaunchedEffect(Unit) {
         focusRequester.requestFocus()
         loadIdleCharts()
+    }
+    com.music.vivi.compose.keys.ShortcutEventEffect { e ->
+        if (e == com.music.vivi.compose.keys.ShortcutEvent.FocusSearch) runCatching { focusRequester.requestFocus() }
+    }
+
+    if (showRegion) {
+        ContentRegionDialog(
+            prefs = prefs,
+            onDismiss = { showRegion = false },
+            onChanged = {
+                regionTick++
+                idleCharts = emptyList()
+                loadIdleCharts()
+                submittedQuery?.let { runSearch(it) }
+            },
+        )
     }
 
     LaunchedEffect(trimmed) {
@@ -345,6 +369,8 @@ fun SearchScreen(navController: NavController) {
                 songsPage = null
                 error = null
             },
+            regionCode = regionCode,
+            onRegionClick = { showRegion = true },
         )
 
         if (submittedQuery != null && !showingTypingHints) {
@@ -623,14 +649,9 @@ private fun ChartSuggestionRow(
                     )
                 }
             }
-            AsyncImage(
-                model = track.thumbnailUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(72.dp)
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            CoverImage(
+                track.thumbnailUrl, track.title,
+                Modifier.size(72.dp).clip(RoundedCornerShape(12.dp)),
             )
         }
     }
@@ -645,6 +666,8 @@ private fun SearchField(
     focusRequester: FocusRequester,
     showBack: Boolean,
     onBack: () -> Unit,
+    regionCode: String,
+    onRegionClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
     val corner by animateDpAsState(
@@ -668,9 +691,7 @@ private fun SearchField(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             if (showBack) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                }
+                com.music.vivi.compose.ui.component.VisageBackButton(onClick = onBack)
             } else {
                 Icon(
                     Icons.Filled.Search,
@@ -712,12 +733,23 @@ private fun SearchField(
                     Icon(Icons.Filled.Clear, contentDescription = "Clear")
                 }
             }
-            Icon(
-                Icons.Outlined.Language,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(end = 12.dp).size(22.dp),
-            )
+            Surface(
+                onClick = onRegionClick,
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                modifier = Modifier.padding(end = 10.dp),
+            ) {
+                Row(Modifier.padding(horizontal = 10.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        Icons.Outlined.Language,
+                        contentDescription = "Region and language",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp),
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(regionCode.uppercase(), style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                }
+            }
         }
     }
 }
@@ -794,14 +826,9 @@ private fun RecommendedRow(
                 .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            AsyncImage(
-                model = item.thumbnail,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(if (circle) CircleShape else RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            CoverImage(
+                item.thumbnail, item.id,
+                Modifier.size(56.dp).clip(if (circle) CircleShape else RoundedCornerShape(8.dp)),
             )
             Column(Modifier.weight(1f).padding(horizontal = 14.dp)) {
                 Text(
@@ -873,7 +900,7 @@ private fun LazyListScope.renderSummary(
         } else {
             val items = summary.items.distinctBy { it.id }
             item(key = "summary_grid_$index") {
-                LazyRow(
+                WheelLazyRow(
                     contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                     modifier = Modifier.height(gridRowHeight + 8.dp),
                 ) {

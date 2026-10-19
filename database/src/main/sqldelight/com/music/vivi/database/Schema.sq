@@ -132,3 +132,35 @@ CREATE INDEX local_track_by_played ON local_track(last_played_ms DESC);
 CREATE INDEX local_track_by_count ON local_track(play_count DESC);
 CREATE INDEX local_track_by_album ON local_track(album_id, track_number);
 CREATE INDEX local_track_by_artist ON local_track(artist_id);
+
+-- Library sidebar folders: group playlists/albums/artists (YouTube + local). Sidebar-only; never touches the items.
+CREATE TABLE library_folder (
+  id TEXT NOT NULL PRIMARY KEY,
+  title TEXT NOT NULL,
+  icon TEXT NOT NULL DEFAULT 'folder',
+  accent INTEGER,
+  cover_kind TEXT NOT NULL DEFAULT 'AUTO',
+  cover_ref TEXT,
+  sort TEXT NOT NULL DEFAULT 'MANUAL',
+  expanded INTEGER NOT NULL DEFAULT 1,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_ms INTEGER NOT NULL
+);
+
+-- An item lives in at most one folder: PRIMARY KEY (item_type, item_id).
+CREATE TABLE library_folder_item (
+  folder_id TEXT NOT NULL,
+  item_type TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  PRIMARY KEY (item_type, item_id),
+  FOREIGN KEY (folder_id) REFERENCES library_folder(id) ON DELETE CASCADE
+);
+
+CREATE INDEX library_folder_item_by_folder ON library_folder_item(folder_id, position);
+
+CREATE TABLE library_hidden (
+  item_type TEXT NOT NULL,
+  item_id TEXT NOT NULL,
+  PRIMARY KEY (item_type, item_id)
+);

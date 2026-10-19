@@ -59,6 +59,8 @@ import androidx.compose.material.icons.outlined.RepeatOne
 import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material.icons.outlined.VolumeDown
 import androidx.compose.material.icons.outlined.VolumeUp
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
@@ -95,7 +97,13 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
+import com.music.vivi.compose.ui.artist.openArtistByName
 import coil3.compose.AsyncImage
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.pointerInput
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.math.abs
 import com.music.vivi.compose.LocalPlaybackController
 import com.music.vivi.compose.LocalWindowState
 import com.music.vivi.compose.WindowFullscreen
@@ -120,6 +128,12 @@ import com.music.vivi.compose.prefs.VolumeControlStyle
 
 import com.music.vivi.compose.ui.component.PlayPauseIcon
 import com.music.vivi.compose.ui.player.background.PlayerBackgroundLayer
+import com.music.vivi.compose.ui.player.swap.songSwapBackground
+import com.music.vivi.compose.ui.player.swap.songSwapCover
+import com.music.vivi.compose.ui.player.swap.songSwapControls
+import com.music.vivi.compose.ui.player.swap.songSwapViewport
+import com.music.vivi.compose.ui.player.video.morphAspect
+import com.music.vivi.compose.ui.player.video.morphClip
 import com.music.vivi.compose.ui.player.canvas.CanvasResolver
 import com.music.vivi.compose.ui.player.canvas.CanvasSource
 import com.music.vivi.compose.ui.player.lyrics.LyricsPanel
@@ -133,7 +147,7 @@ import org.koin.compose.koinInject
 
 /** Top-level AnimatedVisibility — avoids RowScope/ColumnScope overload resolution inside nested layouts. */
 @Composable
-private fun PlainAnimatedVisibility(
+internal fun PlainAnimatedVisibility(
     visible: Boolean,
     enter: EnterTransition,
     exit: ExitTransition,
@@ -161,6 +175,8 @@ fun NowPlayingScreen(
     navController: NavController,
     onOpenPinnedQueue: (() -> Unit)? = null,
     onOpenFullscreenQueue: (() -> Unit)? = null,
+    queueOpen: Boolean = false,
+    onCloseQueue: (() -> Unit)? = null,
 ) {
     val controller = LocalPlaybackController.current
     val prefs = koinInject<DesktopPrefs>()
@@ -195,7 +211,8 @@ fun NowPlayingScreen(
             prefs.getString(PrefKeys.QueuePanelMode, QueuePanelMode.FULLSCREEN.name),
         )
     }.getOrDefault(QueuePanelMode.FULLSCREEN)
-    val showUnderPlaybar = queueMode == QueuePanelMode.UNDER_PLAYBAR
+    var underPlaybarOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
+    val showUnderPlaybar = queueMode == QueuePanelMode.UNDER_PLAYBAR && underPlaybarOpen
     val nowPlaying by controller.nowPlaying.collectAsState()
     val state by controller.state.collectAsState()
     // Position is only read lazily (derivedStateOf / NowPlayingSeekSection) so ticks don't
@@ -212,7 +229,9 @@ fun NowPlayingScreen(
     var scrubVol by remember { mutableFloatStateOf(volume) }
     val displayVolume = if (scrubVolume) scrubVol else volume
 
-    val track = nowPlaying
+    // Song swappings: while a driven swap runs, the layers keep showing the outgoing song.
+    val swap = com.music.vivi.compose.ui.player.swap.rememberPlayerSongSwap(controller, prefs)
+    val track = swap.controlsTrack(nowPlaying)
     val duration = durationMs.takeIf { it > 0 } ?: track?.durationMs ?: 0L
     val playing = state == PlaybackState.Playing
     val hasPosition by remember { derivedStateOf { positionState.value > 0L } }
@@ -243,10 +262,24 @@ fun NowPlayingScreen(
     }.getOrDefault(CanvasSource.AUTO)
 
     var canvasArt by remember { mutableStateOf<com.music.vivi.canvas.CanvasArtwork?>(null) }
-    val canvasSquareUrl = CanvasResolver.squareUrl(canvasArt)
-    val canvasTallUrl = CanvasResolver.tallUrl(canvasArt)
+    // Music video (when enabled and available) replaces the canvas: video -> canvas -> cover.
+    val trackVideo = com.music.vivi.compose.ui.player.video.rememberTrackVideo(track)
+    // "Original size" framing: the cover slot morphs from 1:1 to the video's aspect (and back).
+    val coverMorph = com.music.vivi.compose.ui.player.video.rememberCoverMorph(
+        com.music.vivi.compose.ui.player.video.rememberVideoFraming(prefs),
+        trackVideo?.url,
+    )
+    val canvasSquareUrl = if (trackVideo != null) null else CanvasResolver.squareUrl(canvasArt)
+    val canvasTallUrl = if (trackVideo != null) null else CanvasResolver.tallUrl(canvasArt)
     var showLyrics by remember { mutableStateOf(false) }
     var showTrackActions by remember { mutableStateOf(false) }
+    com.music.vivi.compose.keys.ShortcutEventEffect { e ->
+        when (e) {
+            com.music.vivi.compose.keys.ShortcutEvent.ToggleLyrics -> showLyrics = !showLyrics
+            com.music.vivi.compose.keys.ShortcutEvent.ShowTrackActions -> showTrackActions = !showTrackActions
+            else -> Unit
+        }
+    }
     val windowState = LocalWindowState.current
 
     LaunchedEffect(track?.videoId, bgStyle, enableCanvas, canvasSource) {
@@ -280,12 +313,17 @@ fun NowPlayingScreen(
     Box(Modifier.fillMaxSize()) {
         PlayerBackgroundLayer(
             style = bgStyle,
-            artworkUrl = readyArt,
+            artworkUrl = if (swap.active) swap.displayedArt else readyArt,
+            modifier = Modifier.fillMaxSize()
+                .songSwapViewport(swap)
+                .songSwapBackground(swap),
             // Same URL as the cover slot: one shared decoder, frames stay in sync.
             canvasVideoUrl = canvasSquareUrl,
             canvasPlaying = playing,
             showClearArtwork = !showLyrics,
         )
+
+        com.music.vivi.compose.ui.player.swap.SongSwapLoadingIndicator(swap.anim, Modifier.fillMaxSize())
 
         com.music.vivi.compose.ui.component.VisageToast(
             message = toastMessage,
@@ -369,11 +407,11 @@ fun NowPlayingScreen(
                                 label = "npCoverLarge",
                             ) {
                                 val coverVisibility = this
-                                val coverShape = RoundedCornerShape(28.dp)
                                 AlbumGestureCard(
                                     controller = controller,
                                     modifier = Modifier
-                                        .fillMaxSize()
+                                        .fillMaxWidth()
+                                        .morphAspect { coverMorph.aspect }
                                         .sharedBounds(
                                             sharedContentState = coverState,
                                             animatedVisibilityScope = coverVisibility,
@@ -384,22 +422,31 @@ fun NowPlayingScreen(
                                         ),
                                 ) {
                                     AnimatedContent(
-                                        targetState = artTarget,
+                                        targetState = if (swap.active) (swap.displayed?.videoId to swap.displayedArt) else artTarget,
                                         // Same song, sharper URL: swap in place, no second transition.
                                         contentKey = { it.first },
                                         transitionSpec = {
+                                            if (swap.active) androidx.compose.animation.EnterTransition.None togetherWith androidx.compose.animation.ExitTransition.None else
                                             (slideInHorizontally { it / 3 } + fadeIn() + scaleIn(initialScale = 0.92f)) togetherWith
                                                 (slideOutHorizontally { -it / 3 } + fadeOut() + scaleOut(targetScale = 0.92f))
                                         },
                                         label = "npArtwork",
-                                        modifier = Modifier.fillMaxSize().clip(coverShape),
+                                        modifier = Modifier.fillMaxSize()
+                                            .songSwapCover(swap)
+                                            .morphClip { (28f - 8f * coverMorph.progress.coerceIn(0f, 1f)).dp },
                                     ) { (_, artUrl) ->
                                         Box(Modifier.fillMaxSize().then(Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest))) {
                                             val squareUrl = canvasSquareUrl
                                             // The canvas takes over the cover: the static art only shows
                                             // until the first video frame, then it's removed entirely.
-                                            var canvasShowing by remember(squareUrl) { mutableStateOf(false) }
-                                            if (!canvasShowing) {
+                                            var canvasShowing by remember(squareUrl, trackVideo?.url) { mutableStateOf(false) }
+                                            // Cross-fade: the art lingers (fading out) while the video fades in.
+                                            val artAlpha by animateFloatAsState(
+                                                if (canvasShowing) 0f else 1f,
+                                                VisageMotion.fade(500),
+                                                label = "npArtFade",
+                                            )
+                                            if (artAlpha > 0.01f) {
                                                 // Art with baked-in rounded corners is zoomed so its transparent
                                                 // corners fall outside our own rounded slot.
                                                 val bleed = com.music.vivi.compose.ui.component.rememberArtworkCornerBleed(artUrl)
@@ -409,7 +456,17 @@ fun NowPlayingScreen(
                                                     contentScale = ContentScale.Crop,
                                                     modifier = Modifier
                                                         .fillMaxSize()
-                                                        .graphicsLayer { scaleX = bleed; scaleY = bleed },
+                                                        .graphicsLayer { scaleX = bleed; scaleY = bleed; alpha = artAlpha },
+                                                )
+                                            }
+                                            if (trackVideo != null) {
+                                                com.music.vivi.compose.ui.player.video.MusicVideoSurface(
+                                                    video = trackVideo,
+                                                    modifier = Modifier.fillMaxSize(),
+                                                    onFirstFrame = {
+                                                        coverMorph.report(trackVideo.url, it)
+                                                        canvasShowing = true
+                                                    },
                                                 )
                                             }
                                             if (squareUrl != null) {
@@ -498,7 +555,7 @@ fun NowPlayingScreen(
                             }
 
                             Column(
-                                Modifier.align(Alignment.CenterHorizontally).then(if (limitControlsWidth) Modifier.widthIn(max = if (showLyrics) adwaitaClampWidth(stackW, controlsMaxWidth) else controlsMaxWidth) else Modifier).fillMaxWidth().then(if (underQueue && !showCanvasOnRight) Modifier.weight(1f) else Modifier).playerControlsSurface(framedControls)
+                                Modifier.align(Alignment.CenterHorizontally).then(if (limitControlsWidth) Modifier.widthIn(max = if (showLyrics) adwaitaClampWidth(stackW, controlsMaxWidth) else controlsMaxWidth) else Modifier).fillMaxWidth().then(if (underQueue && !showCanvasOnRight) Modifier.weight(1f) else Modifier).songSwapControls(swap).playerControlsSurface(framedControls)
                             ) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                                 PlainAnimatedVisibility(
@@ -534,14 +591,25 @@ fun NowPlayingScreen(
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                     )
-                                    Text(
-                                        track?.artist.orEmpty().ifBlank { state.name },
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = Color.White.copy(alpha = 0.65f),
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.padding(top = 6.dp),
-                                    )
+                                    val credits = track?.artist.orEmpty()
+                                    if (credits.isBlank()) {
+                                        Text(
+                                            state.name,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = Color.White.copy(alpha = 0.65f),
+                                            modifier = Modifier.padding(top = 6.dp),
+                                        )
+                                    } else {
+                                        com.music.vivi.compose.ui.artist.ArtistLinks(
+                                            credits = credits,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = Color.White.copy(alpha = 0.65f),
+                                            hoverColor = Color.White,
+                                            onOpen = { navController.openArtistByName(it) },
+                                            maxLines = 2,
+                                            modifier = Modifier.padding(top = 6.dp),
+                                        )
+                                    }
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                     ToolIconButton(Icons.Outlined.Download, "Make available offline") {
@@ -578,6 +646,9 @@ fun NowPlayingScreen(
                                 onPrev = { if (canPrev) controller.previous() },
                                 onPlayPause = { if (playing) controller.pause() else controller.play() },
                                 onNext = { controller.next() },
+                                previousTracks = queuePreviewIndices(queueIndex, queueTracks.size, true, 3).map { it to queueTracks[it] },
+                                nextTracks = queuePreviewIndices(queueIndex, queueTracks.size, false, 3).map { it to queueTracks[it] },
+                                onPickTrack = { index -> scope.launch(Dispatchers.IO) { controller.playQueue(queueTracks, index) } },
                             )
 
                             if (underQueue) {
@@ -614,15 +685,16 @@ fun NowPlayingScreen(
                             ToolIconButton(
                                 Icons.AutoMirrored.Outlined.QueueMusic,
                                 "Queue",
-                                active = showUnderPlaybar,
+                                active = showUnderPlaybar || queueOpen,
                             ) {
-                                when (queueMode) {
-                                    QueuePanelMode.FULLSCREEN ->
+                                when {
+                                    queueOpen -> onCloseQueue?.invoke()
+                                    queueMode == QueuePanelMode.FULLSCREEN ->
                                         onOpenFullscreenQueue?.invoke()
-                                    QueuePanelMode.PINNED_RIGHT ->
+                                    queueMode == QueuePanelMode.PINNED_RIGHT ->
                                         onOpenPinnedQueue?.invoke()
                                             ?: onOpenFullscreenQueue?.invoke()
-                                    QueuePanelMode.UNDER_PLAYBAR -> Unit
+                                    else -> underPlaybarOpen = !underPlaybarOpen
                                 }
                             }
                             ToolIconButton(Icons.Outlined.Lyrics, "Lyrics", active = showLyrics) {
@@ -723,6 +795,7 @@ internal fun NowPlayingSeekSection(
     sliderStyle: SliderStyle,
     squiggly: Boolean,
     modifier: Modifier = Modifier,
+    showTimes: Boolean = true,
 ) {
     val controller = LocalPlaybackController.current
     val positionMs by controller.positionMs.collectAsState()
@@ -748,7 +821,7 @@ internal fun NowPlayingSeekSection(
             isPlaying = playbackState == com.music.vivi.player.PlaybackState.Playing,
             modifier = Modifier.fillMaxWidth(),
         )
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        if (showTimes) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
             Text(formatMs(displayPos), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
             Text(formatMs(duration), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
         }
@@ -766,7 +839,12 @@ internal fun TransportRow(
     onPrev: () -> Unit,
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
+    previousTracks: List<Pair<Int, QueueTrack>> = emptyList(),
+    nextTracks: List<Pair<Int, QueueTrack>> = emptyList(),
+    onPickTrack: (Int) -> Unit = {},
 ) {
+    var eat by androidx.compose.runtime.remember { mutableStateOf(0f) }
+    var eatSide by androidx.compose.runtime.remember { mutableStateOf(0) }
     val scheme = MaterialTheme.colorScheme
     val (pillBg, pillIcon) = when (style) {
         PlayerButtonsStyle.DEFAULT -> Color.White.copy(alpha = 0.12f) to Color.White
@@ -793,6 +871,10 @@ internal fun TransportRow(
             onClick = onPrev,
             width = 72.dp,
             containerColor = pillBg,
+            previewTracks = previousTracks,
+            onPickPreview = onPickTrack,
+            eatDirection = 1,
+            onEat = { eat = it; eatSide = 1 },
             content = {
             Icon(
                 Icons.Filled.SkipPrevious,
@@ -820,7 +902,11 @@ internal fun TransportRow(
             shape = RoundedCornerShape(playRadius),
             color = playBg,
             interactionSource = playInteraction,
-            modifier = Modifier.weight(1f).height(playPauseHeight),
+            modifier = Modifier.weight(1f).height(playPauseHeight).graphicsLayer {
+                scaleX = 1f - 0.5f * eat
+                alpha = 1f - 0.7f * eat
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(if (eatSide < 0) 0f else 1f, 0.5f)
+            },
         ) {
             Row(
                 Modifier.fillMaxSize(),
@@ -842,6 +928,10 @@ internal fun TransportRow(
             onClick = onNext,
             width = 72.dp,
             containerColor = pillBg,
+            previewTracks = nextTracks,
+            onPickPreview = onPickTrack,
+            eatDirection = -1,
+            onEat = { eat = it; eatSide = -1 },
             content = {
             Icon(
                 Icons.Filled.SkipNext,
@@ -855,7 +945,7 @@ internal fun TransportRow(
 }
 
 @Composable
-private fun QueuePillStrip(
+internal fun QueuePillStrip(
     upcoming: List<Pair<Int, QueueTrack>>,
     onPlayIndex: (Int) -> Unit,
     modifier: Modifier = Modifier,
@@ -949,21 +1039,85 @@ internal fun TransportPill(
     onClick: () -> Unit,
     width: androidx.compose.ui.unit.Dp,
     containerColor: Color = Color.White.copy(alpha = 0.12f),
+    /** Queue entries (index, track) listed in a dropdown while the pill is held; empty disables hold. */
+    previewTracks: List<Pair<Int, QueueTrack>> = emptyList(),
+    onPickPreview: (Int) -> Unit = {},
+    /** -1: dragging left eats the play button (Next); 1: dragging right (Previous); 0: no drag. */
+    eatDirection: Int = 0,
+    onEat: (Float) -> Unit = {},
     content: @Composable () -> Unit,
 ) {
-    val interaction = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
-    // Expressive press morph: pill → tighter corners while held, springing back on release.
+    var pressed by androidx.compose.runtime.remember { mutableStateOf(false) }
+    var menu by androidx.compose.runtime.remember { mutableStateOf(false) }
+    var dragX by androidx.compose.runtime.remember { mutableStateOf(0f) }
     val radius by animateDpAsState(if (pressed) 14.dp else 28.dp, com.music.vivi.compose.ui.motion.VisageMotion.spatialFast(), label = "pillRadius")
-    Surface(
-        onClick = onClick,
-        enabled = enabled,
-        shape = RoundedCornerShape(radius),
-        color = containerColor,
-        interactionSource = interaction,
-        modifier = Modifier.size(width = width, height = 56.dp),
-    ) {
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center, content = { content() })
+    val offsetX by animateFloatAsState(dragX, if (pressed) spring(stiffness = 10000f) else spring(stiffness = 400f), label = "pillDrag")
+    val currentOnClick by androidx.compose.runtime.rememberUpdatedState(onClick)
+    val currentOnEat by androidx.compose.runtime.rememberUpdatedState(onEat)
+    val currentTracks by androidx.compose.runtime.rememberUpdatedState(previewTracks)
+    Box {
+        Surface(
+            shape = RoundedCornerShape(radius),
+            color = containerColor.copy(alpha = if (enabled) containerColor.alpha else containerColor.alpha * 0.4f),
+            modifier = Modifier
+                .size(width = width, height = 56.dp)
+                .graphicsLayer { translationX = offsetX }
+                .pointerInput(enabled, eatDirection) {
+                    if (!enabled) return@pointerInput
+                    val travel = 140.dp.toPx()
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        pressed = true
+                        var total = 0f
+                        var moved = false
+                        var held = false
+                        try {
+                            while (true) {
+                                val event = if (!moved && !held && currentTracks.isNotEmpty()) {
+                                    withTimeoutOrNull(450) { awaitPointerEvent() }
+                                } else awaitPointerEvent()
+                                if (event == null) { held = true; menu = true; continue }
+                                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                if (!change.pressed) {
+                                    val progress = if (eatDirection == 0) 0f else (total * -eatDirection / travel).coerceIn(0f, 1f)
+                                    when {
+                                        held -> Unit
+                                        !moved -> currentOnClick()
+                                        progress >= 0.5f -> currentOnClick()
+                                    }
+                                    break
+                                }
+                                total += change.position.x - change.previousPosition.x
+                                if (!moved && abs(total) > viewConfiguration.touchSlop && eatDirection != 0 && !held) {
+                                    moved = true
+                                    menu = false
+                                }
+                                if (moved) {
+                                    change.consume()
+                                    val toward = (total * -eatDirection).coerceIn(0f, travel)
+                                    dragX = toward * -eatDirection
+                                    currentOnEat(toward / travel)
+                                }
+                            }
+                        } finally {
+                            pressed = false
+                            dragX = 0f
+                            currentOnEat(0f)
+                        }
+                    }
+                },
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center, content = { content() })
+        }
+        DropdownMenu(expanded = menu, onDismissRequest = { menu = false }) {
+            for ((i, t) in previewTracks) {
+                DropdownMenuItem(
+                    text = { Column { Text(t.title, maxLines = 1); Text(t.artist, style = MaterialTheme.typography.bodySmall, maxLines = 1) } },
+                    leadingIcon = { AsyncImage(t.artworkUrl, null, Modifier.size(36.dp).clip(RoundedCornerShape(6.dp)), contentScale = ContentScale.Crop) },
+                    onClick = { menu = false; onPickPreview(i) },
+                )
+            }
+        }
     }
 }
 

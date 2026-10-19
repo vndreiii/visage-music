@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.playlist
 
+import com.music.vivi.compose.ui.component.CoverImage
+import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 
 import androidx.compose.foundation.background
@@ -161,9 +163,7 @@ fun OnlinePlaylistScreen(
                             .padding(horizontal = 8.dp, vertical = 4.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton(onClick = { navController.navigateUp() }) {
-                            Text("← Back")
-                        }
+                        com.music.vivi.compose.ui.component.VisageBackButton(onClick = { navController.navigateUp() })
                         Spacer(Modifier.weight(1f))
                         TextButton(onClick = { searching = !searching }) {
                             Text(if (searching) "Close search" else "Search")
@@ -232,7 +232,7 @@ fun OnlinePlaylistScreen(
                         NavigationTitle(title = "You might also like")
                     }
                     item(key = "related") {
-                        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp)) {
+                        WheelLazyRow(contentPadding = PaddingValues(horizontal = 12.dp)) {
                             items(vm.relatedItems, key = { it.id }) { item ->
                                 YouTubeGridItem(
                                     item = item,
@@ -297,15 +297,14 @@ private fun OnlinePlaylistHeader(
                         ),
                     ),
             )
-            AsyncImage(
-                model = playlist.thumbnail,
-                contentDescription = playlist.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
+            CoverImage(
+                playlist.thumbnail, playlist.id,
+                Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 6.dp)
                     .size(128.dp)
                     .clip(RoundedCornerShape(8.dp)),
+                animated = true,
             )
         }
 

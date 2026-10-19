@@ -34,6 +34,7 @@ import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.Sell
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.ColorLens
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.outlined.Contrast
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.HighQuality
@@ -103,6 +105,21 @@ import com.music.vivi.compose.prefs.MiniPlayerStyle
 import com.music.vivi.compose.prefs.PlayerBackgroundStyle
 import com.music.vivi.compose.prefs.PlayerButtonsStyle
 import com.music.vivi.compose.prefs.PrefKeys
+import com.music.vivi.compose.prefs.FullscreenCanvasMode
+import com.music.vivi.compose.prefs.FullscreenCoverShape
+import com.music.vivi.compose.prefs.FullscreenFollow
+import com.music.vivi.compose.prefs.FullscreenKeys
+import com.music.vivi.compose.prefs.FullscreenLayout
+import com.music.vivi.compose.prefs.FullscreenSettings
+import com.music.vivi.compose.prefs.reader
+import com.music.vivi.compose.prefs.resetFullscreenPrefs
+import androidx.compose.material.icons.outlined.Album
+import androidx.compose.material.icons.outlined.OpenInFull
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Radio
+import androidx.compose.material.icons.outlined.Repeat
+import androidx.compose.material.icons.outlined.Schedule
+import androidx.compose.material.icons.outlined.Shuffle
 import com.music.vivi.compose.prefs.QueuePanelMode
 import com.music.vivi.compose.prefs.SliderStyle
 import com.music.vivi.compose.prefs.TopNavStyle
@@ -132,7 +149,7 @@ internal fun rememberPrefsVersion(prefs: DesktopPrefs): Int {
     return version
 }
 
-private inline fun <reified T : Enum<T>> DesktopPrefs.enumPref(key: String, default: T): T =
+internal inline fun <reified T : Enum<T>> DesktopPrefs.enumPref(key: String, default: T): T =
     runCatching { enumValueOf<T>(getString(key, default.name)) }.getOrDefault(default)
 
 private fun Enum<*>.titleLabel(): String =
@@ -168,7 +185,7 @@ fun SettingsHubScreen(navController: NavController) {
     SettingsPage(title = "Settings", onBack = null) {
         AccountCard(account, error) { navController.navigate(Routes.SETTINGS_ACCOUNT) }
 
-        SettingsSection("Personalize") {
+        SettingsSection("Interface") {
             SettingsNavItem(
                 icon = Icons.Outlined.Palette,
                 title = "Theme",
@@ -178,8 +195,8 @@ fun SettingsHubScreen(navController: NavController) {
             SettingsDivider()
             SettingsNavItem(
                 icon = Icons.Outlined.Dashboard,
-                title = "Interface",
-                subtitle = "Top bar and mini-player",
+                title = "Top bar & mini-player",
+                subtitle = "Layout and style of the top bar and mini-player",
                 onClick = { navController.navigate(Routes.SETTINGS_APPEARANCE) },
             )
             SettingsDivider()
@@ -189,9 +206,30 @@ fun SettingsHubScreen(navController: NavController) {
                 subtitle = "Background, canvas, controls, lyrics, queue",
                 onClick = { navController.navigate(Routes.SETTINGS_NOW_PLAYING) },
             )
+            SettingsDivider()
+            SettingsNavItem(
+                icon = Icons.Outlined.PlayCircle,
+                title = "Song swappings",
+                subtitle = "How the player animates when the song changes",
+                onClick = { navController.navigate(Routes.SETTINGS_SONG_SWAP) },
+            )
+            SettingsDivider()
+            SettingsNavItem(
+                icon = Icons.Outlined.Dashboard,
+                title = "Sidebars",
+                subtitle = "Library and queue sidebars: side, width, default state",
+                onClick = { navController.navigate(Routes.SETTINGS_SIDEBARS) },
+            )
+            SettingsDivider()
+            SettingsNavItem(
+                icon = Icons.Outlined.Keyboard,
+                title = "Keyboard shortcuts",
+                subtitle = "Play/pause, seek, lyrics, navigation: view and rebind",
+                onClick = { navController.navigate(Routes.SETTINGS_KEYBINDS) },
+            )
         }
 
-        SettingsSection("Listening") {
+        SettingsSection("Playback") {
             SettingsNavItem(
                 icon = Icons.AutoMirrored.Outlined.VolumeUp,
                 title = "Playback & audio",
@@ -213,6 +251,13 @@ fun SettingsHubScreen(navController: NavController) {
                 title = "Local files",
                 subtitle = "Music folders, scanning, offline library",
                 onClick = { navController.navigate(Routes.SETTINGS_LOCAL_OFFLINE) },
+            )
+            SettingsDivider()
+            SettingsNavItem(
+                icon = Icons.Outlined.Sell,
+                title = "Tag Manager",
+                subtitle = "Fix missing tags and cover art in local files",
+                onClick = { navController.navigate(Routes.TAG_MANAGER) },
             )
             SettingsDivider()
             SettingsNavItem(
@@ -550,6 +595,15 @@ fun NowPlayingSettingsScreen(navController: NavController) {
     val canvasOn = prefs.getBoolean(PrefKeys.EnableCanvas, true)
 
     SettingsPage(title = "Now Playing", onBack = { navController.navigateUp() }) {
+        SettingsSection("Fullscreen") {
+            SettingsNavItem(
+                icon = Icons.Outlined.OpenInFull,
+                title = "Fullscreen player",
+                subtitle = "Layout, cover, controls, auto-hide, background overrides",
+                onClick = { navController.navigate(Routes.SETTINGS_FULLSCREEN_PLAYER) },
+            )
+        }
+
         SettingsSection("Background") {
             LivePlayerBackgroundHeroPreview(style = playerBg)
             PrefSecondsSlider(
@@ -605,6 +659,49 @@ fun NowPlayingSettingsScreen(navController: NavController) {
                         ),
                         selected = prefs.enumPref(PrefKeys.CanvasSource, CanvasSource.AUTO),
                         onSelect = { prefs.setString(PrefKeys.CanvasSource, it.name) },
+                    )
+                }
+            }
+        }
+
+        SettingsSection("Music video") {
+            val videoOn = prefs.getBoolean(PrefKeys.PlayerVideoEnabled, false)
+            SwitchItem(
+                icon = Icons.Outlined.SmartDisplay,
+                title = "Play music videos",
+                subtitle = "Show the music video instead of the cover or canvas when one exists. " +
+                    "Uses more data and CPU; audio still plays from the normal stream. Local files and tracks without a video fall back to canvas or cover.",
+                checked = videoOn,
+                onChecked = { prefs.setBoolean(PrefKeys.PlayerVideoEnabled, it) },
+            )
+            AnimatedVisibility(videoOn, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                Column {
+                    SettingsDivider()
+                    val framing = com.music.vivi.compose.ui.player.video.VideoFraming.resolve(prefs.reader())
+                    ChoiceRow(
+                        icon = Icons.Outlined.OpenInFull,
+                        title = "Framing",
+                        options = com.music.vivi.compose.ui.player.video.VideoFraming.entries.map { it to it.name.replace("Original", "Original size") },
+                        selected = framing,
+                        onSelect = { prefs.setString(PrefKeys.PlayerVideoFraming, it.name) },
+                    )
+                    Text(
+                        when (framing) {
+                            com.music.vivi.compose.ui.player.video.VideoFraming.Fit -> "Fit: the video keeps its shape inside the square cover, with black bars."
+                            com.music.vivi.compose.ui.player.video.VideoFraming.Fill -> "Fill: the video is cropped to fill the square cover."
+                            com.music.vivi.compose.ui.player.video.VideoFraming.Original -> "Original size: the cover morphs into the video's own shape (usually 16:9) and shows it uncropped."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 56.dp, end = 16.dp, bottom = 12.dp),
+                    )
+                    SettingsDivider()
+                    ChoiceRow(
+                        icon = Icons.Outlined.Tune,
+                        title = "Quality cap",
+                        options = com.music.vivi.player.video.VideoQuality.entries.map { it to it.label },
+                        selected = com.music.vivi.player.video.VideoQuality.parse(prefs.getString(PrefKeys.PlayerVideoQuality, "P720")),
+                        onSelect = { prefs.setString(PrefKeys.PlayerVideoQuality, it.name) },
                     )
                 }
             }
@@ -688,12 +785,11 @@ fun NowPlayingSettingsScreen(navController: NavController) {
         }
 
         SettingsSection("Lyrics") {
-            ChoiceRow(
+            SettingsNavItem(
                 icon = Icons.Outlined.Lyrics,
-                title = "Alignment",
-                options = listOf(LyricsTextAlign.LEFT to "Left", LyricsTextAlign.CENTER to "Center", LyricsTextAlign.RIGHT to "Right"),
-                selected = prefs.enumPref(PrefKeys.LyricsTextAlign, LyricsTextAlign.CENTER),
-                onSelect = { prefs.setString(PrefKeys.LyricsTextAlign, it.name) },
+                title = "Lyrics",
+                subtitle = "Style, word-by-word sync, glow, animation, background",
+                onClick = { navController.navigate(Routes.SETTINGS_LYRICS) },
             )
             SettingsDivider()
             ChipChoiceRow(
@@ -724,6 +820,134 @@ fun NowPlayingSettingsScreen(navController: NavController) {
                 subtitle = "Restore the queue and position at startup",
                 checked = prefs.getBoolean(PrefKeys.PersistentQueue, true),
                 onChecked = { prefs.setBoolean(PrefKeys.PersistentQueue, it) },
+            )
+        }
+    }
+}
+
+@Composable
+fun FullscreenPlayerSettingsScreen(navController: NavController) {
+    val prefs = koinInject<DesktopPrefs>()
+    @Suppress("UNUSED_VARIABLE")
+    val observe = rememberPrefsVersion(prefs)
+    val cfg = FullscreenSettings.resolve(prefs.reader())
+    fun bool(key: String) = prefs.getBoolean(key, FullscreenSettings.defaults.getValue(key).toBoolean())
+    val bgOverride = prefs.getString(FullscreenKeys.Background, FullscreenFollow)
+    val canvasMode = prefs.enumPref(FullscreenKeys.CanvasMode, FullscreenCanvasMode.FOLLOW)
+
+    SettingsPage(title = "Fullscreen player", onBack = { navController.navigateUp() }) {
+        SettingsSection("Layout") {
+            ChoiceRow(
+                icon = Icons.Outlined.OpenInFull,
+                title = "Cover position",
+                options = listOf(
+                    FullscreenLayout.COVER_LEFT to "Left",
+                    FullscreenLayout.CENTERED to "Centered",
+                    FullscreenLayout.COVER_RIGHT to "Right",
+                ),
+                selected = cfg.layout,
+                onSelect = { prefs.setString(FullscreenKeys.Layout, it.name) },
+            )
+            SettingsDivider()
+            ChoiceRow(
+                icon = Icons.Outlined.Contrast,
+                title = "Cover shape",
+                options = listOf(
+                    FullscreenCoverShape.ROUNDED to "Rounded",
+                    FullscreenCoverShape.SOFT to "Soft",
+                    FullscreenCoverShape.SQUARE to "Square",
+                    FullscreenCoverShape.CIRCLE to "Circle",
+                ),
+                selected = cfg.coverShape,
+                onSelect = { prefs.setString(FullscreenKeys.CoverShape, it.name) },
+            )
+            PrefSecondsSlider(
+                title = "Cover size",
+                value = (cfg.coverScale * 100f),
+                valueRange = 50f..100f,
+                steps = 9,
+                valueLabel = { "${it.toInt()}%" },
+                onCommit = { prefs.setInt(FullscreenKeys.CoverScale, it.toInt()) },
+            )
+            SettingsDivider()
+            SwitchItem(
+                icon = Icons.Outlined.Lyrics,
+                title = "Show lyrics by default",
+                subtitle = "Open the fullscreen player with the lyrics panel visible",
+                checked = cfg.lyricsByDefault,
+                onChecked = { prefs.setBoolean(FullscreenKeys.LyricsByDefault, it) },
+            )
+        }
+
+        SettingsSection("Show") {
+            SwitchItem(Icons.Outlined.Person, "Artist links", null, cfg.showArtist) { prefs.setBoolean(FullscreenKeys.ShowArtist, it) }
+            SettingsDivider()
+            SwitchItem(Icons.Outlined.Album, "Album", null, cfg.showAlbum) { prefs.setBoolean(FullscreenKeys.ShowAlbum, it) }
+            SettingsDivider()
+            SwitchItem(Icons.AutoMirrored.Outlined.QueueMusic, "Queue button", null, cfg.showQueueButton) { prefs.setBoolean(FullscreenKeys.ShowQueueButton, it) }
+            SettingsDivider()
+            SwitchItem(Icons.AutoMirrored.Outlined.VolumeUp, "Volume slider", null, cfg.showVolume) { prefs.setBoolean(FullscreenKeys.ShowVolume, it) }
+            SettingsDivider()
+            SwitchItem(Icons.Outlined.Shuffle, "Shuffle button", null, cfg.showShuffle) { prefs.setBoolean(FullscreenKeys.ShowShuffle, it) }
+            SettingsDivider()
+            SwitchItem(Icons.Outlined.Repeat, "Repeat button", null, cfg.showRepeat) { prefs.setBoolean(FullscreenKeys.ShowRepeat, it) }
+            SettingsDivider()
+            SwitchItem(Icons.Outlined.Radio, "Radio button", "Start a radio from the current track", cfg.showRadio) { prefs.setBoolean(FullscreenKeys.ShowRadio, it) }
+            SettingsDivider()
+            SwitchItem(Icons.Outlined.Schedule, "Time labels", "Elapsed and total time under the seek bar", cfg.showTimes) { prefs.setBoolean(FullscreenKeys.ShowTimes, it) }
+            SettingsDivider()
+            SwitchItem(Icons.Outlined.Schedule, "Clock", "Show the time of day at the top", cfg.showClock) { prefs.setBoolean(FullscreenKeys.ShowClock, it) }
+        }
+
+        SettingsSection("Background") {
+            ChipChoiceRow(
+                icon = Icons.Outlined.Wallpaper,
+                title = "Style",
+                options = listOf(FullscreenFollow to "Follow Now Playing") +
+                    PlayerBackgroundStyle.entries.map { it.name to it.label() },
+                selected = if (bgOverride == FullscreenFollow || PlayerBackgroundStyle.entries.any { it.name == bgOverride }) bgOverride else FullscreenFollow,
+                onSelect = { prefs.setString(FullscreenKeys.Background, it) },
+            )
+            SettingsDivider()
+            ChoiceRow(
+                icon = Icons.Outlined.MovieFilter,
+                title = "Canvas video",
+                options = listOf(
+                    FullscreenCanvasMode.FOLLOW to "Follow",
+                    FullscreenCanvasMode.ON to "On",
+                    FullscreenCanvasMode.OFF to "Off",
+                ),
+                selected = canvasMode,
+                onSelect = { prefs.setString(FullscreenKeys.CanvasMode, it.name) },
+            )
+        }
+
+        SettingsSection("Controls") {
+            SwitchItem(
+                icon = Icons.Outlined.Tune,
+                title = "Auto-hide controls",
+                subtitle = "Fade the controls and cursor after the mouse is still",
+                checked = cfg.autoHide,
+                onChecked = { prefs.setBoolean(FullscreenKeys.AutoHide, it) },
+            )
+            AnimatedVisibility(cfg.autoHide, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                PrefSecondsSlider(
+                    title = "Hide after",
+                    value = cfg.autoHideSeconds.toFloat(),
+                    valueRange = 2f..30f,
+                    steps = 13,
+                    valueLabel = { "${it.toInt()} s" },
+                    onCommit = { prefs.setInt(FullscreenKeys.AutoHideSeconds, it.toInt()) },
+                )
+            }
+        }
+
+        SettingsSection("Reset") {
+            SettingsNavItem(
+                icon = Icons.Outlined.Restore,
+                title = "Reset to Now Playing settings",
+                subtitle = "Clear every fullscreen override and follow Now Playing again",
+                onClick = { prefs.resetFullscreenPrefs() },
             )
         }
     }
@@ -997,9 +1221,7 @@ internal fun SettingsBackHeader(title: String, onBack: (() -> Unit)?) {
         modifier = Modifier.padding(top = 8.dp, bottom = 4.dp).height(48.dp),
     ) {
         if (onBack != null) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
-            }
+            com.music.vivi.compose.ui.component.VisageBackButton(onClick = onBack)
             Spacer(Modifier.width(4.dp))
         }
         Text(
@@ -1046,7 +1268,7 @@ private fun SettingsRowFrame(
 }
 
 @Composable
-private fun SettingsNavItem(
+internal fun SettingsNavItem(
     icon: ImageVector,
     title: String,
     subtitle: String?,
@@ -1077,7 +1299,7 @@ internal fun SwitchItem(
  * rows, wrapping under the title when space is tight.
  */
 @Composable
-private fun <T> ChoiceRow(
+internal fun <T> ChoiceRow(
     icon: ImageVector?,
     title: String,
     options: List<Pair<T, String>>,
@@ -1109,7 +1331,7 @@ private fun <T> ChoiceRow(
 /** A setting with many options: title row plus a wrapping set of chips. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun <T> ChipChoiceRow(
+internal fun <T> ChipChoiceRow(
     icon: ImageVector?,
     title: String,
     options: List<Pair<T, String>>,
@@ -1140,7 +1362,7 @@ private fun <T> ChipChoiceRow(
 }
 
 @Composable
-private fun PrefSecondsSlider(
+internal fun PrefSecondsSlider(
     title: String,
     value: Float,
     valueRange: ClosedFloatingPointRange<Float>,

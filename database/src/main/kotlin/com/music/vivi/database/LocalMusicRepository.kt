@@ -241,6 +241,62 @@ class LocalMusicRepository(
         }
     }
 
+    /** Tags as they now are in the file (written by the Tag Manager); ids follow the scanner's rules. */
+    data class TagUpdate(
+        val title: String?,
+        val artist: String?,
+        val album: String?,
+        val albumArtist: String?,
+        val genre: String?,
+        val composer: String?,
+        val year: Long?,
+        val trackNo: Long?,
+        val discNo: Long?,
+        val lyrics: String?,
+        val coverPath: String?,
+        val fileSize: Long?,
+        val fileMtimeMs: Long?,
+    )
+
+    /**
+     * Re-applies a track's tags after the file was rewritten, without a rescan. Mirrors what the
+     * scanner stores (fallbacks included), moves the track to the right album/artist rows and drops
+     * rows that became empty. Returns the (unchanged) track id, or null if the track is unknown.
+     */
+    fun applyTags(trackId: String, u: TagUpdate): String? {
+        val existing = db.localTrackQueries.selectById(trackId).executeAsOneOrNull() ?: return null
+        val file = java.io.File(existing.file_path)
+        val title = u.title?.takeIf { it.isNotBlank() } ?: file.nameWithoutExtension
+        val artist = u.artist?.takeIf { it.isNotBlank() } ?: "Unknown Artist"
+        val album = u.album?.takeIf { it.isNotBlank() } ?: file.parentFile?.name.orEmpty()
+        val albumArtist = u.albumArtist?.takeIf { it.isNotBlank() } ?: artist
+        val dir = file.parentFile
+        val cover = u.coverPath ?: dir?.let { d ->
+            listOf("cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png")
+                .map { java.io.File(d, it) }.firstOrNull { it.isFile }?.absolutePath
+        }
+        val artistId = LocalMusicScanner.stableId("artist", artist)
+        val albumArtistId = LocalMusicScanner.stableId("artist", albumArtist)
+        val albumId = LocalMusicScanner.stableId("album", dir?.canonicalPath.orEmpty(), album)
+        inTransaction {
+            upsertArtist(artistId, artist)
+            upsertArtist(albumArtistId, albumArtist)
+            upsertAlbum(albumId, album, albumArtistId, albumArtist, u.year, cover, existing.added_at_ms)
+            upsertTrack(
+                id = trackId, title = title, albumId = albumId, artistId = artistId, artistName = artist, albumTitle = album,
+                durationSec = existing.duration_sec, filePath = existing.file_path, trackNumber = u.trackNo, coverPath = cover,
+                lyricsPath = existing.lyrics_path, embeddedLyrics = u.lyrics, bitrate = existing.bitrate, sampleRate = existing.sample_rate,
+                bitDepth = existing.bit_depth, isLossless = existing.is_lossless != 0L, addedAtMs = existing.added_at_ms,
+                lastPlayedMs = existing.last_played_ms, playCount = existing.play_count,
+            )
+            setTrackExtra(trackId, u.albumArtist?.takeIf { it.isNotBlank() }, u.genre?.takeIf { it.isNotBlank() }, u.composer?.takeIf { it.isNotBlank() }, u.year, u.discNo, u.fileSize, u.fileMtimeMs)
+            setTrackArtists(trackId, listOf(artistId to artist))
+            db.localAlbumQueries.deleteEmpty()
+            db.localArtistQueries.deleteEmpty()
+        }
+        return trackId
+    }
+
     fun updateCoverPathForOpusLazy(oldPath: String, newPath: String) {
         inTransaction {
             db.localTrackQueries.updateCoverPathByOld(newPath, oldPath)

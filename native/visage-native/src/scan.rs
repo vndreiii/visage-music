@@ -184,7 +184,7 @@ fn read_track(path: &Path, size: u64, mtime_ms: i64, covers_dir: &Path) -> Track
 
 /// Same file naming as the Kotlin scanner (SHA-1 of the artwork, first 24 hex, `.jpg`),
 /// so covers extracted by either side are shared.
-fn save_cover(covers_dir: &Path, data: &[u8]) -> Option<String> {
+pub(crate) fn save_cover(covers_dir: &Path, data: &[u8]) -> Option<String> {
     if data.is_empty() {
         return None;
     }

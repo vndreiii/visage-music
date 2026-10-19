@@ -1,7 +1,9 @@
 package com.music.vivi.compose.ui.player.background
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -51,7 +53,36 @@ internal fun ShaderBackground(
     artworkUrl: String?,
     modifier: Modifier = Modifier,
 ) {
-    val image = if (kind.usesImage) rememberShrunkArtwork(artworkUrl, kind.imageEdge) else null
+    val loaded = if (kind.usesImage) rememberShrunkArtwork(artworkUrl, kind.imageEdge) else null
+    // The shown cover only changes once the next one has loaded; the old layer then fades out
+    // under the new one, so a track change (or the first cover arriving) never cuts.
+    var shown by remember(kind) { mutableStateOf(ImageHolder(loaded)) }
+    var leaving by remember(kind) { mutableStateOf<ImageHolder?>(null) }
+    val fade = remember(kind) { Animatable(1f) }
+    LaunchedEffect(loaded) {
+        if (loaded !== shown.image) {
+            leaving = shown
+            shown = ImageHolder(loaded)
+            fade.snapTo(0f)
+            fade.animateTo(1f, VisageMotion.ambient())
+            leaving = null
+        }
+    }
+    Box(modifier.fillMaxSize()) {
+        leaving?.let { ShaderLayer(kind, palette, it.image, Modifier) }
+        ShaderLayer(kind, palette, shown.image, Modifier.graphicsLayer { alpha = fade.value })
+    }
+}
+
+private class ImageHolder(val image: Image?)
+
+@Composable
+private fun ShaderLayer(
+    kind: BackgroundShader,
+    palette: ArtworkPalette?,
+    image: Image?,
+    modifier: Modifier,
+) {
     val effective = if (kind.usesImage && image == null) BackgroundShader.AURORA else kind
 
     val effect = remember(effective) { runCatching { RuntimeEffect.makeForShader(effective.sksl) }.getOrNull() }
@@ -131,14 +162,17 @@ private fun darken(c: Color, f: Float) = Color(c.red * (1f - f), c.green * (1f -
 /** The cover shrunk to at most [edge] px (high-quality filtering), ready to use as a shader input. */
 @Composable
 private fun rememberShrunkArtwork(url: String?, edge: Int): Image? {
-    var image by remember(url, edge) { mutableStateOf<Image?>(null) }
+    // Keeps the previous cover while the next one loads (a failed load keeps it too).
+    var image by remember(edge) { mutableStateOf<Image?>(null) }
     LaunchedEffect(url, edge) {
-        image = if (url.isNullOrBlank()) null else withContext(Dispatchers.IO) {
+        if (url.isNullOrBlank()) { image = null; return@LaunchedEffect }
+        val next = withContext(Dispatchers.IO) {
             runCatching {
                 val bytes = fetchImageBytesCached(url) ?: return@runCatching null
                 shrink(Image.makeFromEncoded(bytes), edge)
             }.getOrNull()
         }
+        if (next != null) image = next
     }
     return image
 }

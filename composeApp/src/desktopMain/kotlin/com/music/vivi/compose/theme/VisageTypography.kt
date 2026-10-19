@@ -43,3 +43,10 @@ internal fun visageTypography(preset: String): Typography {
         labelSmall = t.labelSmall.copy(fontFamily = plain, fontWeight = FontWeight.Medium),
     )
 }
+
+/** Bundled font family by file prefix ("Manrope", "DMSans", "Roboto") for per-feature font choices. */
+internal fun visageBundledFamily(name: String): FontFamily = when (name) {
+    "Manrope" -> manrope
+    "DMSans" -> dmSans
+    else -> roboto
+}

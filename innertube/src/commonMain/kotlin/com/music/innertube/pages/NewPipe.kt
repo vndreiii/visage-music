@@ -139,6 +139,15 @@ class NewPipeUtils(
         }
 }
 
+/** A progressive/DASH video stream offered for a video id (audio may or may not be muxed in). */
+data class VideoStreamCandidate(
+    val url: String,
+    val height: Int,
+    val codec: String?,
+    val videoOnly: Boolean,
+    val container: String?,
+)
+
 object NewPipeExtractor {
     private var newPipeDownloader: NewPipeDownloaderImpl? = null
     private var newPipeUtils: NewPipeUtils? = null
@@ -182,6 +191,26 @@ object NewPipeExtractor {
             }
         } catch (e: Exception) {
             // Don't print stack trace - caller handles errors
+            emptyList()
+        }
+    }
+
+    /** Every video stream NewPipe finds for [videoId] (empty on failure). Blocking. */
+    fun videoStreams(videoId: String): List<VideoStreamCandidate> {
+        init()
+        return try {
+            val info = StreamInfo.getInfo(NewPipe.getService(0), "https://www.youtube.com/watch?v=$videoId")
+            (info.videoOnlyStreams + info.videoStreams).mapNotNull {
+                if (!it.isUrl || it.content.isNullOrBlank()) return@mapNotNull null
+                VideoStreamCandidate(
+                    url = it.content,
+                    height = it.height,
+                    codec = it.codec,
+                    videoOnly = it.isVideoOnly,
+                    container = it.format?.suffix,
+                )
+            }
+        } catch (e: Exception) {
             emptyList()
         }
     }

@@ -1102,6 +1102,21 @@ object YouTube {
                         chartChange = thirdColumn?.runs?.getOrNull(1)?.text
                     )
                 }
+                // Top artists rows: name + "N subscribers", no video id.
+                renderer.navigationEndpoint?.browseEndpoint?.browseId?.startsWith("UC") == true -> {
+                    val name = renderer.flexColumns.getOrNull(0)
+                        ?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()?.text
+                        ?: return null
+                    ArtistItem(
+                        id = renderer.navigationEndpoint.browseEndpoint.browseId,
+                        title = name,
+                        thumbnail = renderer.thumbnail?.musicThumbnailRenderer?.getThumbnailUrl(),
+                        shuffleEndpoint = null,
+                        radioEndpoint = null,
+                        subtext = renderer.flexColumns.getOrNull(1)
+                            ?.musicResponsiveListItemFlexColumnRenderer?.text?.runs?.firstOrNull()?.text,
+                    )
+                }
                 else -> null
             }
         } catch (e: Exception) {
@@ -1147,6 +1162,20 @@ object YouTube {
                         explicit = renderer.subtitleBadges?.any {
                             it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                         } == true
+                    )
+                }
+                renderer.isPlaylist -> {
+                    // "Trending 20 <country>" and other chart playlists.
+                    PlaylistItem(
+                        id = renderer.navigationEndpoint.browseEndpoint?.browseId?.removePrefix("VL") ?: return null,
+                        title = renderer.title.runs?.firstOrNull()?.text ?: return null,
+                        author = renderer.subtitle?.runs?.lastOrNull()?.text?.let { Artist(name = it, id = null) },
+                        songCountText = null,
+                        thumbnail = renderer.thumbnailRenderer.musicThumbnailRenderer?.getThumbnailUrl(),
+                        playEndpoint = renderer.thumbnailOverlay?.musicItemThumbnailOverlayRenderer?.content
+                            ?.musicPlayButtonRenderer?.playNavigationEndpoint?.watchPlaylistEndpoint,
+                        shuffleEndpoint = null,
+                        radioEndpoint = null,
                     )
                 }
                 else -> null

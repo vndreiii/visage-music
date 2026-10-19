@@ -15,6 +15,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -70,6 +71,8 @@ class DefaultPlaybackController(
     override val queueTracks: StateFlow<List<QueueTrack>> = _queueTracks.asStateFlow()
     override val queueIndex: StateFlow<Int> = _queueIndex.asStateFlow()
     override val queueLoading: StateFlow<Boolean> = _queueLoading.asStateFlow()
+    private val _radioActive = MutableStateFlow(false)
+    override val radioActive: StateFlow<Boolean> = _radioActive.asStateFlow()
     override val volume: StateFlow<Float> = _volume.asStateFlow()
     override val shuffleEnabled: StateFlow<Boolean> = _shuffleEnabled.asStateFlow()
     override val repeatMode: StateFlow<RepeatMode> = _repeatMode.asStateFlow()
@@ -81,6 +84,13 @@ class DefaultPlaybackController(
     /** Coalesce rapid next/prev into the final landed index. */
     private val desiredIndex = AtomicInteger(-1)
     private var navigateJob: Job? = null
+
+    /** Tracks in the order they were actually played; Previous walks this when shuffle is on. */
+    private val playedHistory = java.util.ArrayDeque<String>()
+    @Volatile private var skipHistoryPush = false
+
+    /** Queue order from before shuffle was switched on, restored when it is switched off. */
+    @Volatile private var preShuffleOrder: List<String>? = null
     private var loadGeneration = AtomicInteger(0)
 
     /**
@@ -131,7 +141,26 @@ class DefaultPlaybackController(
         },
     )
 
+    /**
+     * Runs [block] in the controller's own scope. Callers are UI coroutines (a page's
+     * rememberCoroutineScope): if the page recomposes away or navigates mid-load, that scope is
+     * cancelled, and a cancelled load used to call stop() — killing playback that had just started.
+     * The caller is still suspended until the work is done, but cancelling it no longer cancels playback.
+     */
+    private suspend fun <T> detached(block: suspend () -> T): T = scope.async { block() }.await()
+
+    /** Playback trace written to the app log; used to find out who pauses/stops playback and when. */
+    private fun trace(msg: String) {
+        println("[play-trace ${java.time.LocalTime.now()}] $msg")
+    }
+
+    private fun callerChain(): String =
+        Throwable().stackTrace.asSequence().drop(2)
+            .filter { !it.className.startsWith("kotlin.") && !it.className.startsWith("kotlinx.") && !it.className.startsWith("java.") }
+            .take(6).joinToString(" <- ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+
     private fun onPlayerState(slot: Int, mpvState: MpvPlayer.State) {
+        trace("mpv[$slot] state=$mpvState (ui=${_state.value}, pauseRequested=${pauseRequested.get()}, active=${activeSlot.get()})")
         // Incoming (idle) player must not drive UI / queue advance.
         if (slot != activeSlot.get()) {
             if (mpvState == MpvPlayer.State.Error && dualOverlapActive.get()) {
@@ -208,6 +237,38 @@ class DefaultPlaybackController(
         if (enableMpris) {
             mpris?.updatePlaybackState(PlaybackState.Idle)
         }
+        startPauseWatchdog()
+    }
+
+    /**
+     * Playback must never stop on its own: only an explicit pause() may leave mpv paused. If the
+     * engine ends up paused while the app believes it is playing (stale halt/load, driver or
+     * network hiccup, anything), resume it immediately.
+     */
+    private fun startPauseWatchdog() {
+        scope.launch {
+            while (true) {
+                delay(350)
+                runCatching {
+                    val wantsPlaying = _state.value == PlaybackState.Playing &&
+                        !pauseRequested.get() &&
+                        volumeFadeJob?.isActive != true
+                    // UI says paused but nobody asked for it (stale state): go back to playing.
+                    if (_state.value == PlaybackState.Paused && !pauseRequested.get() &&
+                        _nowPlaying.value != null && volumeFadeJob?.isActive != true
+                    ) {
+                        trace("watchdog: paused state without a pause request — resuming")
+                        play()
+                        return@runCatching
+                    }
+                    if (wantsPlaying && activeMpv().isPaused()) {
+                        trace("watchdog: engine paused without a pause request — resuming")
+                        activeMpv().play()
+                        if (dualOverlapActive.get()) idleMpv().takeIf { it.isPaused() }?.play()
+                    }
+                }
+            }
+        }
     }
 
     override suspend fun restoreQueue(tracks: List<QueueTrack>, startIndex: Int, positionMs: Long) {
@@ -228,7 +289,9 @@ class DefaultPlaybackController(
         }
     }
 
-    override suspend fun playVideo(videoId: String) {
+    override suspend fun playVideo(videoId: String) = detached { playVideoImpl(videoId) }
+
+    private suspend fun playVideoImpl(videoId: String) {
         val existingIdx = _queueTracks.value.indexOfFirst { it.videoId == videoId }
         val track = _queueTracks.value.getOrNull(existingIdx)
             ?: if (videoId.startsWith("local:") || videoId.startsWith("offline:")) {
@@ -262,11 +325,14 @@ class DefaultPlaybackController(
         schedulePrefetchAfterCurrent()
     }
 
-    override suspend fun playQueue(tracks: List<QueueTrack>, startIndex: Int) {
+    override suspend fun playQueue(tracks: List<QueueTrack>, startIndex: Int) = detached { playQueueImpl(tracks, startIndex) }
+
+    private suspend fun playQueueImpl(tracks: List<QueueTrack>, startIndex: Int) {
         if (tracks.isEmpty()) return
         val start = startIndex.coerceIn(0, tracks.lastIndex)
         val track = tracks[start]
         val sameQueue = tracks.map { it.videoId } == _queueIds.value
+        if (!sameQueue) _radioActive.value = false
         val dual = shouldDualCrossfade(haltOutgoing = true)
         val gen = beginTrackChange(track, haltPlayer = !dual, softUi = dual)
         if (gen != loadGeneration.get()) return
@@ -300,8 +366,11 @@ class DefaultPlaybackController(
         schedulePrefetchAfterCurrent()
     }
 
-    override suspend fun playLocalQueue(tracks: List<QueueTrack>, startIndex: Int) {
+    override suspend fun playLocalQueue(tracks: List<QueueTrack>, startIndex: Int) = detached { playLocalQueueImpl(tracks, startIndex) }
+
+    private suspend fun playLocalQueueImpl(tracks: List<QueueTrack>, startIndex: Int) {
         if (tracks.isEmpty()) return
+        _radioActive.value = false
         val withPaths = tracks.filter { !it.localPath.isNullOrBlank() }
         if (withPaths.isEmpty()) return
         val requested = tracks.getOrNull(startIndex)?.videoId
@@ -318,8 +387,21 @@ class DefaultPlaybackController(
         loadAndPlay(track.videoId, generation = gen, dualCrossfade = dual)
     }
 
-    override suspend fun startRadio(videoId: String) {
+    override suspend fun startRadio(videoId: String) = detached { startRadioImpl(videoId) }
+
+    private suspend fun startRadioImpl(videoId: String) {
         if (videoId.isBlank() || isFileTrack(videoId)) return
+        if (_radioActive.value && _nowPlaying.value?.videoId == videoId) {
+            // Radio chip pressed again: turn it off and drop the radio's upcoming tracks.
+            _radioActive.value = false
+            playMutex.withLock {
+                val tracks = _queueTracks.value
+                val idx = _queueIndex.value
+                if (idx in tracks.indices) setQueueLocked(tracks.take(idx + 1), idx)
+            }
+            return
+        }
+        _radioActive.value = true
         val alreadyPlaying = _nowPlaying.value?.videoId == videoId &&
             _state.value != PlaybackState.Idle &&
             _state.value != PlaybackState.Error
@@ -389,7 +471,17 @@ class DefaultPlaybackController(
         softUi: Boolean = false,
     ): Int {
         val gen = loadGeneration.incrementAndGet()
+        trace("beginTrackChange gen=$gen track=${track.videoId} (${track.title}) haltPlayer=$haltPlayer")
         trackStartedAtMs = System.currentTimeMillis()
+        if (!skipHistoryPush) {
+            _nowPlaying.value?.videoId?.let { prev ->
+                if (prev != track.videoId) synchronized(playedHistory) {
+                    if (playedHistory.peekLast() != prev) playedHistory.addLast(prev)
+                    while (playedHistory.size > 300) playedHistory.removeFirst()
+                }
+            }
+        }
+        skipHistoryPush = false
         pauseRequested.set(false)
         navigateJob?.cancel()
         cancelVolumeFade()
@@ -516,7 +608,7 @@ class DefaultPlaybackController(
         val i = desiredIndex.get().takeIf { it >= 0 } ?: _queueIndex.value
         val nextIdx = when {
             i >= 0 && i + 1 < q.size ->
-                if (_shuffleEnabled.value) pickShuffledNext(i) else i + 1
+                i + 1
             _repeatMode.value == RepeatMode.All && q.isNotEmpty() -> 0
             else -> {
                 val seed = q.getOrNull(i)
@@ -615,7 +707,7 @@ class DefaultPlaybackController(
         val q = _queueIds.value
         val i = desiredIndex.get().takeIf { it >= 0 } ?: _queueIndex.value
         if (i >= 0 && i + 1 < q.size) {
-            val next = if (_shuffleEnabled.value) pickShuffledNext(i) else i + 1
+            val next = i + 1
             requestIndex(next, haltPlayer = false)
             return
         }
@@ -772,7 +864,13 @@ class DefaultPlaybackController(
         } catch (t: kotlinx.coroutines.TimeoutCancellationException) {
             if (generation == loadGeneration.get()) failPlayback("Audio did not become ready. Try playing again.")
         } catch (t: kotlinx.coroutines.CancellationException) {
-            if (generation == loadGeneration.get()) stop()
+            trace("loadAndPlay cancelled gen=$generation current=${loadGeneration.get()} cause=${t.message}")
+            // Only the player's own cancellations (a newer load superseding this one) should end up here;
+            // a stray cancellation must never stop audio that is already playing.
+            if (generation == loadGeneration.get() && _state.value == PlaybackState.Loading) {
+                trace("loadAndPlay cancelled while still loading -> stop")
+                stop()
+            }
             throw t
         } catch (_: CancellationLike) {
             // superseded by a newer pick
@@ -911,6 +1009,7 @@ class DefaultPlaybackController(
                 if (_nowPlaying.value?.videoId == id) activeMpv().seek(position / 1000.0)
                 restoredPosition = null
             }
+            trace("hard-cut ready gen=$generation pauseRequested=${pauseRequested.get()} -> ${if (pauseRequested.get()) "pause" else "play"}")
             if (pauseRequested.get()) activeMpv().pause() else activeMpv().play()
             _state.value = if (pauseRequested.get()) PlaybackState.Paused else PlaybackState.Playing
             mpris?.updatePlaybackState(_state.value)
@@ -1105,6 +1204,7 @@ class DefaultPlaybackController(
     }
 
     override fun play() {
+        trace("play() requested, state=${_state.value}, from " + callerChain())
         if (_state.value == PlaybackState.Playing) return
         if (_state.value in listOf(PlaybackState.Ended, PlaybackState.Error, PlaybackState.Idle)) {
             if (_queueIndex.value >= 0) requestIndex(_queueIndex.value)
@@ -1140,11 +1240,16 @@ class DefaultPlaybackController(
     @Volatile private var trackStartedAtMs = 0L
 
     override fun toggleFromList() {
+        trace("toggleFromList() state=${_state.value} sinceStart=${System.currentTimeMillis() - trackStartedAtMs}ms from " + callerChain())
         if (System.currentTimeMillis() - trackStartedAtMs < LIST_TOGGLE_GUARD_MS) return
+        // A slow stream resolve leaves the row "current" while still loading; a second click
+        // there must not queue a pause that lands the moment the audio becomes ready.
+        if (_state.value == PlaybackState.Loading) return
         if (_state.value == PlaybackState.Playing) pause() else play()
     }
 
     override fun pause() {
+        trace("pause() requested, state=${_state.value}, from " + callerChain())
         if (_state.value !in listOf(PlaybackState.Playing, PlaybackState.Loading)) return
         pauseRequested.set(true)
         volumeFadeJob?.cancel()
@@ -1156,23 +1261,27 @@ class DefaultPlaybackController(
             runCatching { idleMpv().pause() }
             return
         }
+        val pauseGeneration = loadGeneration.get()
         volumeFadeJob = scope.launch {
             val fades = fadeSettings()
             val target = userVolumePercent()
             if (fades.playPauseFadeEnabled && fades.playPauseFadeMs > 0L) {
-                rampMpvVolume(from = target, to = 0, durationMs = fades.playPauseFadeMs)
+                rampMpvVolume(from = target, to = 0, durationMs = fades.playPauseFadeMs, generation = pauseGeneration)
                 // A track change cancels this job; never pause the track that replaced ours.
                 coroutineContext.ensureActive()
+                if (pauseGeneration != loadGeneration.get()) return@launch
                 runCatching { activeMpv().pause() }
                 // Keep mpv at user target while paused so a hard play isn't silent.
                 runCatching { activeMpv().setVolume(userVolumePercent()) }
             } else {
+                if (pauseGeneration != loadGeneration.get()) return@launch
                 runCatching { activeMpv().pause() }
             }
         }
     }
 
     override fun stop() {
+        trace("stop() from " + callerChain())
         loadGeneration.incrementAndGet()
         navigateJob?.cancel()
         streams.dropNext()
@@ -1213,7 +1322,7 @@ class DefaultPlaybackController(
         val q = _queueIds.value
         val i = desiredIndex.get().takeIf { it >= 0 } ?: _queueIndex.value
         if (i >= 0 && i + 1 < q.size) {
-            val next = if (_shuffleEnabled.value) pickShuffledNext(i) else i + 1
+            val next = i + 1
             requestIndex(next, haltPlayer = _state.value != PlaybackState.Ended)
             return
         }
@@ -1238,6 +1347,23 @@ class DefaultPlaybackController(
         }
         val q = _queueIds.value
         val i = desiredIndex.get().takeIf { it >= 0 } ?: _queueIndex.value
+        if (_shuffleEnabled.value) {
+            // Shuffled queue order says nothing about what played before: go back through history.
+            val cur = _nowPlaying.value?.videoId
+            val target = synchronized(playedHistory) {
+                var found = -1
+                while (playedHistory.isNotEmpty() && found < 0) {
+                    val id = playedHistory.removeLast()
+                    if (id != cur) found = q.lastIndexOf(id)
+                }
+                found
+            }
+            if (target >= 0) {
+                skipHistoryPush = true
+                requestIndex(target)
+                return
+            }
+        }
         if (i <= 0 || q.isEmpty()) {
             seekTo(0L)
             return
@@ -1253,10 +1379,27 @@ class DefaultPlaybackController(
             // Shuffle upcoming after the current track; keep history + current fixed.
             val tracks = _queueTracks.value.toMutableList()
             val i = _queueIndex.value.coerceAtLeast(0)
+            preShuffleOrder = tracks.map { it.videoId }
             if (i < tracks.lastIndex) {
                 val head = tracks.subList(0, i + 1).toList()
                 val tail = tracks.subList(i + 1, tracks.size).shuffled()
                 setQueueLocked(head + tail, i)
+            }
+        } else {
+            // Back to the original order, continuing from wherever the current track sits in it.
+            val original = preShuffleOrder
+            preShuffleOrder = null
+            if (original != null) {
+                val tracks = _queueTracks.value
+                val rank = original.withIndex().associate { (idx, id) -> id to idx }
+                val ordered = tracks.withIndex()
+                    .sortedWith(compareBy({ rank[it.value.videoId] ?: Int.MAX_VALUE }, { it.index }))
+                    .map { it.value }
+                val currentId = tracks.getOrNull(_queueIndex.value)?.videoId
+                val newIndex = ordered.indexOfFirst { it.videoId == currentId }
+                if (newIndex >= 0) {
+                    scope.launch { playMutex.withLock { setQueueLocked(ordered, newIndex) } }
+                }
             }
         }
     }

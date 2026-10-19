@@ -79,3 +79,36 @@ class LibraryIntegrityTest {
         assertTrue(repo.allArtists().isEmpty())
     }
 }
+
+class LocalPlaylistTest {
+    private fun database(block: (VisageDatabase) -> Unit) {
+        val directory = Files.createTempDirectory("vivi-db-test").toFile()
+        val driver = DatabaseFactory.createDriver(directory.resolve("library.db"))
+        try { block(VisageDatabase(driver)) } finally { driver.close(); directory.deleteRecursively() }
+    }
+
+    @Test fun `local playlists create add reorder remove and delete`() = database { db ->
+        val repo = LibraryRepository(db)
+        val id = repo.createLocalPlaylist("Road trip")
+        assertEquals(listOf("Road trip"), repo.localPlaylists().map { it.title })
+        assertTrue(repo.addToLocalPlaylist(id, "a", "A", "x", null, 60))
+        assertTrue(repo.addToLocalPlaylist(id, "b", "B", "x", null, 30))
+        assertFalse(repo.addToLocalPlaylist(id, "a", "A", "x", null, 60))
+        assertEquals(listOf("a", "b"), repo.getPlaylistSongs(id).map { it.id })
+        assertEquals(2L, repo.getPlaylist(id)?.song_count)
+        repo.moveInLocalPlaylist(id, 0, 1)
+        assertEquals(listOf("b", "a"), repo.getPlaylistSongs(id).map { it.id })
+        repo.removeFromLocalPlaylist(id, "b")
+        assertEquals(listOf("a"), repo.getPlaylistSongs(id).map { it.id })
+        repo.renameLocalPlaylist(id, "Trip")
+        assertEquals("Trip", repo.getPlaylist(id)?.title)
+        repo.deleteLocalPlaylist(id)
+        assertTrue(repo.localPlaylists().isEmpty())
+    }
+
+    @Test fun `reorder handles bad indices`() {
+        assertEquals(listOf(2, 3, 1), LibraryRepository.reorder(listOf(1, 2, 3), 0, 2))
+        assertNull(LibraryRepository.reorder(listOf(1, 2, 3), 0, 0))
+        assertNull(LibraryRepository.reorder(listOf(1, 2, 3), 5, 0))
+    }
+}

@@ -1,0 +1,51 @@
+allFolders:
+SELECT * FROM library_folder ORDER BY position ASC, created_ms ASC;
+
+folderById:
+SELECT * FROM library_folder WHERE id = ?;
+
+insertFolder:
+INSERT INTO library_folder(id, title, icon, accent, cover_kind, cover_ref, sort, expanded, position, created_ms)
+VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?);
+
+nextFolderPosition:
+SELECT COALESCE(MAX(position) + 1, 0) FROM library_folder;
+
+updateFolder:
+UPDATE library_folder SET title = ?, icon = ?, accent = ?, cover_kind = ?, cover_ref = ? WHERE id = ?;
+
+setFolderSort:
+UPDATE library_folder SET sort = ? WHERE id = ?;
+
+setFolderExpanded:
+UPDATE library_folder SET expanded = ? WHERE id = ?;
+
+deleteFolder:
+DELETE FROM library_folder WHERE id = ?;
+
+allFolderItems:
+SELECT * FROM library_folder_item ORDER BY folder_id, position ASC;
+
+removeFolderItem:
+DELETE FROM library_folder_item WHERE item_type = ? AND item_id = ?;
+
+putFolderItem:
+INSERT OR REPLACE INTO library_folder_item(folder_id, item_type, item_id, position) VALUES (?, ?, ?, ?);
+
+nextItemPosition:
+SELECT COALESCE(MAX(position) + 1, 0) FROM library_folder_item WHERE folder_id = ?;
+
+setItemPosition:
+UPDATE library_folder_item SET position = ? WHERE item_type = ? AND item_id = ?;
+
+allHidden:
+SELECT * FROM library_hidden;
+
+hide:
+INSERT OR IGNORE INTO library_hidden(item_type, item_id) VALUES (?, ?);
+
+unhide:
+DELETE FROM library_hidden WHERE item_type = ? AND item_id = ?;
+
+clearHidden:
+DELETE FROM library_hidden;

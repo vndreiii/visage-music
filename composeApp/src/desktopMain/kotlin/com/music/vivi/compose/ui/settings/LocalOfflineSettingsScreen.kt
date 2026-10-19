@@ -227,6 +227,29 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
             }
         }
 
+        SettingsSection("Tag Manager") {
+            Column(Modifier.padding(vertical = 4.dp)) {
+                SwitchItem(
+                    icon = Icons.Outlined.Folder,
+                    title = "Back up originals before writing",
+                    subtitle = "Keeps copies of changed files (last 10 batches) so a batch can be undone later",
+                    checked = prefs.getBoolean(PrefKeys.TagBackupEnabled, true),
+                    onChecked = { prefs.setBoolean(PrefKeys.TagBackupEnabled, it) },
+                )
+                SwitchItem(
+                    icon = Icons.Outlined.Album,
+                    title = "Write ID3v2.3 tags",
+                    subtitle = "Better compatibility with old players; default is ID3v2.4",
+                    checked = prefs.getBoolean(PrefKeys.TagId3v23, false),
+                    onChecked = { prefs.setBoolean(PrefKeys.TagId3v23, it) },
+                )
+                OutlinedButton(
+                    onClick = { navController.navigate(com.music.vivi.compose.navigation.Routes.TAG_MANAGER) },
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+                ) { Text("Open Tag Manager") }
+            }
+        }
+
         SettingsSection("Cache") {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 OutlinedButton(

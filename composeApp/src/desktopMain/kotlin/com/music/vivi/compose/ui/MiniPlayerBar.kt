@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui
 
+import com.music.vivi.compose.ui.component.CoverImage
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
@@ -8,6 +9,11 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.hoverable
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Box
@@ -101,6 +107,8 @@ fun resolveMiniPlayerStyle(prefs: DesktopPrefs): MiniPlayerStyle {
 @Composable
 fun MiniPlayerBar(
     onExpand: (() -> Unit)? = null,
+    /** Makes each credited artist a link (name) -> artist page. Null keeps plain text. */
+    onOpenArtist: ((String) -> Unit)? = null,
     modifier: Modifier = Modifier,
     styleOverride: MiniPlayerStyle? = null,
     backgroundStyleOverride: PlayerBackgroundStyle? = null,
@@ -183,7 +191,7 @@ fun MiniPlayerBar(
     val hoverLift by animateDpAsState(
         targetValue = when {
             !interactive -> 0.dp
-            miniStyle == MiniPlayerStyle.FULL_WIDTH_BAR -> 0.dp
+            miniStyle == MiniPlayerStyle.FULL_WIDTH_BAR || miniStyle == MiniPlayerStyle.FLOATING_PILL -> 0.dp
             hovered -> (-6).dp
             else -> 0.dp
         },
@@ -192,16 +200,18 @@ fun MiniPlayerBar(
 
     val outerPadding = when (miniStyle) {
         MiniPlayerStyle.FULL_WIDTH_BAR -> Modifier.padding(0.dp)
-        MiniPlayerStyle.FLOATING_PILL -> Modifier.padding(horizontal = 24.dp, vertical = 16.dp)
+        // "Notch" from the bottom: attached to the bottom edge of the viewport, no outer bottom/top margin.
+        MiniPlayerStyle.FLOATING_PILL -> Modifier.padding(horizontal = 24.dp)
         MiniPlayerStyle.COMPACT_EDGE -> Modifier.padding(end = 20.dp, bottom = 20.dp, start = 20.dp)
     }
     val boxAlign = when (miniStyle) {
         MiniPlayerStyle.COMPACT_EDGE -> Alignment.CenterEnd
+        MiniPlayerStyle.FLOATING_PILL -> Alignment.BottomCenter
         else -> Alignment.Center
     }
     val surfaceShape = when (miniStyle) {
         MiniPlayerStyle.FULL_WIDTH_BAR -> RoundedCornerShape(0.dp)
-        MiniPlayerStyle.FLOATING_PILL -> RoundedCornerShape(50)
+        MiniPlayerStyle.FLOATING_PILL -> RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
         MiniPlayerStyle.COMPACT_EDGE -> RoundedCornerShape(20.dp)
     }
     val surfaceWidth = when (miniStyle) {
@@ -258,12 +268,7 @@ fun MiniPlayerBar(
                             modifier = Modifier.size(44.dp),
                         ) {
                             Box(contentAlignment = Alignment.Center) {
-                                AsyncImage(
-                                    model = track?.artworkUrl,
-                                    contentDescription = null,
-                                    contentScale = ContentScale.Crop,
-                                    modifier = Modifier.fillMaxSize(),
-                                )
+                                CoverImage(track?.artworkUrl, track?.title ?: "mini", Modifier.fillMaxSize())
                                 if (loading) {
                                     VisageLoadingIndicator(
                                         modifier = Modifier.size(22.dp),
@@ -297,19 +302,30 @@ fun MiniPlayerBar(
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
-                            Text(
-                                when {
-                                    state == PlaybackState.Error && !lastError.isNullOrBlank() ->
-                                        lastError!!.take(64)
-                                    state == PlaybackState.Loading && track?.artist.isNullOrBlank() -> "Resolving stream…"
-                                    idleEmpty -> "Pick a song to start"
-                                    else -> track?.artist?.takeIf { it.isNotBlank() } ?: ""
-                                },
-                                style = MaterialTheme.typography.bodySmall,
-                                color = Color.White.copy(alpha = 0.75f),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            val credits = track?.artist.orEmpty()
+                            if (onOpenArtist != null && credits.isNotBlank() && state != PlaybackState.Error && !idleEmpty) {
+                                com.music.vivi.compose.ui.artist.ArtistLinks(
+                                    credits = credits,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.75f),
+                                    hoverColor = Color.White,
+                                    onOpen = onOpenArtist,
+                                )
+                            } else {
+                                Text(
+                                    when {
+                                        state == PlaybackState.Error && !lastError.isNullOrBlank() ->
+                                            lastError!!.take(64)
+                                        state == PlaybackState.Loading && track?.artist.isNullOrBlank() -> "Resolving stream…"
+                                        idleEmpty -> "Pick a song to start"
+                                        else -> track?.artist?.takeIf { it.isNotBlank() } ?: ""
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = Color.White.copy(alpha = 0.75f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
 
                         if (miniStyle != MiniPlayerStyle.COMPACT_EDGE) {
@@ -375,14 +391,12 @@ fun MiniPlayerBar(
                         }
                     }
 
-                    if (miniStyle == MiniPlayerStyle.FLOATING_PILL || miniStyle == MiniPlayerStyle.COMPACT_EDGE) {
-                        LinearProgressIndicator(
+                    if (miniStyle != MiniPlayerStyle.COMPACT_EDGE) {
+                        MiniSeekLine(
                             progress = progress,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(2.dp),
-                            color = Color.White.copy(alpha = 0.9f),
-                            trackColor = Color.White.copy(alpha = 0.2f),
+                            isPlaying = playing,
+                            enabled = durationState.value > 0L,
+                            onSeekFraction = { f -> controller.seekTo((f * durationState.value).toLong()) },
                         )
                     }
                 }
@@ -421,6 +435,87 @@ private fun BoxScope.VolumeOverlay(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
+        }
+    }
+}
+
+
+/**
+ * Seekable progress line for the mini player in the M3 Expressive style: a thin rounded track that
+ * parts around a vertical pill handle. It has its own row at the bottom of the bar. Tap or drag to
+ * seek; the seek commits on release.
+ */
+@Composable
+private fun MiniSeekLine(
+    progress: () -> Float,
+    enabled: Boolean,
+    isPlaying: Boolean,
+    onSeekFraction: (Float) -> Unit,
+) {
+    val interaction = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+    val hovered by interaction.collectIsHoveredAsState()
+    var drag by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Float?>(null) }
+    val active = hovered || drag != null
+    val spec = com.music.vivi.compose.ui.motion.VisageMotion.spatialFast<Float>()
+    val trackH by androidx.compose.animation.core.animateFloatAsState(if (active) 6f else 4f, spec, label = "miniTrack")
+    val handleW by androidx.compose.animation.core.animateFloatAsState(if (drag != null) 3f else 4f, spec, label = "miniHandleW")
+    val handleH by androidx.compose.animation.core.animateFloatAsState(if (active) 20f else 14f, spec, label = "miniHandleH")
+    var widthPx by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(1f) }
+    // Takes its own row at the bottom of the bar (the bar's bottom edge is flat), so nothing overlaps it.
+    Box(Modifier.fillMaxWidth()) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(26.dp)
+                .hoverable(interaction)
+                .onSizeChanged { widthPx = it.width.toFloat().coerceAtLeast(1f) }
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    detectTapGestures { o -> onSeekFraction(((o.x - 18.dp.toPx()) / (widthPx - 36.dp.toPx())).coerceIn(0f, 1f)) }
+                }
+                .pointerInput(enabled) {
+                    if (!enabled) return@pointerInput
+                    val pad = 18.dp.toPx()
+                    fun frac(x: Float) = ((x - pad) / (widthPx - 2 * pad)).coerceIn(0f, 1f)
+                    detectHorizontalDragGestures(
+                        onDragStart = { o -> drag = frac(o.x) },
+                        onDragEnd = { drag?.let(onSeekFraction); drag = null },
+                        onDragCancel = { drag = null },
+                        onHorizontalDrag = { change, _ -> change.consume(); drag = frac(change.position.x) },
+                    )
+                },
+        ) {
+            androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                val pad = 18.dp.toPx()
+                val x0 = pad
+                val x1 = size.width - pad
+                val w = x1 - x0
+                val th = trackH.dp.toPx()
+                val cy = size.height - 13.dp.toPx()
+                val f = (drag ?: progress()).coerceIn(0f, 1f)
+                val hx = x0 + w * f
+                val gap = 4.dp.toPx()
+                val r = androidx.compose.ui.geometry.CornerRadius(th / 2f, th / 2f)
+                // Unplayed part (right of the handle)
+                val rightStart = (hx + gap).coerceAtMost(x1)
+                if (x1 - rightStart > 0.5f) {
+                    drawRoundRect(Color.White.copy(alpha = 0.30f), androidx.compose.ui.geometry.Offset(rightStart, cy - th / 2f), androidx.compose.ui.geometry.Size(x1 - rightStart, th), r)
+                }
+                // Played part (left of the handle)
+                val leftEnd = (hx - gap).coerceAtLeast(x0)
+                if (leftEnd - x0 > 0.5f) {
+                    drawRoundRect(Color.White, androidx.compose.ui.geometry.Offset(x0, cy - th / 2f), androidx.compose.ui.geometry.Size(leftEnd - x0, th), r)
+                }
+                // Pill handle
+                val hw = handleW.dp.toPx()
+                val hh = handleH.dp.toPx()
+                drawRoundRect(
+                    Color.White,
+                    androidx.compose.ui.geometry.Offset(hx - hw / 2f, cy - hh / 2f),
+                    androidx.compose.ui.geometry.Size(hw, hh),
+                    androidx.compose.ui.geometry.CornerRadius(hw / 2f, hw / 2f),
+                )
+            }
         }
     }
 }

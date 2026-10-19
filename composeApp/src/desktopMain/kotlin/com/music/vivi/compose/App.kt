@@ -106,6 +106,7 @@ fun FrameWindowScope.App(
                 )
                 com.music.vivi.compose.crash.CrashDialogHost(onQuit = onClose)
                 com.music.vivi.compose.update.UpdatePrompt()
+                com.music.vivi.compose.keys.ShortcutOverlays()
             }
         }
     }

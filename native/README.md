@@ -9,6 +9,9 @@ Optional Rust helpers for VIsage, loaded by the JVM through JNA
 | `visage_search_new/query/free` | In-memory fuzzy index (nucleo) over `(id, text)` pairs, used for "On this device" results in Search. |
 | `visage_mpris_*` | MPRIS2 service (zbus) — see below. |
 | `visage_canvas_resolve` | Motion-artwork lookup: Apple Music (live token scrape, scoring port of upstream), Tidal, Vivi manifest — queried concurrently, results cached on disk. |
+| `visage_artist_resolve` | Artist portrait/banner/bio: Deezer, TheAudioDB (test key) and Wikipedia queried concurrently for the primary credited artist; exact-name matches only; disk + memory cache (hits 7 d, misses 6 h), polite per-host spacing. |
+| `visage_tags_read/write/restore` | Tag Manager file access via lofty (MP3 ID3v2.3/2.4, FLAC, Ogg/Opus, M4A, WAV/AIFF). Writes go to a temp copy next to the file, are re-read and verified, then atomically renamed over the original; read-only files are refused; an optional backup of the untouched original is copied first (used for Undo). |
+| `visage_tags_lookup` | Metadata candidates from MusicBrainz (1 req/s, descriptive User-Agent; Cover Art Archive URLs derived from release ids), Deezer, iTunes Search and TheAudioDB, queried concurrently; AcoustID only when the caller passes a key and a chromaprint fingerprint (`fpcalc`). Scoring happens in Kotlin. |
 
 ```bash
 cargo build --release --manifest-path native/Cargo.toml   # run-dev.sh does this automatically

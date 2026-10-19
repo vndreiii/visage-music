@@ -36,7 +36,9 @@ data class SongItem(
     val libraryAddToken: String? = null,
     val libraryRemoveToken: String? = null,
     val historyRemoveToken: String? = null,
-    val viewCountText: String? = null
+    val viewCountText: String? = null,
+    /** Id of the video (OMV/UGC) twin of an audio (ATV) track, when the watch-next response offers one. */
+    val counterpartVideoId: String? = null,
 ) : YTItem() {
     val isVideoSong: Boolean
         get() = musicVideoType != null && musicVideoType != MUSIC_VIDEO_TYPE_ATV

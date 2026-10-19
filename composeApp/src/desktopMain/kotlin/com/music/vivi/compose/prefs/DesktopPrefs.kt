@@ -83,6 +83,12 @@ class DesktopPrefs(
 
 /** Key names mirrored from upstream PreferenceKeys. */
 object PrefKeys {
+    /** Tag Manager: copy originals to a backup folder before rewriting tags (default on). */
+    const val TagBackupEnabled = "tagBackupEnabled"
+    /** Tag Manager: write ID3v2.3 instead of 2.4 in MP3/WAV (default off). */
+    const val TagId3v23 = "tagId3v23"
+    /** Optional AcoustID application key; fingerprint lookup runs only with this and `fpcalc`. */
+    const val TagAcoustidKey = "tagAcoustidKey"
     const val DarkMode = "darkMode"
     const val PureBlack = "pureBlack"
     const val PureBlackMiniPlayer = "pureBlackMiniPlayer"
@@ -108,6 +114,12 @@ object PrefKeys {
     const val TopNavStyle = "topNavStyle"
     const val CanvasSource = "canvasSource"
     const val EnableCanvas = "enableCanvas"
+    const val PlayerVideoEnabled = "playerVideoEnabled"
+    /** Legacy boolean (true = fill); superseded by [PlayerVideoFraming], still read for migration. */
+    const val PlayerVideoFill = "playerVideoFill"
+    /** Fit | Fill | Original (see VideoFraming). */
+    const val PlayerVideoFraming = "playerVideoFraming"
+    const val PlayerVideoQuality = "playerVideoQuality"
     const val CanvasUseGpu = "canvasUseGpu"
     const val MiniPlayerBackgroundDarkness = "miniPlayerBackgroundDarkness"
     const val PlayerBackgroundDarkness = "playerBackgroundDarkness"
@@ -125,6 +137,33 @@ object PrefKeys {
     const val PlaybackVolume = "playbackVolume"
     const val LyricsTextAlign = "lyricsTextAlign"
     const val LyricsProvider = "lyricsProvider"
+    // Lyrics experience (see ui/player/lyrics/LyricsConfig.kt for defaults / ranges)
+    const val LyricsTextStyle = "lyricsTextStyle"
+    const val LyricsAnimation = "lyricsAnimation"
+    const val LyricsFont = "lyricsFont"
+    const val LyricsFontWeight = "lyricsFontWeight"
+    const val LyricsFontSize = "lyricsFontSize"
+    const val LyricsLineSpacing = "lyricsLineSpacing"
+    const val LyricsTextCase = "lyricsTextCase"
+    const val LyricsVisibility = "lyricsVisibility"
+    const val LyricsFadeEdges = "lyricsFadeEdges"
+    /** v2: the old key held 0.38–0.45, which put the active line above the centre; start fresh at 0.5. */
+    const val LyricsAnchor = "lyricsAnchorV2"
+    const val LyricsWordSync = "lyricsWordSync"
+    const val LyricsEstimateWords = "lyricsEstimateWords"
+    const val LyricsGlow = "lyricsGlow"
+    const val LyricsBlur = "lyricsBlur"
+    const val LyricsInactiveBrightness = "lyricsInactiveBrightness"
+    const val LyricsAnimStrength = "lyricsAnimStrength"
+    const val LyricsAccent = "lyricsAccent"
+    const val LyricsShowTranslation = "lyricsShowTranslation"
+    const val LyricsShowBackgroundVocals = "lyricsShowBackgroundVocals"
+    const val LyricsTapToSeek = "lyricsTapToSeek"
+    const val LyricsAutoResume = "lyricsAutoResume"
+    const val LyricsSyncOffsetMs = "lyricsSyncOffsetMs"
+    const val LyricsGapStyle = "lyricsGapStyle"
+    const val LyricsBackground = "lyricsBackground"
+    const val LyricsBackgroundIntensity = "lyricsBackgroundIntensity"
     const val DownloadPath = "downloadPath"
     const val DownloadFormat = "downloadFormat"
     const val DownloadQuality = "downloadQuality"

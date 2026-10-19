@@ -76,7 +76,38 @@ object NextPage {
                     it.musicInlineBadgeRenderer?.icon?.iconType == "MUSIC_EXPLICIT_BADGE"
                 } != null,
             libraryAddToken = libraryTokens.addToken,
-            libraryRemoveToken = libraryTokens.removeToken
+            libraryRemoveToken = libraryTokens.removeToken,
+            counterpartVideoId = counterpartVideoId(renderer),
         )
+    }
+
+    /** The "Switch to Video" twin's id, only when it really is a video (not another audio track). */
+    fun counterpartVideoId(renderer: PlaylistPanelVideoRenderer): String? =
+        renderer.counterpart?.asSequence()
+            ?.mapNotNull { it.counterpartRenderer?.playlistPanelVideoRenderer }
+            ?.firstOrNull { c ->
+                c.videoId != null && c.videoId != renderer.videoId &&
+                    (c.navigationEndpoint?.musicVideoType.let { it == null || MusicVideoTypes.isVideo(it) })
+            }?.videoId
+}
+
+/** Classification of YouTube Music `musicVideoType` values. */
+object MusicVideoTypes {
+    const val ATV = "MUSIC_VIDEO_TYPE_ATV"
+    const val OMV = "MUSIC_VIDEO_TYPE_OMV"
+    const val UGC = "MUSIC_VIDEO_TYPE_UGC"
+    const val OFFICIAL_SOURCE = "MUSIC_VIDEO_TYPE_OFFICIAL_SOURCE_MUSIC"
+
+    /** True for types that carry real video (everything but the static-art audio track). */
+    fun isVideo(type: String?): Boolean = type != null && type != ATV
+
+    /**
+     * The video id to show for a track: the track itself when it already is a video, else the
+     * audio track's counterpart, else null (no video available).
+     */
+    fun videoIdFor(id: String, type: String?, counterpartVideoId: String?): String? = when {
+        isVideo(type) -> id
+        counterpartVideoId != null -> counterpartVideoId
+        else -> null
     }
 }

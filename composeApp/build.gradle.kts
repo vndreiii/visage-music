@@ -46,7 +46,10 @@ kotlin {
                 implementation(libs.koin.core)
                 implementation(libs.koin.compose)
                 implementation(libs.navigation.compose)
+                // Direct input into NavHost's seekable predictive back (touchpad back swipe).
+                implementation("androidx.navigationevent:navigationevent:1.0.2")
                 implementation(libs.kotlinx.coroutines.core)
+                implementation(libs.kotlinx.serialization.json)
                 implementation(libs.kotlinx.coroutines.swing)
                 implementation(libs.coil.compose)
                 implementation(libs.coil.network.okhttp)

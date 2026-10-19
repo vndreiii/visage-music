@@ -93,6 +93,8 @@ fun FrameWindowScope.VisageTopBar(
     onClose: () -> Unit,
     /** Deep settings routes (Appearance, Player, …) — bypasses main-tab pop behavior. */
     onOpenSettingsRoute: (String) -> Unit = onNavigate,
+    /** Page-contextual buttons (sidebar toggles) shown just left of the caption buttons. */
+    extraActions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
 ) {
     val prefs = koinInject<DesktopPrefs>()
     var prefsTick by remember { mutableIntStateOf(0) }
@@ -238,6 +240,7 @@ fun FrameWindowScope.VisageTopBar(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
+                    extraActions()
                     WindowCaptionButton(
                         icon = Icons.Rounded.Minimize,
                         description = "Minimize",

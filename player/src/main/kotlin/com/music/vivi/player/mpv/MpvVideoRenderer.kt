@@ -52,6 +52,8 @@ class MpvVideoRenderer(
     startHeld: Boolean = false,
     /** Opt-in GPU decoding; software is the default to avoid native driver crashes. */
     useGpu: Boolean = false,
+    /** Initial playback position (music-video sync starts mid-track). */
+    private val startSec: Double = 0.0,
 ) : AutoCloseable {
     private val lib = MpvLib.INSTANCE
     private val render = MpvRenderLib.INSTANCE
@@ -61,6 +63,7 @@ class MpvVideoRenderer(
     @Volatile private var paused = false
     @Volatile private var held = startHeld
     @Volatile private var seekToStart = false
+    @Volatile private var pendingSeek = Double.NaN
 
     // Held as a field so JNA's callback trampoline is never garbage collected.
     private val updateCallback = object : MpvRenderLib.UpdateCallback {
@@ -96,6 +99,8 @@ class MpvVideoRenderer(
         opt("demuxer-seekable-cache", "yes")
         opt("cache-secs", "120")
         opt("hr-seek", "yes")
+        if (startSec > 0.0) opt("start", startSec.toString())
+        httpHeaders["Referer"]?.let { opt("referrer", it) }
         // Canvas HLS ladders go up to 4K HEVC; cap so software scaling stays cheap.
         opt("hls-bitrate", "8000000")
         opt("vd-lavc-threads", "2")
@@ -119,6 +124,12 @@ class MpvVideoRenderer(
     fun setHeld(value: Boolean) {
         held = value
         applyPause()
+    }
+
+    /** Seek (absolute, exact) to [sec]; applied on the render thread. */
+    fun seekTo(sec: Double) {
+        pendingSeek = sec
+        wake.release()
     }
 
     /** Rewind to the first frame; call while held so the cache-served seek is invisible. */
@@ -159,6 +170,12 @@ class MpvVideoRenderer(
                 wake.tryAcquire(250, TimeUnit.MILLISECONDS)
                 if (!running.get()) break
                 wake.drainPermits()
+                val ps = pendingSeek
+                if (!ps.isNaN()) {
+                    pendingSeek = Double.NaN
+                    endReported = false
+                    lib.mpv_command(handle, StringArray(arrayOf("seek", ps.toString(), "absolute", "exact")))
+                }
                 if (seekToStart) {
                     seekToStart = false
                     endReported = false

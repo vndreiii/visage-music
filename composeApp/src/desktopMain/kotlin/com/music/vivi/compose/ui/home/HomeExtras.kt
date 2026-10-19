@@ -149,10 +149,11 @@ private fun RecentCard(event: Play_event, active: Boolean, playing: Boolean, onC
         onClick = onClick,
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
-        modifier = Modifier.width(148.dp).interactiveScale(),
+        modifier = Modifier.width(160.dp).interactiveScale(),
     ) {
-        Column {
-            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(14.dp))) {
+        // Inner padding keeps text clear of the card's rounded corners (the Surface clips to its shape).
+        Column(Modifier.padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 10.dp)) {
+            Box(Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp))) {
                 if (event.thumbnail != null) {
                     AsyncImage(
                         model = event.thumbnail,
@@ -188,7 +189,7 @@ private fun RecentCard(event: Play_event, active: Boolean, playing: Boolean, onC
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 8.dp, start = 2.dp, end = 2.dp),
+                modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
             )
             Text(
                 event.artists,
@@ -196,7 +197,7 @@ private fun RecentCard(event: Play_event, active: Boolean, playing: Boolean, onC
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 2.dp),
+                modifier = Modifier.padding(horizontal = 4.dp),
             )
         }
     }

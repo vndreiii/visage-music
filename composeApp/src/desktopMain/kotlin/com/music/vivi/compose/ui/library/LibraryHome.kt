@@ -96,6 +96,9 @@ internal fun LibraryHomeFeed(
             .groupBy { it.artist_id!! }
             .mapValues { it.value.first().cover_path }
     }
+    val genreCoverMap = remember(local.tracks) { genreCovers(local.tracks) }
+    val yearCoverMap = remember(local.tracks) { yearCovers(local.tracks) }
+    val composerCoverMap = remember(local.tracks) { composerCovers(local.tracks) }
     val hasLocal = local.tracks.isNotEmpty()
 
     LazyColumn(
@@ -144,7 +147,7 @@ internal fun LibraryHomeFeed(
         if (local.genres.isNotEmpty()) item(key = "genres") {
             Shelf("Genres") {
                 items(local.genres.take(24), key = { it.value }) { g ->
-                    LabelCard(g.value, "${g.trackCount} tracks", tintFor(g.value)) { onOpen(OpenCollection.Genre(g.value)) }
+                    CollectionCard(g.value, g.trackCount.toLong(), genreCoverMap[g.value.lowercase()].orEmpty()) { onOpen(OpenCollection.Genre(g.value)) }
                 }
             }
         }
@@ -161,14 +164,14 @@ internal fun LibraryHomeFeed(
         if (local.years.size >= 2) item(key = "years") {
             Shelf("Years") {
                 items(local.years.take(30), key = { it.value }) { y ->
-                    LabelCard("${y.value}", "${y.trackCount} tracks", tintFor("${y.value}", 0.5f)) { onOpen(OpenCollection.Year(y.value)) }
+                    CollectionCard("${y.value}", y.trackCount.toLong(), yearCoverMap["${y.value}"].orEmpty()) { onOpen(OpenCollection.Year(y.value)) }
                 }
             }
         }
         if (local.composers.isNotEmpty()) item(key = "composers") {
             Shelf("Composers") {
                 items(local.composers.take(24), key = { it.value }) { c ->
-                    LabelCard(c.value, "${c.trackCount} tracks", tintFor(c.value, 0.5f), icon = Icons.Outlined.Edit) {
+                    CollectionCard(c.value, c.trackCount.toLong(), composerCoverMap[c.value.lowercase()].orEmpty()) {
                         onOpen(OpenCollection.Composer(c.value))
                     }
                 }
@@ -232,8 +235,7 @@ private fun SectionContainer(
         color = container,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-            .then(if (accent) Modifier.border(1.dp, MaterialTheme.colorScheme.outlineVariant, RoundedCornerShape(28.dp)) else Modifier),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {

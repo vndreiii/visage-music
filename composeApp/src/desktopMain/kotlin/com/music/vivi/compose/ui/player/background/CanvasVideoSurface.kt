@@ -349,7 +349,7 @@ fun CanvasVideoSurface(
     )
 }
 
-private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCropped(
+internal fun androidx.compose.ui.graphics.drawscope.DrawScope.drawCropped(
     image: ImageBitmap,
     contentScale: ContentScale,
     alpha: Float,

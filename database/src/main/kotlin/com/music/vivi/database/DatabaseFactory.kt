@@ -157,7 +157,50 @@ object DatabaseFactory {
             driver.execute(null, "CREATE INDEX IF NOT EXISTS local_track_by_album ON local_track(album_id, track_number)", 0)
             driver.execute(null, "CREATE INDEX IF NOT EXISTS local_track_by_artist ON local_track(artist_id)", 0)
         }
+        migrateLibraryFolders(driver)
         migrateLocalLibrary(driver)
+    }
+
+    /** Library sidebar folders / hidden items (installs from before folders existed). */
+    private fun migrateLibraryFolders(driver: SqlDriver) {
+        driver.execute(
+            null,
+            """
+            CREATE TABLE IF NOT EXISTS library_folder (
+              id TEXT NOT NULL PRIMARY KEY,
+              title TEXT NOT NULL,
+              icon TEXT NOT NULL DEFAULT 'folder',
+              accent INTEGER,
+              cover_kind TEXT NOT NULL DEFAULT 'AUTO',
+              cover_ref TEXT,
+              sort TEXT NOT NULL DEFAULT 'MANUAL',
+              expanded INTEGER NOT NULL DEFAULT 1,
+              position INTEGER NOT NULL DEFAULT 0,
+              created_ms INTEGER NOT NULL
+            )
+            """.trimIndent(),
+            0,
+        )
+        driver.execute(
+            null,
+            """
+            CREATE TABLE IF NOT EXISTS library_folder_item (
+              folder_id TEXT NOT NULL,
+              item_type TEXT NOT NULL,
+              item_id TEXT NOT NULL,
+              position INTEGER NOT NULL DEFAULT 0,
+              PRIMARY KEY (item_type, item_id),
+              FOREIGN KEY (folder_id) REFERENCES library_folder(id) ON DELETE CASCADE
+            )
+            """.trimIndent(),
+            0,
+        )
+        driver.execute(null, "CREATE INDEX IF NOT EXISTS library_folder_item_by_folder ON library_folder_item(folder_id, position)", 0)
+        driver.execute(
+            null,
+            "CREATE TABLE IF NOT EXISTS library_hidden (item_type TEXT NOT NULL, item_id TEXT NOT NULL, PRIMARY KEY (item_type, item_id))",
+            0,
+        )
     }
 
     private fun columnsOf(driver: SqlDriver, table: String): Set<String> =

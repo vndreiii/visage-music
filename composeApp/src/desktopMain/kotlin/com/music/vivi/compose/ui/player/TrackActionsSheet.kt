@@ -1,6 +1,7 @@
 package com.music.vivi.compose.ui.player
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.MutableTransitionState
 import com.music.vivi.compose.ui.motion.VisageMotion
@@ -13,6 +14,7 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -99,6 +101,8 @@ fun TrackActionsMenu(
     val controller = LocalPlaybackController.current
     val yt = koinInject<YouTubeMusicService>()
     val downloads = koinInject<com.music.vivi.compose.download.TrackDownloadService>()
+    val libraryRepo = koinInject<com.music.vivi.database.LibraryRepository>()
+    var localPlaylists by remember { mutableStateOf<List<com.music.vivi.database.Playlist>>(emptyList()) }
     val scope = rememberCoroutineScope()
     var toastMessage by remember { mutableStateOf<String?>(null) }
     var pane by remember { mutableStateOf(TrackMenuPane.Actions) }
@@ -132,9 +136,15 @@ fun TrackActionsMenu(
         toastMessage = null
     }
 
+    // Custom (on-device) playlists are cheap: reload every time the picker opens.
     LaunchedEffect(pane, expanded) {
         if (!expanded || pane != TrackMenuPane.Playlists) return@LaunchedEffect
-        if (playlists.isNotEmpty() || playlistsLoading) return@LaunchedEffect
+        localPlaylists = withContext(Dispatchers.IO) { runCatching { libraryRepo.localPlaylists() }.getOrDefault(emptyList()) }
+    }
+
+    LaunchedEffect(pane, expanded) {
+        if (!expanded || pane != TrackMenuPane.Playlists) return@LaunchedEffect
+        if (track?.localPath != null || playlists.isNotEmpty() || playlistsLoading) return@LaunchedEffect
         playlistsLoading = true
         playlistsError = null
         val result = withContext(Dispatchers.IO) {
@@ -147,8 +157,9 @@ fun TrackActionsMenu(
 
     toastMessage?.let { message ->
         Popup(
-            alignment = Alignment.BottomCenter,
-            offset = IntOffset(0, -96),
+            popupPositionProvider = com.music.vivi.compose.ui.component.rememberToastPositionProvider(
+                bottomGapPx = with(androidx.compose.ui.platform.LocalDensity.current) { 96.dp.roundToPx() },
+            ),
             properties = PopupProperties(focusable = false),
         ) {
             Surface(
@@ -190,14 +201,17 @@ fun TrackActionsMenu(
                 ) {
                     AnimatedContent(
                         targetState = pane,
+                        modifier = Modifier.clip(RoundedCornerShape(28.dp)),
                         transitionSpec = {
-                            if (targetState == TrackMenuPane.Playlists) {
-                                slideInHorizontally { it / 3 } togetherWith
-                                    slideOutHorizontally { -it / 4 }
-                            } else {
-                                slideInHorizontally { -it / 3 } togetherWith
-                                    slideOutHorizontally { it / 4 }
-                            }
+                            val forward = targetState == TrackMenuPane.Playlists
+                            val dir = if (forward) 1 else -1
+                            // Outgoing pane fades out fast and incoming fades in after it, so the two
+                            // never overlap; the container resizes with a spring and clips its content.
+                            (fadeIn(tween(220, delayMillis = 90)) +
+                                slideInHorizontally(VisageMotion.settle()) { it / 8 * dir }) togetherWith
+                                (fadeOut(tween(90)) +
+                                    slideOutHorizontally(VisageMotion.settle()) { -it / 10 * dir }) using
+                                SizeTransform(clip = true) { _, _ -> VisageMotion.settle() }
                         },
                         label = "trackMenuPane",
                     ) { current ->
@@ -284,6 +298,35 @@ fun TrackActionsMenu(
                                 },
                             )
                             TrackMenuPane.Playlists -> PlaylistPickerPane(
+                                localPlaylists = localPlaylists,
+                                onPickLocal = { local ->
+                                    val t = track ?: return@PlaylistPickerPane
+                                    scope.launch {
+                                        val added = withContext(Dispatchers.IO) {
+                                            libraryRepo.addToLocalPlaylist(
+                                                local.id, t.videoId, t.title, t.artist, t.artworkUrl,
+                                                (t.durationMs / 1000).takeIf { it > 0 }, t.localPath,
+                                            )
+                                        }
+                                        toastMessage = if (added) "Added to ${local.title}" else "Already in ${local.title}"
+                                        onDismiss()
+                                    }
+                                },
+                                onCreateLocal = {
+                                    val t = track ?: return@PlaylistPickerPane
+                                    scope.launch {
+                                        val name = "My playlist #${localPlaylists.size + 1}"
+                                        withContext(Dispatchers.IO) {
+                                            val id = libraryRepo.createLocalPlaylist(name)
+                                            libraryRepo.addToLocalPlaylist(
+                                                id, t.videoId, t.title, t.artist, t.artworkUrl,
+                                                (t.durationMs / 1000).takeIf { it > 0 }, t.localPath,
+                                            )
+                                        }
+                                        toastMessage = "Added to $name"
+                                        onDismiss()
+                                    }
+                                },
                                 playlists = playlists,
                                 loading = playlistsLoading,
                                 error = playlistsError,
@@ -399,8 +442,8 @@ private fun TrackActionsPane(
             "Add to the bottom of your queue",
             onAddToQueue,
         )
+        ActionRow(Icons.AutoMirrored.Outlined.PlaylistAdd, "Add to playlist", "Add to one of your playlists", onOpenPlaylists)
         if (track?.localPath == null) {
-            ActionRow(Icons.AutoMirrored.Outlined.PlaylistAdd, "Add to playlist", "Add to one of your playlists", onOpenPlaylists)
             ActionRow(Icons.Outlined.Download, "Make available offline", "Save for offline playback", onDownload)
             ActionRow(Icons.Outlined.Share, "Share", "Share a link to this item", onShare)
         }
@@ -410,6 +453,9 @@ private fun TrackActionsPane(
 
 @Composable
 private fun PlaylistPickerPane(
+    localPlaylists: List<com.music.vivi.database.Playlist>,
+    onPickLocal: (com.music.vivi.database.Playlist) -> Unit,
+    onCreateLocal: () -> Unit,
     playlists: List<PlaylistItem>,
     loading: Boolean,
     error: String?,
@@ -422,9 +468,7 @@ private fun PlaylistPickerPane(
             .padding(horizontal = 12.dp, vertical = 8.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Outlined.ArrowBack, contentDescription = "Back")
-            }
+            com.music.vivi.compose.ui.component.VisageBackButton(onClick = onBack)
             Text(
                 "Add to playlist",
                 style = MaterialTheme.typography.titleMedium,
@@ -432,6 +476,60 @@ private fun PlaylistPickerPane(
             )
         }
         Spacer(Modifier.height(8.dp))
+        Text(
+            "On this device",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+        )
+        Column(Modifier.heightIn(max = 168.dp).verticalScroll(rememberScrollState())) {
+            Surface(
+                onClick = onCreateLocal,
+                shape = RoundedCornerShape(InteractionCornerRadius),
+                color = Color.Transparent,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Row(Modifier.padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)).background(MaterialTheme.colorScheme.secondaryContainer),
+                        contentAlignment = Alignment.Center,
+                    ) { Icon(Icons.Outlined.Add, contentDescription = null) }
+                    Spacer(Modifier.width(12.dp))
+                    Text("New playlist", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            localPlaylists.forEach { local ->
+                Surface(
+                    onClick = { onPickLocal(local) },
+                    shape = RoundedCornerShape(InteractionCornerRadius),
+                    color = Color.Transparent,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Row(Modifier.padding(horizontal = 4.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        com.music.vivi.compose.ui.component.CoverImage(
+                            local.thumbnail, seed = local.id,
+                            modifier = Modifier.size(44.dp).clip(RoundedCornerShape(10.dp)),
+                        )
+                        Spacer(Modifier.width(12.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(local.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(
+                                "${local.song_count ?: 0} tracks",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text(
+            "YouTube Music",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(start = 4.dp, bottom = 4.dp),
+        )
         when {
             loading -> {
                 Box(

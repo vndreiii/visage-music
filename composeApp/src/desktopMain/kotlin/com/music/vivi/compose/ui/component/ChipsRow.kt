@@ -30,10 +30,12 @@ fun <E> ChipsRow(
     /** Leading/trailing gutter; matches the page's 20dp content inset. */
     gutter: androidx.compose.ui.unit.Dp = 20.dp,
 ) {
+    val scrollState = rememberScrollState()
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .horizontalScroll(rememberScrollState())
+            .horizontalScroll(scrollState)
+            .horizontalWheelScroll(scrollState)
             .padding(vertical = 2.dp),
     ) {
         Spacer(Modifier.width(gutter))

@@ -1,8 +1,13 @@
 package com.music.vivi.compose.ui.player.queue
 
+import com.music.vivi.compose.ui.component.CoverImage
+import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -107,18 +112,21 @@ fun AnimatedQueuePinnedRail(
     onDismiss: () -> Unit,
     onExpandFullscreen: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Dock to the leading edge instead of the trailing one (sidebar-side setting). */
+    fromStart: Boolean = false,
 ) {
     AnimatedVisibility(
         visible = visible,
-        enter = slideInHorizontally(animationSpec = PinOffsetSpring) { it } +
-            expandHorizontally(animationSpec = PinSizeSpring, expandFrom = Alignment.End),
-        exit = slideOutHorizontally(animationSpec = PinOffsetSpring) { it } +
-            shrinkHorizontally(animationSpec = PinSizeSpring, shrinkTowards = Alignment.End),
+        enter = slideInHorizontally(animationSpec = PinOffsetSpring) { if (fromStart) -it else it } +
+            expandHorizontally(animationSpec = PinSizeSpring, expandFrom = if (fromStart) Alignment.Start else Alignment.End),
+        exit = slideOutHorizontally(animationSpec = PinOffsetSpring) { if (fromStart) -it else it } +
+            shrinkHorizontally(animationSpec = PinSizeSpring, shrinkTowards = if (fromStart) Alignment.Start else Alignment.End),
         modifier = modifier,
     ) {
         QueuePinnedPanel(
             onDismiss = onDismiss,
             onSwitchMode = onExpandFullscreen,
+            mirrored = fromStart,
         )
     }
 }
@@ -178,12 +186,16 @@ fun QueuePinnedPanel(
     onDismiss: () -> Unit,
     onSwitchMode: () -> Unit,
     modifier: Modifier = Modifier,
+    mirrored: Boolean = false,
 ) {
     Surface(
         modifier = modifier
             .width(360.dp)
             .fillMaxHeight()
-            .padding(start = 4.dp, top = 8.dp, end = 8.dp, bottom = 8.dp),
+            .padding(
+                start = if (mirrored) 8.dp else 4.dp, top = 8.dp,
+                end = if (mirrored) 4.dp else 8.dp, bottom = 8.dp,
+            ),
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
         tonalElevation = 3.dp,
@@ -220,6 +232,7 @@ private fun QueuePanelBody(
     val nowPlaying by controller.nowPlaying.collectAsState()
     val queueTracks by controller.queueTracks.collectAsState()
     val queueIndex by controller.queueIndex.collectAsState()
+    val radioActive by controller.radioActive.collectAsState()
     var tab by remember { mutableStateOf(QueueTab.Queue) }
     var recent by remember { mutableStateOf<List<Play_event>>(emptyList()) }
 
@@ -266,7 +279,7 @@ private fun QueuePanelBody(
             ModeChip(Icons.Outlined.Repeat, "Repeat", Modifier.weight(1f)) {
                 controller.cycleRepeatMode()
             }
-            ModeChip(Icons.Outlined.Radio, "Radio", Modifier.weight(1f)) {
+            ModeChip(Icons.Outlined.Radio, "Radio", Modifier.weight(1f), active = radioActive) {
                 val id = nowPlaying?.videoId ?: return@ModeChip
                 scope.launch(Dispatchers.IO) {
                     runCatching { controller.startRadio(id) }
@@ -284,10 +297,10 @@ private fun QueuePanelBody(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Text(
-                        "Next in Queue",
+                    NextLabel(
+                        if (radioActive) "Next from Radio" else "Next in Queue",
+                        radio = radioActive,
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 Text(
@@ -297,7 +310,7 @@ private fun QueuePanelBody(
                 )
             }
             Spacer(Modifier.height(8.dp))
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WheelLazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val chips = listOf("All", "Popular", "Discover", "Deep cuts", "Party", "Electronic")
                 items(chips) { label ->
                     FilterChip(
@@ -312,7 +325,18 @@ private fun QueuePanelBody(
 
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
 
-        when (tab) {
+        AnimatedContent(
+            targetState = tab,
+            modifier = Modifier.weight(1f),
+            transitionSpec = {
+                val dir = if (targetState.ordinal > initialState.ordinal) 1 else -1
+                (slideInHorizontally(VisageMotion.settle()) { it / 6 * dir } + fadeIn(VisageMotion.fadeInSpec())) togetherWith
+                    (slideOutHorizontally(VisageMotion.settle()) { -it / 6 * dir } + fadeOut(VisageMotion.fadeOutSpec()))
+            },
+            label = "queueTab",
+        ) { shownTab ->
+        Column(Modifier.fillMaxSize()) {
+        when (shownTab) {
             QueueTab.Queue -> {
                 if (pinned && nowPlaying != null) {
                     Text(
@@ -329,10 +353,10 @@ private fun QueuePanelBody(
                         onClick = {},
                     )
                     Spacer(Modifier.height(12.dp))
-                    Text(
-                        "Next from queue",
+                    NextLabel(
+                        if (radioActive) "Next from Radio" else "Next from queue",
+                        radio = radioActive,
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                 }
@@ -444,15 +468,27 @@ private fun QueuePanelBody(
                 }
             }
         }
+        }
+        }
     }
 }
 
 @Composable
 private fun TabLabel(text: String, selected: Boolean, onClick: () -> Unit) {
+    val container by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0f),
+        VisageMotion.settle(),
+        label = "tabContainer",
+    )
+    val content by animateColorAsState(
+        if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+        VisageMotion.settle(),
+        label = "tabContent",
+    )
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(24.dp),
-        color = if (selected) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+        color = container,
     ) {
         Box(Modifier.height(40.dp).padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
             Text(
@@ -460,7 +496,7 @@ private fun TabLabel(text: String, selected: Boolean, onClick: () -> Unit) {
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1,
-                color = if (selected) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = content,
             )
         }
     }
@@ -469,12 +505,9 @@ private fun TabLabel(text: String, selected: Boolean, onClick: () -> Unit) {
 @Composable
 private fun NowPlayingHeader(track: NowPlaying?) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        AsyncImage(
-            model = track?.artworkUrl,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.size(56.dp).clip(RoundedCornerShape(8.dp))
-                .background(MaterialTheme.colorScheme.surfaceVariant),
+        CoverImage(
+            track?.artworkUrl, track?.title ?: "np",
+            Modifier.size(56.dp).clip(RoundedCornerShape(8.dp)),
         )
         Column(Modifier.padding(start = 12.dp).weight(1f)) {
             Text(
@@ -495,17 +528,58 @@ private fun NowPlayingHeader(track: NowPlaying?) {
     }
 }
 
+/** Section label; with a radio icon that animates in while the upcoming tracks come from Radio. */
+@Composable
+private fun NextLabel(
+    text: String,
+    radio: Boolean,
+    style: androidx.compose.ui.text.TextStyle,
+    modifier: Modifier = Modifier,
+) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        AnimatedVisibility(
+            visible = radio,
+            enter = fadeIn(VisageMotion.fadeInSpec()) + expandHorizontally(VisageMotion.settle()),
+            exit = fadeOut(VisageMotion.fadeOutSpec()) + shrinkHorizontally(VisageMotion.settle()),
+        ) {
+            Icon(
+                Icons.Outlined.Radio,
+                contentDescription = "Radio",
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(end = 6.dp).size(18.dp),
+            )
+        }
+        Text(
+            text,
+            style = style,
+            color = if (radio) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
 @Composable
 private fun ModeChip(
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     label: String,
     modifier: Modifier = Modifier,
+    active: Boolean = false,
     onClick: () -> Unit,
 ) {
+    val container by androidx.compose.animation.animateColorAsState(
+        if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+        VisageMotion.settle(),
+        label = "modeChipBg",
+    )
+    val content by androidx.compose.animation.animateColorAsState(
+        if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        VisageMotion.settle(),
+        label = "modeChipFg",
+    )
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        color = container,
+        contentColor = content,
         modifier = modifier.height(48.dp),
     ) {
         Row(
@@ -551,14 +625,9 @@ private fun QueueSongRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
         Box {
-            AsyncImage(
-                model = artworkUrl,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(MaterialTheme.colorScheme.surfaceVariant),
+            CoverImage(
+                artworkUrl, title,
+                Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)),
             )
             if (active) {
                 Box(

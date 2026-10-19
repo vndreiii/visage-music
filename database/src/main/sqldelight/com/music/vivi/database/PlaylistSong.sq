@@ -17,3 +17,12 @@ SELECT COUNT(*) AS cnt FROM playlist_song WHERE playlist_id = ?;
 
 removeSong:
 DELETE FROM playlist_song WHERE playlist_id = ? AND song_id = ?;
+
+nextPosition:
+SELECT COALESCE(MAX(position) + 1, 0) AS next FROM playlist_song WHERE playlist_id = ?;
+
+containsSong:
+SELECT COUNT(*) FROM playlist_song WHERE playlist_id = ? AND song_id = ?;
+
+setPosition:
+UPDATE playlist_song SET position = ? WHERE playlist_id = ? AND song_id = ?;

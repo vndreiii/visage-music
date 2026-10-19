@@ -172,9 +172,7 @@ class LocalMusicScanner(
         val artistId = stableId("artist", artist)
         val albumId = stableId("album", file.parentFile.canonicalPath, album)
         val trackId = stableId("track", file.absolutePath)
-        val folderArt = listOf("cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png")
-            .map { File(file.parentFile, it) }
-            .firstOrNull { it.isFile }?.absolutePath
+        val folderArt = findFolderArt(file.parentFile)?.absolutePath
         val coverPath = folderArt ?: if (ext == "opus") "opus-lazy://${file.absolutePath}" else null
 
         repo.inTransaction {
@@ -368,9 +366,7 @@ class LocalMusicScanner(
             }
             return out.absolutePath
         }
-        val folderArt = listOf("cover.jpg", "cover.png", "folder.jpg", "folder.png", "front.jpg", "front.png")
-            .map { File(file.parentFile, it) }
-            .firstOrNull { it.isFile }
+        val folderArt = findFolderArt(file.parentFile)
         if (folderArt != null) {
             return folderArt.absolutePath
         }
@@ -378,6 +374,16 @@ class LocalMusicScanner(
             return "opus-lazy://${file.absolutePath}"
         }
         return null
+    }
+
+    /** Folder artwork, matched case-insensitively (cover/folder/front/album/albumart…, jpg/jpeg/png/webp). */
+    private fun findFolderArt(dir: File?): File? {
+        val files = dir?.listFiles() ?: return null
+        val names = listOf("cover", "folder", "front", "album", "albumart", "albumartsmall", "artwork", "thumb")
+        val exts = listOf("jpg", "jpeg", "png", "webp")
+        return files
+            .filter { it.isFile && it.extension.lowercase() in exts && it.nameWithoutExtension.lowercase().removePrefix(".") in names }
+            .minByOrNull { names.indexOf(it.nameWithoutExtension.lowercase().removePrefix(".")) }
     }
 
     companion object {

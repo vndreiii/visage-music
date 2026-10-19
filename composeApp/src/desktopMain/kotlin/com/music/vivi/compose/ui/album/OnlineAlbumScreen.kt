@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.album
 
+import com.music.vivi.compose.ui.component.CoverImage
+import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 
 import androidx.compose.foundation.background
@@ -144,9 +146,7 @@ fun OnlineAlbumScreen(
                 contentPadding = PaddingValues(bottom = 120.dp),
             ) {
                 item(key = "toolbar") {
-                    TextButton(onClick = { navController.navigateUp() }) {
-                        Text("← Back")
-                    }
+                    com.music.vivi.compose.ui.component.VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = 16.dp, top = 8.dp))
                 }
 
                 item(key = "header") {
@@ -182,7 +182,7 @@ fun OnlineAlbumScreen(
                         NavigationTitle(title = "Other versions")
                     }
                     item(key = "versions") {
-                        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp)) {
+                        WheelLazyRow(contentPadding = PaddingValues(horizontal = 12.dp)) {
                             items(vm.otherVersions.distinctBy { it.id }, key = { it.id }) { album ->
                                 YouTubeGridItem(
                                     item = album,
@@ -201,7 +201,7 @@ fun OnlineAlbumScreen(
                         NavigationTitle(title = "Releases for you")
                     }
                     item(key = "releases") {
-                        LazyRow(contentPadding = PaddingValues(horizontal = 12.dp)) {
+                        WheelLazyRow(contentPadding = PaddingValues(horizontal = 12.dp)) {
                             items(vm.releasesForYou.distinctBy { it.id }, key = { it.id }) { album ->
                                 YouTubeGridItem(
                                     item = album,
@@ -264,15 +264,14 @@ private fun OnlineAlbumHeader(
                         ),
                     ),
             )
-            AsyncImage(
-                model = album.thumbnail,
-                contentDescription = album.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
+            CoverImage(
+                album.thumbnail, album.id,
+                Modifier
                     .align(Alignment.BottomCenter)
                     .padding(bottom = 6.dp)
                     .size(128.dp)
                     .clip(RoundedCornerShape(8.dp)),
+                animated = true,
             )
         }
 

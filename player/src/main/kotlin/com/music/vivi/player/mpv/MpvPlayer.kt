@@ -54,6 +54,7 @@ class MpvPlayer(
                             // look like a finished track or next/prev will double-fire.
                             val end = event.data?.let { MpvEventEndFile(it).also { e -> e.read() } }
                             val reason = end?.reason ?: MpvLib.MPV_END_FILE_REASON_EOF
+                            println("[play-trace ${java.time.LocalTime.now()}] mpv END_FILE reason=$reason error=${end?.error}")
                             val endErr = end?.error ?: event.error
                             when (reason) {
                                 MpvLib.MPV_END_FILE_REASON_EOF -> onState(State.Ended)
@@ -70,6 +71,7 @@ class MpvPlayer(
                             }
                         }
                         MpvLib.MPV_EVENT_FILE_LOADED, MpvLib.MPV_EVENT_PLAYBACK_RESTART -> {
+                            println("[play-trace ${java.time.LocalTime.now()}] mpv ${if (event.event_id == MpvLib.MPV_EVENT_FILE_LOADED) "FILE_LOADED" else "PLAYBACK_RESTART"} paused=${isPaused()}")
                             ready.complete(Unit)
                             lastEndError.set(null)
                             onState(State.Playing)
@@ -131,7 +133,12 @@ class MpvPlayer(
         onState(State.Playing)
     }
 
+    private fun who(): String = Throwable().stackTrace.asSequence().drop(2)
+        .filter { it.className.startsWith("com.music") }.take(4)
+        .joinToString(" <- ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+
     override fun pause() {
+        println("[play-trace ${java.time.LocalTime.now()}] mpv.pause() from ${who()}")
         command("set", "pause", "yes")
         onState(State.Paused)
     }
@@ -143,6 +150,7 @@ class MpvPlayer(
 
     /** Hard-cut audio for an immediate track change (search/playlist pick / skip). */
     override fun halt() {
+        println("[play-trace ${java.time.LocalTime.now()}] mpv.halt() from ${who()}")
         ready.cancel()
         runCatching { lib.mpv_command(handle, StringArray(arrayOf("stop"))) }
         runCatching { lib.mpv_set_property_string(handle, "pause", "yes") }
@@ -157,6 +165,11 @@ class MpvPlayer(
 
     override fun seek(positionSec: Double) {
         command("seek", positionSec.toString(), "absolute")
+    }
+
+    override fun isPaused(): Boolean {
+        val flag = com.sun.jna.ptr.IntByReference()
+        return lib.mpv_get_property(handle, "pause", MpvLib.MPV_FORMAT_FLAG, flag) == 0 && flag.value != 0
     }
 
     fun lastErrorMessage(): String? = lastEndError.get()

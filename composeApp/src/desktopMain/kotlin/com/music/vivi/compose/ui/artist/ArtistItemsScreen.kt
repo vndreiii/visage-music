@@ -113,12 +113,7 @@ fun ArtistItemsScreen(
         }
         else -> {
             Column(modifier = Modifier.fillMaxSize()) {
-                TextButton(
-                    onClick = { navController.navigateUp() },
-                    modifier = Modifier.padding(start = 8.dp, top = 8.dp)
-                ) {
-                    Text("← Back")
-                }
+                com.music.vivi.compose.ui.component.VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = 16.dp, top = 8.dp))
                 
                 title?.takeIf { it.isNotBlank() }?.let { t ->
                     NavigationTitle(title = t, modifier = Modifier.padding(bottom = 8.dp))
