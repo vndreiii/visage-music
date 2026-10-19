@@ -61,7 +61,8 @@ Get the latest version from the [Releases page](https://github.com/vndreiii/visa
 | Windows 10 and 11 (portable) | `VIsage-<version>-windows-x64-portable.zip` | Unzip the file anywhere. Run `VIsage.exe`. |
 
 The Windows files include libmpv and yt-dlp.
-On NixOS, `appimage-run` does not include libmpv. Install `mpv-unwrapped` and set `VISAGE_LIBMPV` to the full path of its `libmpv.so.2`, for example:
+If the system has no libmpv, VIsage asks once and downloads its own copy from the release (about 18 MB). Set `VISAGE_NO_LIBMPV_DOWNLOAD=1` to turn this off.
+On NixOS, `appimage-run` does not include libmpv, so the download is used. To use your own copy, install `mpv-unwrapped` and set `VISAGE_LIBMPV` to the full path of its `libmpv.so.2`, for example:
 
 ```bash
 VISAGE_LIBMPV=$(nix-build '<nixpkgs>' -A mpv-unwrapped --no-out-link)/lib/libmpv.so.2 appimage-run VIsage-x86_64.AppImage

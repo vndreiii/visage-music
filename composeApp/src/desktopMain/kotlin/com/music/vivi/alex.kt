@@ -114,6 +114,8 @@ fun main() {
     }
     AppLog.install()
     CrashReporter.install()
+    // No libmpv on this system: offer to download one before the window opens (Linux only; Windows ships it).
+    if (!com.music.vivi.compose.libmpv.LibmpvSetup.ensure()) return
     if (com.music.vivi.nativelib.AppEnv.get("DEBUG_CRASH_WINDOW") == "1") {
         // Developer aid: open only the standalone error window with a sample report.
         CrashReporter.record("main", IllegalStateException("Sample error (VIVI_DEBUG_CRASH_WINDOW=1)"), fatal = true)

@@ -53,6 +53,9 @@ interface MpvLib : Library {
         const val MPV_END_FILE_REASON_ERROR = 4
         const val MPV_END_FILE_REASON_REDIRECT = 5
 
+        /** True when libmpv can be loaded now. A failed attempt is not remembered, so this can be asked again. */
+        fun isAvailable(): Boolean = runCatching { INSTANCE; true }.getOrDefault(false)
+
         val INSTANCE: MpvLib by lazy {
             // mpv requires C numeric locale; force it before first create.
             runCatching {
@@ -73,6 +76,12 @@ interface MpvLib : Library {
             )
         }
     }
+}
+
+/** Folder that holds the libmpv copy VIsage downloads when the system has none (see LibmpvProvisioner). */
+object LibmpvBundle {
+    fun dir(): java.io.File = java.io.File(com.music.vivi.nativelib.AppPaths.data(), "libmpv")
+    fun library(): java.io.File = java.io.File(dir(), "libmpv.so.2")
 }
 
 /** Where to look for libmpv, best first. Shared with the video renderer. */
@@ -103,7 +112,9 @@ internal fun libraryCandidates(): List<String> {
         }
         val found = dirs.asSequence().flatMap { d -> names.asSequence().map { java.io.File(d, it) } }
             .filter { it.isFile }.map { it.path }.toList()
-        listOfNotNull(com.music.vivi.nativelib.AppEnv.get("LIBMPV")) + listOf("mpv", "libmpv.so.2") + found
+        // The downloaded copy comes last: a library the system provides is preferred.
+        val downloaded = LibmpvBundle.library().takeIf { it.isFile }?.path
+        listOfNotNull(com.music.vivi.nativelib.AppEnv.get("LIBMPV")) + listOf("mpv", "libmpv.so.2") + found + listOfNotNull(downloaded)
     }
 }
 

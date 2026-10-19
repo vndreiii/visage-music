@@ -63,8 +63,35 @@ jobs:
           name: flatpak-${{ matrix.arch }}
           path: VIsage-${{ matrix.arch }}.flatpak
 
+  libmpv:
+    # The app downloads this bundle on first start when the system has no libmpv.
+    name: ${{ matrix.arch }} — libmpv bundle
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            runner: ubuntu-24.04
+          - arch: aarch64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.TAG }}
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential git meson ninja-build pkg-config patchelf nasm \
+            python3 libssl-dev libass-dev libplacebo-dev libpulse-dev libasound2-dev
+      - run: bash scripts/build-libmpv.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: libmpv-${{ matrix.arch }}
+          path: dist/visage-libmpv-linux-${{ matrix.arch }}.tar.gz
+
   publish:
-    needs: [build, flatpak]
+    needs: [build, flatpak, libmpv]
     # A Flatpak failure must not block the release of the other packages.
     if: ${{ !cancelled() && needs.build.result == 'success' }}
     runs-on: ubuntu-24.04
@@ -94,9 +121,9 @@ jobs:
           version="${TAG#v}"
           base="https://github.com/${{ github.repository }}/releases/download/${TAG}"
           cd artifacts
-          # Self-updating builds: the AppImages and the Windows installer. The other formats open the release page.
+          # Self-updating builds: the AppImages and the Windows installer, plus the libmpv fallback bundles. The other formats open the release page.
           jq -n --arg version "$version" --arg date "$(date -u +%FT%TZ)" --arg notes "VIsage $version" '{version:$version, notes:$notes, pub_date:$date, assets:{}}' > ../latest.json
-          for f in VIsage-x86_64.AppImage VIsage-aarch64.AppImage VIsage-x64.msi; do
+          for f in VIsage-x86_64.AppImage VIsage-aarch64.AppImage VIsage-x64.msi visage-libmpv-linux-x86_64.tar.gz visage-libmpv-linux-aarch64.tar.gz; do
             [[ -f "$f" ]] || continue
             jq --arg n "$f" --arg u "$base/$f" --arg h "$(sha256sum "$f" | cut -d' ' -f1)" --argjson s "$(stat -c %s "$f")" \
               '.assets[$n] = {url:$u, sha256:$h, size:$s}' ../latest.json > ../latest.tmp && mv ../latest.tmp ../latest.json

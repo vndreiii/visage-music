@@ -62,6 +62,13 @@ object UpdateAssets {
         else -> null
     }
 
+    /** The libmpv bundle of the release workflow (Linux): visage-libmpv-linux-<arch>.tar.gz. */
+    fun libmpvName(osArch: String): String? = when (osArch.lowercase()) {
+        "amd64", "x86_64" -> "visage-libmpv-linux-x86_64.tar.gz"
+        "aarch64", "arm64" -> "visage-libmpv-linux-aarch64.tar.gz"
+        else -> null
+    }
+
     /** The Windows installer built by the release workflow: VIsage-x64.msi. */
     fun windowsInstallerName(osArch: String): String? = when (osArch.lowercase()) {
         "amd64", "x86_64" -> "VIsage-x64.msi"
