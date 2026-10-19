@@ -293,15 +293,6 @@ fun SettingsHubScreen(navController: NavController) {
             )
         }
 
-        SettingsSection("Support") {
-            SettingsNavItem(
-                icon = Icons.Outlined.Favorite,
-                title = "Support VIsage",
-                subtitle = "Buy the developer a coffee on Ko-fi",
-                onClick = { openExternalUrl(SUPPORT_URL) },
-            )
-        }
-
         com.music.vivi.compose.update.UpdateSettingsSection()
 
         SettingsSection("About") {
