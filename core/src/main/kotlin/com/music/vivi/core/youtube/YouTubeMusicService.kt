@@ -50,6 +50,12 @@ class YouTubeMusicService(
         withSession { YouTube.home(continuation, params) }
     suspend fun searchSuggestions(query: String): Result<SearchSuggestions> = withSession { YouTube.searchSuggestions(query) }
     suspend fun searchSummary(query: String): Result<SearchSummaryPage> = withSession { YouTube.searchSummary(query) }
+    /** The song or music video behind [videoId] (for pasted links), as YouTube Music's watch page describes it. */
+    suspend fun songById(videoId: String): Result<com.music.innertube.models.SongItem> = withSession {
+        YouTube.next(com.music.innertube.models.WatchEndpoint(videoId = videoId)).mapCatching { next ->
+            next.items.firstOrNull { it.id == videoId } ?: next.items.first()
+        }
+    }
     suspend fun searchSongs(query: String): Result<SearchResult> = withSession { YouTube.search(query, YouTube.SearchFilter.FILTER_SONG) }
     suspend fun searchContinuation(continuation: String): Result<SearchResult> = withSession { YouTube.searchContinuation(continuation) }
     suspend fun library(browseId: String, tabIndex: Int = 0): Result<LibraryPage> = withSession { YouTube.library(browseId, tabIndex) }

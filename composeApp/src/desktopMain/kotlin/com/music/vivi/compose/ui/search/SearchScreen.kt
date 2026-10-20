@@ -111,6 +111,8 @@ enum class SearchFilterType {
     PLAYLISTS,
 }
 
+private enum class LinkLookup { Idle, Loading, Found, NotFound }
+
 @Composable
 fun SearchScreen(navController: NavController) {
     val yt = koinInject<YouTubeMusicService>()
@@ -138,9 +140,14 @@ fun SearchScreen(navController: NavController) {
 
     val listState = rememberLazyListState()
     val trimmed = query.trim()
+    // A pasted YouTube / YouTube Music link shows that video and Enter plays it, instead of searching for the URL.
+    val linkId = remember(trimmed) { youTubeVideoId(trimmed) }
+    var linkSong by remember { mutableStateOf<SongItem?>(null) }
+    var linkState by remember { mutableStateOf(LinkLookup.Idle) }
+    val showingLink = linkId != null && (submittedQuery == null || trimmed != submittedQuery)
     val localHits = rememberLocalHits(koinInject<com.music.vivi.database.LocalMusicRepository>(), submittedQuery.orEmpty())
     val summaryItems = summaryPage?.summaries.orEmpty().flatMap { it.items }
-    val showingTypingHints = trimmed.isNotEmpty() &&
+    val showingTypingHints = !showingLink && trimmed.isNotEmpty() &&
         (submittedQuery == null || trimmed != submittedQuery) &&
         (suggestions.isNotEmpty() || recommended.isNotEmpty())
     val showingIdleSuggestions = trimmed.isBlank() && submittedQuery == null
@@ -168,9 +175,17 @@ fun SearchScreen(navController: NavController) {
     var regionTick by remember { mutableStateOf(0) }
     val regionCode = remember(regionTick) { ContentRegion.region(prefs) }
 
+    fun playLink(id: String) {
+        scope.launch {
+            val song = linkSong?.takeIf { it.id == id } ?: withContext(Dispatchers.IO) { yt.songById(id).getOrNull() }
+            if (song != null) playSong(song) else linkState = LinkLookup.NotFound
+        }
+    }
+
     fun runSearch(target: String) {
         val q = target.trim()
         if (q.isEmpty()) return
+        youTubeVideoId(q)?.let { playLink(it); return }
         searchJob?.cancel()
         val generation = ++searchGeneration
         query = q
@@ -275,10 +290,19 @@ fun SearchScreen(navController: NavController) {
         )
     }
 
+    LaunchedEffect(linkId) {
+        linkSong = null
+        if (linkId == null) { linkState = LinkLookup.Idle; return@LaunchedEffect }
+        linkState = LinkLookup.Loading
+        val song = withContext(Dispatchers.IO) { yt.songById(linkId).getOrNull() }
+        linkSong = song
+        linkState = if (song != null) LinkLookup.Found else LinkLookup.NotFound
+    }
+
     LaunchedEffect(trimmed) {
         suggestions = emptyList()
         recommended = emptyList()
-        if (trimmed.isBlank() || trimmed == submittedQuery) return@LaunchedEffect
+        if (trimmed.isBlank() || trimmed == submittedQuery || linkId != null) return@LaunchedEffect
         delay(280)
         yt.searchSuggestions(trimmed)
             .onSuccess {
@@ -395,6 +419,36 @@ fun SearchScreen(navController: NavController) {
                 .padding(top = 12.dp),
         ) {
             when {
+                showingLink -> Column(Modifier.fillMaxSize()) {
+                    Text(
+                        "From link",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier.padding(bottom = 10.dp),
+                    )
+                    val found = linkSong
+                    when {
+                        found != null -> {
+                            RecommendedRow(item = found, onClick = { playSong(found) })
+                            Text(
+                                "Press Enter to play",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 8.dp),
+                            )
+                        }
+                        linkState == LinkLookup.NotFound -> Text(
+                            "Couldn't find that video",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        else -> Text(
+                            "Looking up the link…",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
                 loading && summaryPage == null && !showingTypingHints -> PageLoadingState("Searching music")
                 loadingSongs && songsPage == null && filter == SearchFilterType.SONGS -> PageLoadingState("Finding songs", detail = true)
                 error != null && summaryPage == null && songsPage == null && !showingTypingHints -> {
