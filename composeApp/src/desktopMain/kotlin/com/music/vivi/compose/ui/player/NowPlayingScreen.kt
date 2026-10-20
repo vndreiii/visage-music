@@ -252,7 +252,7 @@ fun NowPlayingScreen(
     }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
     val sliderStyle = runCatching {
         SliderStyle.valueOf(prefs.getString(PrefKeys.SliderStyle, SliderStyle.M3_EXPRESSIVE.name))
-    }.getOrDefault(SliderStyle.DEFAULT)
+    }.getOrDefault(SliderStyle.M3_EXPRESSIVE)
     val squigglySlider = prefs.getBoolean(PrefKeys.SquigglySlider, false)
     val framedControls = prefs.getBoolean(PrefKeys.UsePlayerV2, false)
     val buttonsStyle = runCatching {
@@ -437,7 +437,7 @@ fun NowPlayingScreen(
                                         label = "npArtwork",
                                         modifier = Modifier.fillMaxSize()
                                             .songSwapCover(swap)
-                                            .morphClip { if (squareCover) 0.dp else (28f - 8f * coverMorph.progress.coerceIn(0f, 1f)).dp },
+                                            .morphClip(elevation = 28.dp) { if (squareCover) 0.dp else (28f - 8f * coverMorph.progress.coerceIn(0f, 1f)).dp },
                                     ) { (_, artUrl) ->
                                         Box(Modifier.fillMaxSize().then(Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest))) {
                                             val squareUrl = canvasSquareUrl
@@ -513,7 +513,7 @@ fun NowPlayingScreen(
                             horizontalAlignment = Alignment.Start,
                         ) {
                             val rightCanvasUrl = canvasTallUrl ?: canvasSquareUrl
-                            val showCanvasOnRight = showLyrics && rightCanvasUrl != null
+                            val showCanvasOnRight = showLyrics && rightCanvasUrl != null && trackVideo == null
                             // Free space above the controls: half of it when idle (controls centred), all of it
                             // with lyrics (controls at the bottom, canvas fills the rest). Animated so the
                             // controls glide between the two instead of snapping.
@@ -524,6 +524,28 @@ fun NowPlayingScreen(
                             )
                             if (!underQueue) {
                                 Box(Modifier.fillMaxWidth().weight(controlsBias.coerceIn(0.001f, 1f))) {
+                                    // A music video takes the free space above the controls while lyrics are open,
+                                    // at its own 16:9 shape and sitting on the controls.
+                                    PlainAnimatedVisibility(
+                                        visible = showLyrics && trackVideo != null,
+                                        enter = fadeIn(),
+                                        exit = fadeOut(),
+                                        label = "npRightVideo",
+                                    ) {
+                                        val videoShape = if (squareCover) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(24.dp)
+                                        Box(Modifier.fillMaxSize().padding(bottom = 16.dp), contentAlignment = Alignment.BottomCenter) {
+                                            trackVideo?.let {
+                                                com.music.vivi.compose.ui.player.video.MusicVideoSurface(
+                                                    video = it,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .aspectRatio(16f / 9f)
+                                                        .shadow(24.dp, videoShape, clip = false)
+                                                        .clip(videoShape),
+                                                )
+                                            }
+                                        }
+                                    }
                                     if (rightCanvasUrl != null) {
                                         PlainAnimatedVisibility(
                                             visible = showCanvasOnRight,

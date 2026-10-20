@@ -326,6 +326,8 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
             val h = maxHeight
             val vertical = cfg.layout == FullscreenLayout.CENTERED
             val coverShown = !hideCover && !showLyrics
+            // With lyrics open the cover slot is gone; a playing music video takes the room above the controls.
+            val lyricsVideo = showLyrics && !hideCover && trackVideo != null
             val baseGap = if (vertical) 32.dp else 48.dp
             val autoCover = if (vertical) {
                 minOf(h - 380.dp, w * 0.5f, 520.dp).coerceAtLeast(160.dp)
@@ -384,6 +386,22 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                 }
             }
 
+            val lyricsVideoCard: @Composable () -> Unit = {
+                val cardShape = RoundedCornerShape(20.dp)
+                Box(
+                    Modifier
+                        .width(ctrlW)
+                        .height(minOf(ctrlW * 9f / 16f, h - 340.dp).coerceAtLeast(120.dp))
+                        .shadow(24.dp, cardShape, clip = false)
+                        .clip(cardShape)
+                        .background(Color.Black),
+                ) {
+                    trackVideo?.let {
+                        com.music.vivi.compose.ui.player.video.MusicVideoSurface(video = it, modifier = Modifier.fillMaxSize())
+                    }
+                }
+            }
+
             val controlsContent: @Composable () -> Unit = {
                 Column(
                     Modifier
@@ -392,7 +410,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                         .playerControlsSurface(cfg.framedControls),
                 ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                        PrefHorizontal(showLyrics && !hideCover) {
+                        PrefHorizontal(showLyrics && !hideCover && !lyricsVideo) {
                             CoverImage(
                                 model = track?.artworkUrl,
                                 seed = track?.videoId ?: "none",
@@ -531,7 +549,22 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
 
             Row(Modifier.fillMaxSize()) {
                 Box(Modifier.width(mainW).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                    if (vertical) {
+                    if (showLyrics) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                            PlainAnimatedVisibility(
+                                visible = lyricsVideo,
+                                enter = fadeIn(),
+                                exit = fadeOut(),
+                                label = "fsLyricsVideo",
+                            ) {
+                                Column {
+                                    lyricsVideoCard()
+                                    Spacer(Modifier.height(20.dp))
+                                }
+                            }
+                            controlsContent()
+                        }
+                    } else if (vertical) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             coverContent()
                             Spacer(Modifier.height(coverGap))
