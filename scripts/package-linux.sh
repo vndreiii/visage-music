@@ -5,12 +5,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 ARCH="$(uname -m)"
-VERSION="${VISAGE_VERSION:-1.0.2}"
+VERSION="${VISAGE_VERSION:-1.1.0}"
 VERSION="${VERSION#v}"
 export VISAGE_VERSION="$VERSION"
 # Compose/jpackage need a numeric MAJOR.MINOR.PATCH (strip -rc1 / -ci suffixes for the deb/rpm metadata).
 PKG_VERSION="${VERSION%%-*}"
-[[ "$PKG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || PKG_VERSION="1.0.2"
+[[ "$PKG_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || PKG_VERSION="1.1.0"
 export VISAGE_VERSION="$PKG_VERSION"
 
 mkdir -p dist && rm -f dist/*.deb dist/*.rpm dist/*.tar.gz dist/*.AppImage
