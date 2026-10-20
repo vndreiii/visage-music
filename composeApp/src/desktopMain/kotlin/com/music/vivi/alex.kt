@@ -27,7 +27,6 @@ import com.music.vivi.player.PlaybackController
 import com.music.vivi.player.PlaybackFadeSettings
 import com.music.vivi.player.PlaybackFadeSettingsProvider
 import org.koin.core.context.startKoin
-import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import org.koin.java.KoinJavaComponent.getKoin
 
@@ -119,6 +118,17 @@ fun main() {
             }
         }
     }
+    // Coil's default image memory cache is a quarter of the max heap; artwork is small, so cap it.
+    coil3.SingletonImageLoader.setSafe { context ->
+        coil3.ImageLoader.Builder(context)
+            .memoryCache { coil3.memory.MemoryCache.Builder().maxSizeBytes(96L * 1024 * 1024).build() }
+            .build()
+    }
+    // Near the heap limit, drop the caches (artwork, video) instead of failing with an OutOfMemoryError.
+    com.music.vivi.compose.memory.MemoryGuard.install {
+        runCatching { coil3.SingletonImageLoader.get(coil3.PlatformContext.INSTANCE).memoryCache?.clear() }
+        com.music.vivi.player.video.MusicVideoResolver.purge()
+    }
     AppLog.install()
     CrashReporter.install()
     // No libmpv on this system: offer to download one before the window opens (Linux only; Windows ships it).
@@ -153,7 +163,8 @@ private fun runApp() {
             {
                 runCatching { getKoin().get<com.music.vivi.compose.local.QueuePersistence>().close() }
                 runCatching { getKoin().get<PlaybackController>().release() }
-                stopKoin()
+                // Don't stopKoin(): the window is still composing for a frame or two and any koinInject/get() then
+                // throws, which flashed the error window on quit. The process exits right after anyway.
                 exitApplication()
             }
         }

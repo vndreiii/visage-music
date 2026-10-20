@@ -469,6 +469,7 @@ private fun PlaylistPickerPane(
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             com.music.vivi.compose.ui.component.VisageBackButton(onClick = onBack)
+            Spacer(Modifier.width(12.dp))
             Text(
                 "Add to playlist",
                 style = MaterialTheme.typography.titleMedium,

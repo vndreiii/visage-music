@@ -18,6 +18,10 @@ while IFS= read -r line; do
 done < "$CFG"
 
 export LC_NUMERIC=C
+# glibc gives every thread its own ~64 MB malloc arena, and Skia, mpv and ffmpeg allocate from many threads, so
+# the native side alone grew past 700 MB. Two arenas, and return freed memory to the OS promptly.
+export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
+export MALLOC_TRIM_THRESHOLD_="${MALLOC_TRIM_THRESHOLD_:-262144}"
 # Keep the game frame-generation Vulkan layer out of libmpv/Chromium probing.
 export DISABLE_LSFGVK=1
 exec "$ROOT/lib/runtime/bin/java" "${opts[@]}" -cp "$cp" "$main" "$@"

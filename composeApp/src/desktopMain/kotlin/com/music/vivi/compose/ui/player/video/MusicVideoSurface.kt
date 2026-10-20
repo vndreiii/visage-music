@@ -196,6 +196,7 @@ fun MusicVideoSurface(
                     useGpu = prefs.getBoolean(PrefKeys.CanvasUseGpu, false),
                     startHeld = !playing,
                     startSec = controller.positionMs.value / 1000.0,
+                    backCacheMiB = 24,
                 )
             }.onFailure { System.err.println("MusicVideo: ${it.message}") }.getOrNull()
             SharedVideo(sink, r)

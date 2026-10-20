@@ -49,6 +49,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.music.vivi.compose.ui.glass.glassSource
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -289,6 +290,8 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
         .graphicsLayer { alpha = chromeAlpha }
         .blockPointer(!chromeShown)
 
+    val playerGlass = remember { dev.chrisbanes.haze.HazeState() }
+    com.music.vivi.compose.ui.glass.ProvideGlass(playerGlass) {
     Box(
         Modifier
             .fillMaxSize()
@@ -308,7 +311,8 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
             artworkUrl = if (swap.active) swap.displayedArt else readyArt,
             modifier = Modifier.fillMaxSize()
                 .songSwapViewport(swap)
-                .songSwapBackground(swap),
+                .songSwapBackground(swap)
+                .glassSource(playerGlass),
             canvasVideoUrl = bgCanvasUrl,
             canvasPlaying = playing,
             canvasBlurred = !appleBg,
@@ -392,6 +396,8 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                     Modifier
                         .width(ctrlW)
                         .height(minOf(ctrlW * 9f / 16f, h - 340.dp).coerceAtLeast(120.dp))
+                        // Same swap layer as the controls below it, so the two move in step instead of colliding.
+                        .songSwapControls(swap)
                         .shadow(24.dp, cardShape, clip = false)
                         .clip(cardShape)
                         .background(Color.Black),
@@ -661,6 +667,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                 )
             }
         }
+    }
     }
 }
 

@@ -46,6 +46,8 @@ class DiscordRpcManager(
             initRpc()
         } else if (!enabled && client != null) {
             shutdownRpc()
+        } else if (enabled) {
+            updatePresence()
         }
     }
 
@@ -117,10 +119,45 @@ class DiscordRpcManager(
             }
         }
 
+        val buttons = buildList {
+            val local = track.localPath != null || track.videoId.startsWith("local:") || track.videoId.startsWith("offline:")
+            if (prefs.getBoolean(PrefKeys.DiscordRpcSongButton, false) && !local) {
+                add("Listen on YouTube Music" to "https://music.youtube.com/watch?v=${track.videoId}")
+            }
+            if (prefs.getBoolean(PrefKeys.DiscordRpcVisageButton, false)) {
+                add("Get VIsage" to VISAGE_URL)
+            }
+        }
+
         try {
-            currentClient.sendRichPresence(builder.build())
+            val base = builder.build()
+            currentClient.sendRichPresence(
+                PresenceWithButtons(base, buttons).also {
+                    if (System.getenv("VISAGE_DEBUG_RPC") != null) System.err.println("discord rpc payload: ${it.toJson()}")
+                },
+                com.jagrosh.discordipc.entities.Callback({ _ -> }, { err -> System.err.println("discord rpc rejected activity: $err") }),
+            )
         } catch (e: Exception) {
             e.printStackTrace()
+        }
+    }
+}
+
+private const val VISAGE_URL = "https://github.com/vndreiii/visage-music"
+
+/** jagrosh's RichPresence has no button support; add the `buttons` array to its payload. */
+private class PresenceWithButtons(
+    private val base: RichPresence,
+    private val buttons: List<Pair<String, String>>,
+) : RichPresence(null, null, null, null, null, null, null, null, null, 0, 0, null, null, null, false) {
+    // Discord rejects the whole activity when buttons come with party/secrets keys, even empty ones.
+    override fun toJson(): org.json.JSONObject = base.toJson().apply {
+        remove("secrets")
+        remove("party")
+        remove("instance")
+        put("type", 3) // 3 = Watching ("Playing" is 0, "Listening" 2)
+        if (buttons.isNotEmpty()) {
+            put("buttons", org.json.JSONArray(buttons.take(2).map { (label, url) -> org.json.JSONObject().put("label", label).put("url", url) }))
         }
     }
 }

@@ -81,11 +81,13 @@ fun PlayerBackgroundLayer(
     canvasBlurred: Boolean = true,
     showClearArtwork: Boolean = true,
     modifier: Modifier = Modifier,
+    /** 0..1 darkening; null reads the Now Playing darkness setting. */
+    darknessOverride: Float? = null,
 ) {
     val prefs = org.koin.compose.koinInject<com.music.vivi.compose.prefs.DesktopPrefs>()
     @Suppress("UNUSED_VARIABLE")
     val prefsVersion = com.music.vivi.compose.ui.settings.rememberPrefsVersion(prefs)
-    val darkness = prefs.getInt(com.music.vivi.compose.prefs.PrefKeys.PlayerBackgroundDarkness, 0).coerceIn(0, 100) / 100f
+    val darkness = darknessOverride ?: (prefs.getInt(com.music.vivi.compose.prefs.PrefKeys.PlayerBackgroundDarkness, 0).coerceIn(0, 100) / 100f)
     val palette = LocalArtworkPalette.current
     val themeSurface = MaterialTheme.colorScheme.surface
     Box(modifier.fillMaxSize().clipToBounds().drawWithContent {

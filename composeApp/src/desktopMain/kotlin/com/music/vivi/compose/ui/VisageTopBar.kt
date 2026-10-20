@@ -20,6 +20,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.BugReport
+import androidx.compose.material.icons.outlined.Download
+import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.filled.Home
@@ -76,7 +79,7 @@ import com.music.vivi.compose.prefs.TopNavStyle
 import com.music.vivi.compose.theme.ensureContrastingOn
 import org.koin.compose.koinInject
 
-private val TopBarHeight = 64.dp
+private val TopBarHeight = com.music.vivi.compose.ui.glass.TopBarInset
 private val CaptionHit = 40.dp
 private val CaptionIconSlot = 20.dp
 
@@ -131,13 +134,23 @@ fun FrameWindowScope.VisageTopBar(
     val navDestinations = destinations.filter { it.route != Routes.SMOKE }
     var settingsMenuOpen by remember { mutableStateOf(false) }
 
-    Surface(tonalElevation = 2.dp) {
+    val glass = com.music.vivi.compose.ui.glass.glassActive()
+    Surface(
+        tonalElevation = if (glass) 0.dp else 2.dp,
+        color = if (glass) Color.Transparent else MaterialTheme.colorScheme.surface,
+    ) {
         WindowDraggableArea {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(TopBarHeight),
             ) {
+                // Frosted glass over whatever the page draws beneath the floating bar.
+                com.music.vivi.compose.ui.glass.GlassBackdrop(
+                    tint = MaterialTheme.colorScheme.surface.copy(alpha = 0.45f),
+                    modifier = Modifier.matchParentSize(),
+                    edges = com.music.vivi.compose.ui.glass.GlassEdges.Bottom,
+                )
                 // Left: brand + section title (inset from edge)
                 Row(
                     modifier = Modifier
@@ -314,6 +327,22 @@ private fun SettingsDropdownMenu(
             text = { Text("Playback & audio") },
             leadingIcon = { Icon(Icons.AutoMirrored.Outlined.VolumeUp, contentDescription = null) },
             onClick = { onOpen(Routes.SETTINGS_PLAYER) },
+        )
+        HorizontalDivider()
+        DropdownMenuItem(
+            text = { Text("Downloads") },
+            leadingIcon = { Icon(Icons.Outlined.Download, contentDescription = null) },
+            onClick = { onOpen(Routes.SETTINGS_DOWNLOADS) },
+        )
+        DropdownMenuItem(
+            text = { Text("Local files") },
+            leadingIcon = { Icon(Icons.Outlined.Folder, contentDescription = null) },
+            onClick = { onOpen(Routes.SETTINGS_LOCAL_OFFLINE) },
+        )
+        DropdownMenuItem(
+            text = { Text("Diagnostics") },
+            leadingIcon = { Icon(Icons.Outlined.BugReport, contentDescription = null) },
+            onClick = { onOpen(Routes.SETTINGS_DIAGNOSTICS) },
         )
     }
 }

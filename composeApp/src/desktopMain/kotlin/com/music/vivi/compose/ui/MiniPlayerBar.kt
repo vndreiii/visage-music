@@ -56,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
@@ -249,10 +250,20 @@ fun MiniPlayerBar(
                 },
         ) {
             Box {
+                val glass = com.music.vivi.compose.ui.glass.glassActive()
+                if (glass) {
+                    com.music.vivi.compose.ui.glass.GlassBackdrop(
+                        tint = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.42f),
+                        modifier = Modifier.matchParentSize(),
+                        shape = surfaceShape,
+                        edges = if (miniStyle == MiniPlayerStyle.FULL_WIDTH_BAR) com.music.vivi.compose.ui.glass.GlassEdges.Top else com.music.vivi.compose.ui.glass.GlassEdges.All,
+                    )
+                }
                 MiniPlayerBackgroundLayer(
                     style = miniBg,
                     artworkUrl = track?.artworkUrl,
-                    modifier = Modifier.matchParentSize(),
+                    // Over glass the style's colours stay, but let the blurred content show through.
+                    modifier = Modifier.matchParentSize().then(if (glass) Modifier.graphicsLayer { alpha = 0.5f } else Modifier),
                 )
                 Column {
                     Row(

@@ -212,47 +212,7 @@ fun SettingsHubScreen(navController: NavController) {
         }
 
         SettingsSection("Interface") {
-            SettingsNavItem(
-                icon = Icons.Outlined.Palette,
-                title = "Theme",
-                subtitle = "Light or dark, dynamic color, palette, contrast",
-                onClick = { navController.navigate(Routes.SETTINGS_THEME) },
-            )
-            SettingsDivider()
-            SettingsNavItem(
-                icon = Icons.Outlined.Dashboard,
-                title = "Top bar & mini-player",
-                subtitle = "Layout and style of the top bar and mini-player",
-                onClick = { navController.navigate(Routes.SETTINGS_APPEARANCE) },
-            )
-            SettingsDivider()
-            SettingsNavItem(
-                icon = Icons.Outlined.PlayCircle,
-                title = "Now Playing",
-                subtitle = "Background, canvas, controls, lyrics, queue",
-                onClick = { navController.navigate(Routes.SETTINGS_NOW_PLAYING) },
-            )
-            SettingsDivider()
-            SettingsNavItem(
-                icon = Icons.Outlined.PlayCircle,
-                title = "Song swappings",
-                subtitle = "How the player animates when the song changes",
-                onClick = { navController.navigate(Routes.SETTINGS_SONG_SWAP) },
-            )
-            SettingsDivider()
-            SettingsNavItem(
-                icon = Icons.Outlined.Dashboard,
-                title = "Sidebars",
-                subtitle = "Library and queue sidebars: side, width, default state",
-                onClick = { navController.navigate(Routes.SETTINGS_SIDEBARS) },
-            )
-            SettingsDivider()
-            SettingsNavItem(
-                icon = Icons.Outlined.Keyboard,
-                title = "Keyboard shortcuts",
-                subtitle = "Play/pause, seek, lyrics, navigation: view and rebind",
-                onClick = { navController.navigate(Routes.SETTINGS_KEYBINDS) },
-            )
+            InterfaceLinkItems(navController, skipRoute = null)
         }
 
         SettingsSection("Playback") {
@@ -540,6 +500,31 @@ private fun PaletteGrid(
 
 // —— Interface ————————————————————————————————————————————————
 
+/** Every page that belongs under "Interface"; shown in the hub and on the Interface page, so none is hard to find. */
+private data class InterfaceLink(val icon: ImageVector, val title: String, val subtitle: String, val route: String)
+
+private val interfaceLinks = listOf(
+    InterfaceLink(Icons.Outlined.Palette, "Theme", "Light or dark, dynamic color, palette, contrast", Routes.SETTINGS_THEME),
+    InterfaceLink(Icons.Outlined.Dashboard, "Top bar & mini-player", "Layout and style of the top bar and mini-player", Routes.SETTINGS_APPEARANCE),
+    InterfaceLink(Icons.Outlined.PlayCircle, "Now Playing", "Background, canvas, controls, lyrics, queue", Routes.SETTINGS_NOW_PLAYING),
+    InterfaceLink(Icons.Outlined.PlayCircle, "Song swappings", "How the player animates when the song changes", Routes.SETTINGS_SONG_SWAP),
+    InterfaceLink(Icons.Outlined.Dashboard, "Sidebars", "Library and queue sidebars: side, width, default state", Routes.SETTINGS_SIDEBARS),
+    InterfaceLink(Icons.Outlined.Keyboard, "Keyboard shortcuts", "Play/pause, seek, lyrics, navigation: view and rebind", Routes.SETTINGS_KEYBINDS),
+)
+
+@Composable
+private fun InterfaceLinkItems(navController: NavController, skipRoute: String?) {
+    interfaceLinks.filter { it.route != skipRoute }.forEachIndexed { i, link ->
+        if (i > 0) SettingsDivider()
+        SettingsNavItem(
+            icon = link.icon,
+            title = link.title,
+            subtitle = link.subtitle,
+            onClick = { navController.navigate(link.route) },
+        )
+    }
+}
+
 @Composable
 fun AppearanceSettingsScreen(navController: NavController) {
     val prefs = koinInject<DesktopPrefs>()
@@ -550,16 +535,12 @@ fun AppearanceSettingsScreen(navController: NavController) {
     val topNav = prefs.enumPref(PrefKeys.TopNavStyle, TopNavStyle.ICON_ONLY)
 
     SettingsPage(title = "Interface", onBack = { navController.navigateUp() }) {
+        SettingsSection("More interface settings") {
+            InterfaceLinkItems(navController, skipRoute = Routes.SETTINGS_APPEARANCE)
+        }
+
         SettingsSection("Typography") {
-            ChipChoiceRow(
-                icon = Icons.Outlined.Tune,
-                title = "Font pairing",
-                options = listOf("expressive" to "Manrope + Roboto", "dm-sans" to "DM Sans + Roboto", "roboto" to "Roboto", "system" to "System"),
-                selected = prefs.getString(PrefKeys.InterfaceFont, "expressive"),
-                onSelect = { prefs.setString(PrefKeys.InterfaceFont, it) },
-            )
-            Text("Make room for your music", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
-            Text("Readable details, expressive headings", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+            FontPairingContent(prefs)
         }
 
         SettingsSection("Layout") {
@@ -570,6 +551,32 @@ fun AppearanceSettingsScreen(navController: NavController) {
                 checked = prefs.getBoolean(PrefKeys.AdwaitaInspired, false),
                 onChecked = { prefs.setBoolean(PrefKeys.AdwaitaInspired, it) },
             )
+            SettingsDivider()
+            SwitchItem(
+                icon = Icons.Outlined.Tune,
+                title = "Material 3 Expressive Blur",
+                subtitle = "Surfaces over other content (mini-player, player controls, queue tray) become translucent frosted glass. Same design, blurred backdrop.",
+                checked = prefs.getBoolean(PrefKeys.GlassBlur, false),
+                onChecked = { prefs.setBoolean(PrefKeys.GlassBlur, it) },
+            )
+            if (prefs.getBoolean(PrefKeys.GlassBlur, false)) {
+                SettingsDivider()
+                PrefSecondsSlider(
+                    title = "Page background darkness",
+                    value = prefs.getInt(PrefKeys.PageBackgroundDarkness, 50).coerceIn(0, 100).toFloat(),
+                    valueRange = 0f..100f,
+                    steps = 19,
+                    valueLabel = { "${it.toInt()}%" },
+                    onCommit = { prefs.setInt(PrefKeys.PageBackgroundDarkness, it.toInt()) },
+                )
+                ChipChoiceRow(
+                    icon = Icons.Outlined.Wallpaper,
+                    title = "Page background style",
+                    options = PlayerBackgroundStyle.entries.map { it to it.label() },
+                    selected = prefs.enumPref(PrefKeys.PageBackgroundStyle, PlayerBackgroundStyle.BLUR),
+                    onSelect = { prefs.setString(PrefKeys.PageBackgroundStyle, it.name) },
+                )
+            }
         }
 
         SettingsSection("Top bar") {
@@ -1099,6 +1106,20 @@ fun PlayerSettingsScreen(navController: NavController) {
                 checked = prefs.getBoolean(PrefKeys.DiscordRpcEnabled, true),
                 onChecked = { prefs.setBoolean(PrefKeys.DiscordRpcEnabled, it) },
             )
+            SwitchItem(
+                icon = Icons.Outlined.Groups,
+                title = "Discord: song button",
+                subtitle = "Add a button that opens the current song on YouTube Music",
+                checked = prefs.getBoolean(PrefKeys.DiscordRpcSongButton, false),
+                onChecked = { prefs.setBoolean(PrefKeys.DiscordRpcSongButton, it) },
+            )
+            SwitchItem(
+                icon = Icons.Outlined.Groups,
+                title = "Discord: VIsage button",
+                subtitle = "Add a button that opens the VIsage GitHub page",
+                checked = prefs.getBoolean(PrefKeys.DiscordRpcVisageButton, false),
+                onChecked = { prefs.setBoolean(PrefKeys.DiscordRpcVisageButton, it) },
+            )
         }
     }
 }
@@ -1339,7 +1360,7 @@ internal fun SettingsBackHeader(title: String, onBack: (() -> Unit)?) {
     ) {
         if (onBack != null) {
             com.music.vivi.compose.ui.component.VisageBackButton(onClick = onBack)
-            Spacer(Modifier.width(4.dp))
+            Spacer(Modifier.width(14.dp))
         }
         Text(
             title,
@@ -1351,7 +1372,7 @@ internal fun SettingsBackHeader(title: String, onBack: (() -> Unit)?) {
 }
 
 @Composable
-private fun SettingsRowFrame(
+internal fun SettingsRowFrame(
     icon: ImageVector?,
     title: String,
     subtitle: String?,

@@ -200,10 +200,17 @@ fun AnimatedLibrarySidebar(
                 )
                 .width(width),
             shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
-            tonalElevation = 3.dp,
+            color = if (com.music.vivi.compose.ui.glass.glassActive()) androidx.compose.ui.graphics.Color.Transparent
+                else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
+            tonalElevation = if (com.music.vivi.compose.ui.glass.glassActive()) 0.dp else 3.dp,
         ) {
             Box(Modifier.fillMaxSize()) {
+                // Blur setting on: frosted glass over the tinted page background.
+                com.music.vivi.compose.ui.glass.GlassBackdrop(
+                    tint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                    modifier = Modifier.matchParentSize(),
+                    shape = RoundedCornerShape(20.dp),
+                )
                 // Fixed-width content anchored to the start edge: the surface only reveals/clips it.
                 LibraryPanel(
                     f = f,

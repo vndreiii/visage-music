@@ -73,6 +73,9 @@ import com.music.vivi.compose.ui.home.HomeScreen
 import com.music.vivi.compose.ui.library.LibraryScreen
 import com.music.vivi.compose.ui.player.NowPlayingFullscreenScreen
 import com.music.vivi.compose.ui.player.NowPlayingScreen
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
+import com.music.vivi.compose.ui.glass.glassSource
 import com.music.vivi.compose.ui.player.queue.AnimatedQueueBottomTray
 import com.music.vivi.compose.ui.player.queue.AnimatedQueuePinnedRail
 import com.music.vivi.compose.ui.playlist.OnlinePlaylistScreen
@@ -164,18 +167,23 @@ fun FrameWindowScope.AppScaffold(
         }
     }
 
-    Column(
-        Modifier.fillMaxSize().onPreviewKeyEvent { e ->
-            if (e.type == KeyEventType.KeyDown && e.key == Key.L && e.isCtrlPressed && e.isShiftPressed && libraryAllowed) {
-                toggleLibrary(); true
-            } else false
-        },
-    ) {
-        val osFullscreen = windowState.placement == WindowPlacement.Fullscreen
-        // Hide chrome for immersive NP route and whenever the window is OS-fullscreen.
-        val hideTopBar =
-            current == Routes.NOW_PLAYING_FULLSCREEN || osFullscreen
-        if (!hideTopBar) {
+    val glassState = remember { dev.chrisbanes.haze.HazeState() }
+    val backdropScroll = remember { com.music.vivi.compose.ui.glass.BackdropScroll() }
+    androidx.compose.runtime.LaunchedEffect(current) { backdropScroll.y = 0f }
+    // Drag / touchpad scrolling reports through nested scroll; the mouse wheel reports from the shared wheel scroller.
+    val backdropNested = remember(backdropScroll) {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            override fun onPostScroll(consumed: androidx.compose.ui.geometry.Offset, available: androidx.compose.ui.geometry.Offset, source: androidx.compose.ui.input.nestedscroll.NestedScrollSource): androidx.compose.ui.geometry.Offset {
+                backdropScroll.y = (backdropScroll.y - consumed.y).coerceAtLeast(0f)
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+        }
+    }
+    val glassOn = com.music.vivi.compose.ui.glass.rememberGlassEnabled()
+    val osFullscreen = windowState.placement == WindowPlacement.Fullscreen
+    // Hide chrome for immersive NP route and whenever the window is OS-fullscreen.
+    val hideTopBar = current == Routes.NOW_PLAYING_FULLSCREEN || osFullscreen
+    val topBar: @Composable () -> Unit = {
             VisageTopBar(
                 destinations = Routes.mainDestinations,
                 currentRoute = current,
@@ -206,12 +214,36 @@ fun FrameWindowScope.AppScaffold(
                     }
                 },
             )
-        }
+    }
+    // With the blur setting on, the top bar floats over the page (so the page, and on Now Playing its shader
+    // background, shows through the glass) and pages are inset by its height instead.
+    val overlayTopBar = glassOn && !hideTopBar
+    // Blur setting on and the full-width mini-player style: the bar spans the whole window (not just the inset,
+    // rounded main pane) and the sidebars and pages end above it.
+    val miniAtRoot = glassOn && !onNowPlaying && resolveMiniPlayerStyle(prefs) == MiniPlayerStyle.FULL_WIDTH_BAR
+    var miniBarHeightPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    val miniBarInset = if (miniAtRoot) with(androidx.compose.ui.platform.LocalDensity.current) { miniBarHeightPx.toDp() } else 0.dp
+    com.music.vivi.compose.ui.glass.ProvideGlass(glassState, scroll = backdropScroll) {
+    Box(
+        Modifier.fillMaxSize().onPreviewKeyEvent { e ->
+            if (e.type == KeyEventType.KeyDown && e.key == Key.L && e.isCtrlPressed && e.isShiftPressed && libraryAllowed) {
+                toggleLibrary(); true
+            } else false
+        },
+    ) {
+      if (glassOn) {
+          // One tinted background behind everything (bar, sidebars, pages): the glass surfaces blur it.
+          Box(Modifier.fillMaxSize().glassSource(glassState)) {
+              com.music.vivi.compose.ui.glass.PageBackground(nowPlayingStyle = onNowPlaying)
+          }
+      }
+      Column(Modifier.fillMaxSize()) {
+        if (!hideTopBar && !overlayTopBar) topBar()
         Box(
             Modifier
                 .weight(1f)
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background),
+                .then(if (glassOn) Modifier else Modifier.background(MaterialTheme.colorScheme.background)),
         ) {
             BoxWithConstraints(Modifier.fillMaxSize()) {
                 val libVisible = libraryState != LibrarySidebarState.HIDDEN
@@ -229,7 +261,7 @@ fun FrameWindowScope.AppScaffold(
                 val leftFrac by animateFloatAsState(if (libLeft || queueLeft) 1f else 0f, VisageMotion.rail(), label = "insetLeft")
                 val rightFrac by animateFloatAsState(if (libRight || queueRight) 1f else 0f, VisageMotion.rail(), label = "insetRight")
                 val inset = maxOf(leftFrac, rightFrac)
-                Row(Modifier.fillMaxSize()) {
+                Row(Modifier.fillMaxSize().then(if (overlayTopBar) Modifier.padding(top = com.music.vivi.compose.ui.glass.TopBarInset) else Modifier).padding(bottom = miniBarInset)) {
                     AnimatedLibrarySidebar(
                         state = if (sidebarCfg.librarySide == SidebarSide.LEFT) libraryState else LibrarySidebarState.HIDDEN,
                         side = SidebarSide.LEFT,
@@ -272,10 +304,10 @@ fun FrameWindowScope.AppScaffold(
                                 onOpenFullscreenQueue = { openFullscreenQueue() },
                                 queueOpen = queueRailOn || fullscreenQueue,
                                 onCloseQueue = { closePinnedQueue(); fullscreenQueue = false },
-                                modifier = Modifier.fillMaxSize(),
+                                modifier = Modifier.fillMaxSize().nestedScroll(backdropNested).glassSource(glassState),
                             )
-                            if (!onNowPlaying) {
-                                Box(
+                            if (!onNowPlaying && !miniAtRoot) {
+                                if (!glassOn) Box(
                                     Modifier
                                         .align(Alignment.BottomCenter)
                                         .fillMaxWidth()
@@ -321,12 +353,27 @@ fun FrameWindowScope.AppScaffold(
                     )
                 }
             }
+            if (miniAtRoot) {
+                MiniPlayerBar(
+                    onExpand = {
+                        navController.navigate(Routes.NOW_PLAYING) {
+                            launchSingleTop = true
+                        }
+                    },
+                    onOpenArtist = { navController.openArtistByName(it) },
+                    styleOverride = MiniPlayerStyle.FULL_WIDTH_BAR,
+                    modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { miniBarHeightPx = it.height },
+                )
+            }
             AnimatedQueueBottomTray(
                 visible = fullscreenQueue,
                 onDismiss = { fullscreenQueue = false },
                 onPin = { openPinnedQueue() },
             )
         }
+      }
+      if (overlayTopBar) Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()) { topBar() }
+    }
     }
 }
 

@@ -31,6 +31,8 @@ kotlin {
         val desktopMain by getting {
             dependencies {
                 implementation("com.github.jagrosh:DiscordIPC:master-SNAPSHOT")
+                // Backdrop blur for the "Material 3 Expressive Blur" glass surfaces.
+                implementation("dev.chrisbanes.haze:haze:1.7.0")
                 implementation("me.friwi:jcefmaven:152.0.6")
                 // The Chromium runtime (about 150 MB) is not bundled. jcefmaven downloads it the first time the
                 // user opens the sign-in page (see EmbeddedLoginBrowser). Tests bundle it, below.
@@ -89,6 +91,20 @@ val stageNativeLib by tasks.registering(Copy::class) {
     }
 }
 
+// Memory: the JVM default caps the heap at a quarter of the machine's RAM and gives unused heap back very slowly, so a
+// music player could sit at 1+ GB. Cap it. The serial collector is used because the heap is small (tens of MB live)
+// and G1 spends ~60 MB on bookkeeping sized for the 1 GB cap; Serial's pauses on a heap this size are a few ms.
+val memoryArgs = listOf(
+    "-Xmx1g",
+    "-Xms64m",
+    // Serial picks a young generation from the machine's RAM (hundreds of MB); a small fixed one collects often and
+    // cheaply since little survives, and keeps resident memory flat.
+    "-Xmn24m",
+    "-XX:+UseSerialGC",
+    "-XX:MinHeapFreeRatio=10",
+    "-XX:MaxHeapFreeRatio=30",
+)
+
 // Class-data sharing: the JVM writes a dynamic archive of the app's loaded classes on exit and maps it on the next
 // start, which cuts class-loading time (a big part of a Compose app's cold start). Windows only: the per-user
 // install dir is writable, whereas /opt (deb/rpm) and the AppImage mount are not. A failed write only warns.
@@ -145,7 +161,7 @@ compose.desktop {
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
             "-Dawt.appClassName=visage",
             "-Dvisage.version=$visageVersion",
-        ) + x11Opens + cdsArgs
+        ) + memoryArgs + x11Opens + cdsArgs
     }
 }
 

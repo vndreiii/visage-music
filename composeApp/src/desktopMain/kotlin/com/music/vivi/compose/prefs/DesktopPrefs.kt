@@ -125,13 +125,25 @@ object PrefKeys {
     const val CanvasUseGpu = "canvasUseGpu"
     const val MiniPlayerBackgroundDarkness = "miniPlayerBackgroundDarkness"
     const val PlayerBackgroundDarkness = "playerBackgroundDarkness"
+    /** Legacy single preset ("expressive" / "dm-sans" / "roboto" / "system"); read only to migrate to the two below. */
     const val InterfaceFont = "interfaceFont"
+    /** Font for headings and titles: "Manrope", "DMSans", "Roboto", "system" or "sys:<installed family name>". */
+    const val HeadingFont = "headingFont"
+    /** Font for body text and labels, same values as [HeadingFont]. */
+    const val BodyFont = "bodyFont"
     const val AdwaitaInspired = "adwaitaInspired"
+    /** "Material 3 Expressive Blur": translucent, blurred surfaces over content. */
+    const val GlassBlur = "glassBlur"
+    /** With the blur on, every page gets a cover-tinted background in this style / darkness. */
+    const val PageBackgroundStyle = "pageBackgroundStyle"
+    const val PageBackgroundDarkness = "pageBackgroundDarkness"
     const val LimitPlayerControlsWidth = "limitPlayerControlsWidth"
     const val PlayerControlsWidth = "playerControlsWidth"
     const val PlayPauseHeight = "playPauseHeight"
     const val CanvasPingPong = "canvasPingPong"
     const val DiscordRpcEnabled = "discordRpcEnabled"
+    const val DiscordRpcSongButton = "discordRpcSongButton"
+    const val DiscordRpcVisageButton = "discordRpcVisageButton"
     const val HidePlayerThumbnail = "hidePlayerThumbnail"
     const val AudioQuality = "audioQuality"
     const val PersistentQueue = "persistentQueue"

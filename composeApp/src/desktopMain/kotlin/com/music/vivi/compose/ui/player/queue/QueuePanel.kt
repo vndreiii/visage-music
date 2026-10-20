@@ -169,14 +169,21 @@ fun BoxScope.AnimatedQueueBottomTray(
         Surface(
             modifier = Modifier.fillMaxSize(),
             shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            color = if (com.music.vivi.compose.ui.glass.glassActive()) Color.Transparent else MaterialTheme.colorScheme.surfaceContainerHigh,
             tonalElevation = 6.dp,
             shadowElevation = 16.dp,
         ) {
-            QueueFullscreenPanel(
-                onDismiss = onDismiss,
-                onSwitchMode = onPin,
-            )
+            Box {
+                com.music.vivi.compose.ui.glass.GlassBackdrop(
+                    tint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                    modifier = Modifier.matchParentSize(),
+                    shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                )
+                QueueFullscreenPanel(
+                    onDismiss = onDismiss,
+                    onSwitchMode = onPin,
+                )
+            }
         }
     }
 }
@@ -197,14 +204,23 @@ fun QueuePinnedPanel(
                 end = if (mirrored) 4.dp else 8.dp, bottom = 8.dp,
             ),
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
-        tonalElevation = 3.dp,
+        color = if (com.music.vivi.compose.ui.glass.glassActive()) Color.Transparent
+            else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
+        tonalElevation = if (com.music.vivi.compose.ui.glass.glassActive()) 0.dp else 3.dp,
     ) {
-        QueuePanelBody(
-            pinned = true,
-            onDismiss = onDismiss,
-            onSwitchMode = onSwitchMode,
-        )
+        Box {
+            // Blur setting on: frosted glass over the tinted page background.
+            com.music.vivi.compose.ui.glass.GlassBackdrop(
+                tint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                modifier = Modifier.matchParentSize(),
+                shape = RoundedCornerShape(20.dp),
+            )
+            QueuePanelBody(
+                pinned = true,
+                onDismiss = onDismiss,
+                onSwitchMode = onSwitchMode,
+            )
+        }
     }
 }
 

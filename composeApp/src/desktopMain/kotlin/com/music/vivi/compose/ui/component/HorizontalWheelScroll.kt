@@ -24,6 +24,7 @@ import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.platform.LocalDensity
@@ -102,22 +103,28 @@ fun Modifier.horizontalWheelScroll(
                     val pointerId = down.id
                     var dragging = false
                     var accumulated = Offset.Zero
-                    var lastTime = System.nanoTime()
-                    var velocityX = 0f
+                    // Timestamp-based: pointer events arrive in bursts, so wall-clock gaps between them are meaningless
+                    // (a tiny gap made the release velocity enormous and a short drag flung the shelf away).
+                    val tracker = VelocityTracker()
+                    tracker.addPosition(down.uptimeMillis, down.position)
+                    var lastMoveUptime = down.uptimeMillis
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
                         val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                        tracker.addPosition(change.uptimeMillis, change.position)
                         if (!change.pressed) {
-                            if (dragging) { change.consume(); fling(velocityX) }
+                            if (dragging) {
+                                change.consume()
+                                // Held still before letting go: no fling.
+                                val held = change.uptimeMillis - lastMoveUptime
+                                val v = if (held > 90) 0f else (-tracker.calculateVelocity().x).coerceIn(-MaxFlingPxPerSec, MaxFlingPxPerSec)
+                                fling(v)
+                            }
                             break
                         }
                         val delta = change.positionChange()
                         accumulated += delta
-                        val now = System.nanoTime()
-                        val dtSec = ((now - lastTime) / 1_000_000_000.0).toFloat().coerceAtLeast(1e-4f)
-                        lastTime = now
-                        val instant = -delta.x / dtSec
-                        velocityX = velocityX * 0.65f + instant * 0.35f
+                        if (abs(delta.x) > 0.01f) lastMoveUptime = change.uptimeMillis
                         if (!dragging) {
                             if (abs(accumulated.x) < touchSlop && abs(accumulated.y) < touchSlop) {
                                 continue
@@ -139,6 +146,8 @@ fun Modifier.horizontalWheelScroll(
             onEdgeOverscroll?.invoke(leftover.coerceIn(-48f, 48f))
         }
 }
+
+private const val MaxFlingPxPerSec = 7000f
 
 /** Alias matching the UI-UX guide name — same behavior as [horizontalWheelScroll]. */
 fun Modifier.dragToScroll(

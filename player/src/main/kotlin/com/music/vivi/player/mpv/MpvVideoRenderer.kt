@@ -54,6 +54,8 @@ class MpvVideoRenderer(
     useGpu: Boolean = false,
     /** Initial playback position (music-video sync starts mid-track). */
     private val startSec: Double = 0.0,
+    /** Already-played data kept for seeks back; canvas loops want the whole clip, music videos need little. */
+    backCacheMiB: Int = 96,
 ) : AutoCloseable {
     @Volatile var maxEdge: Int = maxEdge
     private val lib = MpvLib.INSTANCE
@@ -96,7 +98,7 @@ class MpvVideoRenderer(
         opt("demuxer-max-bytes", "48MiB")
         // Keep the whole clip behind the playhead so the loop seek is served from memory
         // (seamless) instead of re-fetching HLS segments and stalling at the seam.
-        opt("demuxer-max-back-bytes", "96MiB")
+        opt("demuxer-max-back-bytes", "${backCacheMiB}MiB")
         opt("demuxer-seekable-cache", "yes")
         opt("cache-secs", "120")
         opt("hr-seek", "yes")

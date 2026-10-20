@@ -68,6 +68,7 @@ import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.music.vivi.compose.ui.glass.glassSource
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -314,13 +315,16 @@ fun NowPlayingScreen(
         com.music.vivi.compose.ui.player.background.rememberCanvasVideo(canvasTallUrl, playing = false)
     }
 
+    val playerGlass = remember { dev.chrisbanes.haze.HazeState() }
+    com.music.vivi.compose.ui.glass.ProvideGlass(playerGlass) {
     Box(Modifier.fillMaxSize()) {
         PlayerBackgroundLayer(
             style = bgStyle,
             artworkUrl = if (swap.active) swap.displayedArt else readyArt,
             modifier = Modifier.fillMaxSize()
                 .songSwapViewport(swap)
-                .songSwapBackground(swap),
+                .songSwapBackground(swap)
+                .glassSource(playerGlass),
             // Same URL as the cover slot: one shared decoder, frames stay in sync.
             canvasVideoUrl = canvasSquareUrl,
             canvasPlaying = playing,
@@ -340,7 +344,9 @@ fun NowPlayingScreen(
             BoxWithConstraints(
                 Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 28.dp, vertical = 16.dp),
+                    .padding(start = 28.dp, end = 28.dp, top = 16.dp, bottom = 16.dp)
+                    // With the blur setting on, the top bar floats over this page: keep content below it.
+                    .padding(top = com.music.vivi.compose.ui.glass.LocalTopBarInset.current),
             ) {
                 val paneGap = 28.dp
                 val bottomChromeH = 60.dp
@@ -540,6 +546,8 @@ fun NowPlayingScreen(
                                                     modifier = Modifier
                                                         .fillMaxWidth()
                                                         .aspectRatio(16f / 9f)
+                                                        // Same swap layer as the controls below it, so the two move in step.
+                                                        .songSwapControls(swap)
                                                         .shadow(24.dp, videoShape, clip = false)
                                                         .clip(videoShape),
                                                 )
@@ -811,6 +819,7 @@ fun NowPlayingScreen(
                 }
             }
         }
+    }
     }
 }
 

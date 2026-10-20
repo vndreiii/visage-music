@@ -37,7 +37,7 @@ fun DetailPageHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         com.music.vivi.compose.ui.component.VisageBackButton(onClick = onBack)
-        Spacer(Modifier.width(8.dp))
+        Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 title.orEmpty(),

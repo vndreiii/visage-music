@@ -23,6 +23,12 @@ object MusicVideoResolver {
         MusicVideoTypes.videoIdFor(trackId, item.musicVideoType, item.counterpartVideoId)
     }
 
+    /** Forgets resolved videos (memory pressure) and the proxy's downloaded chunks. */
+    fun purge() {
+        cache.clear()
+        VideoChunkProxy.purge()
+    }
+
     /** Set by the app: the quality to prefetch at, or null while music videos are switched off. */
     @Volatile var prefetchQuality: () -> VideoQuality? = { null }
 

@@ -15,6 +15,11 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.AnimatedContentScope
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.EnterExitState
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
@@ -119,6 +124,23 @@ fun NavGraphBuilder.composable(
     content: @Composable AnimatedContentScope.(NavBackStackEntry) -> Unit,
 ) {
     navComposable(route, arguments, deepLinks) { entry ->
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) { content(entry) }
+        // Blur setting on: the app draws one cover-tinted background behind everything (see AppScaffold), so pages
+        // are transparent instead of opaque.
+        val glass = com.music.vivi.compose.ui.glass.rememberGlassEnabled()
+        // Transparent pages would show through one another mid-transition, so with the blur on the pages hand over
+        // one after the other: the leaving page is gone before the arriving page starts to appear.
+        val handover by transition.animateFloat(
+            transitionSpec = {
+                if (targetState == EnterExitState.Visible) tween(170, delayMillis = 120, easing = EmphasizedDecelerate)
+                else tween(110, easing = EmphasizedAccelerate)
+            },
+            label = "pageHandover",
+        ) { state -> if (state == EnterExitState.Visible) 1f else 0f }
+        Box(
+            Modifier.fillMaxSize()
+                .then(if (glass) Modifier.graphicsLayer { alpha = handover } else Modifier.background(MaterialTheme.colorScheme.background)),
+        ) {
+            content(entry)
+        }
     }
 }

@@ -28,8 +28,8 @@ object VideoChunkProxy {
     private const val CHUNK = 4 * 1024 * 1024
     /** Chunks fetched ahead of the read position; also the number of parallel connections for one stream. */
     private const val AHEAD = 3
-    private const val MAX_CHUNKS_PER_STREAM = 16
-    private const val MAX_STREAMS_WITH_DATA = 4
+    private const val MAX_CHUNKS_PER_STREAM = 10
+    private const val MAX_STREAMS_WITH_DATA = 3
     private const val MAX_REGISTERED = 64
 
     private class Stream(val id: String, val url: String, val headers: Map<String, String>, val length: Long, val mime: String) {
@@ -82,6 +82,11 @@ object VideoChunkProxy {
         if (warm) for (i in 1 until AHEAD.coerceAtMost(stream.chunkCount)) chunk(stream, i)
         "http://127.0.0.1:${server.address.port}/v/${stream.id}"
     }.getOrDefault(url)
+
+    /** Drops every downloaded chunk (memory pressure); streams stay registered and refetch on demand. */
+    fun purge() {
+        synchronized(this) { streams.values.forEach { it.chunks.clear() } }
+    }
 
     private fun chunk(s: Stream, idx: Int): CompletableFuture<ByteArray> {
         s.lastUsed = System.nanoTime()

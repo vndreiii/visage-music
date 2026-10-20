@@ -32,6 +32,8 @@ internal class WheelDriver(
     private val state: ScrollableState,
     private val scope: CoroutineScope,
     private val notchPx: Float,
+    /** Called with the signed distance (px) actually scrolled; used to drift the page background. */
+    private val onScrolled: ((Float) -> Unit)? = null,
 ) {
     private var pending = 0f
     private var job: Job? = null
@@ -50,7 +52,7 @@ internal class WheelDriver(
         when (sample.kind) {
             WheelKind.Precise -> {
                 pending = 0f
-                state.dispatchRawDelta(sample.delta * notchPx * PreciseGain)
+                onScrolled?.invoke(state.dispatchRawDelta(sample.delta * notchPx * PreciseGain))
             }
             WheelKind.Stream -> {
                 tauMs = StreamTauMs
@@ -76,6 +78,7 @@ internal class WheelDriver(
                     last = now
                     val step = pending * (1f - exp(-dtMs / tauMs))
                     val consumed = scrollBy(step)
+                    onScrolled?.invoke(consumed)
                     pending -= step
                     if (abs(consumed) < abs(step) * 0.5f && abs(step) > 0.5f) pending = 0f
                 }
@@ -106,7 +109,10 @@ internal fun Modifier.wheelScroll(
     val scope = rememberCoroutineScope()
     val notchPx = with(LocalDensity.current) { 110.dp.toPx() }
     val classifier = remember(state) { WheelClassifier() }
-    val driver = remember(state, notchPx) { WheelDriver(state, scope, notchPx) }
+    val backdrop = com.music.vivi.compose.ui.glass.LocalBackdropScroll.current
+    val driver = remember(state, notchPx, backdrop) {
+        WheelDriver(state, scope, notchPx, backdrop?.let { b -> { d: Float -> b.y = (b.y + d).coerceAtLeast(0f) } })
+    }
     onPointerEvent(PointerEventType.Scroll, pass = pass) { event ->
         val change = event.changes.firstOrNull() ?: return@onPointerEvent
         val sample = classifier.classify(
