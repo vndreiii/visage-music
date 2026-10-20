@@ -3,7 +3,7 @@ package com.music.vivi.compose.update
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideInHorizontally
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -36,7 +36,7 @@ import com.music.vivi.compose.ui.motion.VisageMotion
 import org.koin.compose.koinInject
 
 /**
- * "VIsage x is available" card, bottom-centred. Drop it as the last child of a full-size Box
+ * "New update available" toast, bottom-left. Drop it as the last child of a full-size Box
  * over the app content; it does not block input when hidden.
  */
 @Composable
@@ -47,24 +47,30 @@ fun UpdatePrompt() {
     val offer = status.offer
     val busy = status.phase == UpdatePhase.Downloading || status.phase == UpdatePhase.Restarting
 
-    Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomCenter) {
+    Box(Modifier.fillMaxSize().padding(16.dp), contentAlignment = Alignment.BottomStart) {
         AnimatedVisibility(
             visible = status.promptVisible && offer != null,
-            enter = fadeIn(VisageMotion.fadeInSpec()) + slideInVertically(VisageMotion.settle()) { it / 3 },
+            enter = fadeIn(VisageMotion.fadeInSpec()) + slideInHorizontally(VisageMotion.settle()) { -it / 3 },
             exit = fadeOut(VisageMotion.fadeOutSpec<Float>()),
         ) {
             if (offer == null) return@AnimatedVisibility
             Surface(
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(24.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 shadowElevation = 8.dp,
-                modifier = Modifier.fillMaxWidth().widthIn(max = 520.dp),
+                modifier = Modifier.widthIn(max = 380.dp),
             ) {
                 Column(Modifier.padding(20.dp)) {
                     Text(
-                        "VIsage ${offer.version} is available",
-                        style = MaterialTheme.typography.titleLarge,
+                        "New update available",
+                        style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        "VIsage ${offer.version} is ready.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     if (offer.notes.isNotBlank()) {
                         Spacer(Modifier.height(8.dp))
@@ -72,7 +78,7 @@ fun UpdatePrompt() {
                             offer.notes,
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 6,
+                            maxLines = 3,
                             overflow = TextOverflow.Ellipsis,
                         )
                     }
@@ -94,7 +100,15 @@ fun UpdatePrompt() {
                         Text(it, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     Spacer(Modifier.height(16.dp))
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
+                        ExpressiveButton(
+                            text = "Skip",
+                            onClick = service::dismiss,
+                            size = ExpressiveSize.XSmall,
+                            style = ExpressiveStyle.Text,
+                            enabled = !busy,
+                        )
+                        Spacer(Modifier.width(4.dp))
                         ExpressiveButton(
                             text = "Later",
                             onClick = service::remindLater,
@@ -103,17 +117,9 @@ fun UpdatePrompt() {
                             enabled = !busy,
                         )
                         Spacer(Modifier.width(8.dp))
-                        ExpressiveButton(
-                            text = "Dismiss",
-                            onClick = service::dismiss,
-                            size = ExpressiveSize.XSmall,
-                            style = ExpressiveStyle.Text,
-                            enabled = !busy,
-                        )
-                        Spacer(Modifier.width(8.dp))
                         val installs = service.primaryAction(offer) == UpdateAction.InstallAndRestart
                         ExpressiveButton(
-                            text = if (installs) "Install & restart" else "Open release page",
+                            text = if (installs) "Update now" else "Open release page",
                             onClick = service::install,
                             size = ExpressiveSize.Small,
                             enabled = !busy,
