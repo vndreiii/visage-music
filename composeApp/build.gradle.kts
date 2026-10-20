@@ -69,7 +69,7 @@ kotlin {
 val visageVersion: String = (System.getenv("VISAGE_VERSION") ?: "1.0.2").removePrefix("v")
 
 // Stage the optional native helper where Compose copies "linux"/"windows" resources from.
-// On Windows, `scripts/package-windows.ps1` also puts libmpv-2.dll and yt-dlp.exe in build/windows-deps.
+// On Windows, `scripts/package-windows.ps1` (Linux: `scripts/fetch-ytdlp-linux.sh`) also puts libmpv-2.dll and yt-dlp.exe in build/windows-deps.
 val nativeResources = layout.buildDirectory.dir("native-resources")
 val stageNativeLib by tasks.registering(Copy::class) {
     if (isWindowsHost) {
@@ -80,8 +80,11 @@ val stageNativeLib by tasks.registering(Copy::class) {
         into(nativeResources.map { it.dir("windows") })
     } else {
         val lib = rootProject.file("native/target/release/libvisage_native.so")
-        onlyIf { lib.isFile }
+        // scripts/fetch-ytdlp-linux.sh puts the standalone yt-dlp here.
+        val deps = layout.buildDirectory.dir("linux-deps")
+        onlyIf { lib.isFile || deps.get().file("yt-dlp").asFile.isFile }
         from(lib)
+        from(deps)
         into(nativeResources.map { it.dir("linux") })
     }
 }
@@ -259,5 +262,9 @@ tasks.matching { !isWindowsHost && (it.name == "createDistributable" || it.name 
                 java.copyTo(dest, overwrite = true)
                 dest.setExecutable(true, false)
             }
+        // The resources copy drops the executable bit; the app only uses a bundled yt-dlp it can execute.
+        layout.buildDirectory.dir("compose/binaries").get().asFile.walkTopDown()
+            .filter { it.isFile && it.name == "yt-dlp" && it.parentFile.name == "resources" }
+            .forEach { it.setExecutable(true, false) }
     }
 }

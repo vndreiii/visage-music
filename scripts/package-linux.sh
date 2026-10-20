@@ -21,6 +21,7 @@ else
   echo "cargo not found: packaging without the native helpers" >&2
 fi
 
+scripts/fetch-ytdlp-linux.sh
 ./gradlew --no-daemon :composeApp:packageDeb :composeApp:packageRpm :composeApp:createDistributable
 
 shopt -s nullglob

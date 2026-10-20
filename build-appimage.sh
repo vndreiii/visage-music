@@ -10,6 +10,7 @@ case "$ARCH" in
 esac
 
 if [[ -z "${APP_DIR:-}" ]]; then
+  "$ROOT/scripts/fetch-ytdlp-linux.sh"
   ./gradlew :composeApp:createDistributable "$@"
   APP_DIR="$ROOT/composeApp/build/compose/binaries/main/app/visage"
 fi
