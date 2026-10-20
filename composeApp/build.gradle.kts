@@ -89,6 +89,11 @@ val stageNativeLib by tasks.registering(Copy::class) {
     }
 }
 
+// Class-data sharing: the JVM writes a dynamic archive of the app's loaded classes on exit and maps it on the next
+// start, which cuts class-loading time (a big part of a Compose app's cold start). Windows only: the per-user
+// install dir is writable, whereas /opt (deb/rpm) and the AppImage mount are not. A failed write only warns.
+val cdsArgs = if (isWindowsHost) listOf("-XX:+AutoCreateSharedArchive", "-XX:SharedArchiveFile=\$ROOTDIR/lib/visage.jsa") else emptyList()
+
 // Linux-only JVM flags: the X11 toolkit package does not exist in the Windows JDK.
 val x11Opens = if (isWindowsHost) emptyList() else listOf("--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED")
 
@@ -140,7 +145,7 @@ compose.desktop {
             "--add-opens=java.desktop/sun.awt=ALL-UNNAMED",
             "-Dawt.appClassName=visage",
             "-Dvisage.version=$visageVersion",
-        ) + x11Opens
+        ) + x11Opens + cdsArgs
     }
 }
 
