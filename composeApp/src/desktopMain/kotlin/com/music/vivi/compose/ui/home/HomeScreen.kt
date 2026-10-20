@@ -216,31 +216,33 @@ private fun HomePage.Section.wantsSurfaceFrame(): Boolean {
 
 private sealed class HomeFeedRow {
     data class Solo(val section: HomePage.Section, val index: Int) : HomeFeedRow()
-    data class Duo(
-        val left: HomePage.Section,
-        val leftIndex: Int,
-        val right: HomePage.Section,
-        val rightIndex: Int,
-    ) : HomeFeedRow()
+    /** Several sparse shelves sharing one row, each sized by how many cards it has. */
+    data class Group(val entries: List<Pair<Int, HomePage.Section>>) : HomeFeedRow()
 }
 
-/** Walk shelves in order; pull the next sparse shelf beside the current sparse one. */
+private const val MAX_SHELVES_PER_ROW = 3
+private const val MAX_CARDS_PER_ROW = 6
+
+/** Walk shelves in order; pull following sparse shelves into the same row while they still fit. */
 private fun packHomeFeedRows(sections: List<HomePage.Section>): List<HomeFeedRow> {
     val remaining = sections.mapIndexed { i, s -> i to s }.toMutableList()
     val rows = mutableListOf<HomeFeedRow>()
     while (remaining.isNotEmpty()) {
-        val (idx, section) = remaining.removeAt(0)
-        if (section.isSparseShelf()) {
-            val partnerAt = remaining.indexOfFirst { it.second.isSparseShelf() }
-            if (partnerAt >= 0) {
-                val (idx2, section2) = remaining.removeAt(partnerAt)
-                rows += HomeFeedRow.Duo(section, idx, section2, idx2)
-            } else {
-                rows += HomeFeedRow.Solo(section, idx)
-            }
-        } else {
-            rows += HomeFeedRow.Solo(section, idx)
+        val first = remaining.removeAt(0)
+        if (!first.second.isSparseShelf()) {
+            rows += HomeFeedRow.Solo(first.second, first.first)
+            continue
         }
+        val group = mutableListOf(first)
+        var cards = first.second.items.size
+        while (group.size < MAX_SHELVES_PER_ROW) {
+            val at = remaining.indexOfFirst { it.second.isSparseShelf() && cards + it.second.items.size <= MAX_CARDS_PER_ROW }
+            if (at < 0) break
+            val next = remaining.removeAt(at)
+            cards += next.second.items.size
+            group += next
+        }
+        rows += if (group.size == 1) HomeFeedRow.Solo(first.second, first.first) else HomeFeedRow.Group(group)
     }
     return rows
 }
@@ -526,69 +528,43 @@ fun HomeScreen(navController: NavController) {
                                 is HomeFeedRow.Solo -> {
                                     emitSection(quickPicks.size + row.index, row.section)
                                 }
-                                is HomeFeedRow.Duo -> {
-                                    item(key = "duo_${row.leftIndex}_${row.rightIndex}") {
+                                is HomeFeedRow.Group -> {
+                                    item(key = "group_" + row.entries.joinToString("_") { it.first.toString() }) {
                                         Row(
                                             Modifier
                                                 .fillMaxWidth()
                                                 .padding(horizontal = 8.dp, vertical = 4.dp),
                                             horizontalArrangement = Arrangement.spacedBy(16.dp),
                                         ) {
-                                            Box(Modifier.weight(1f)) {
-                                                HomeSectionBlock(
-                                                    sectionData = row.left,
-                                                    hot = false,
-                                                    hero = row.left.isHeroCardSection(),
-                                                    isSongsOnly = false,
-                                                    sectionSongs = emptyList(),
-                                                    horizontalLazyGridItemWidth = horizontalLazyGridItemWidth,
-                                                    gridRowHeight = gridRowHeight,
-                                                    playingId = playingId,
-                                                    isPlaying = isPlaying,
-                                                    framed = false,
-                                                    halfWidth = true,
-                                                    onPlaySong = ::playSong,
-                                                    onYtItem = ::onYtItem,
-                                                    onBrowse = { browseId, params ->
-                                                        navController.navigate(Routes.forBrowse(browseId, params))
-                                                    },
-                                                    onPlayAll = { songs ->
-                                                        scope.launch(Dispatchers.IO) {
-                                                            controller.playQueue(
-                                                                songs.map { it.toQueueTrack() },
-                                                                0,
-                                                            )
-                                                        }
-                                                    },
-                                                )
-                                            }
-                                            Box(Modifier.weight(1f)) {
-                                                HomeSectionBlock(
-                                                    sectionData = row.right,
-                                                    hot = false,
-                                                    hero = row.right.isHeroCardSection(),
-                                                    isSongsOnly = false,
-                                                    sectionSongs = emptyList(),
-                                                    horizontalLazyGridItemWidth = horizontalLazyGridItemWidth,
-                                                    gridRowHeight = gridRowHeight,
-                                                    playingId = playingId,
-                                                    isPlaying = isPlaying,
-                                                    framed = false,
-                                                    halfWidth = true,
-                                                    onPlaySong = ::playSong,
-                                                    onYtItem = ::onYtItem,
-                                                    onBrowse = { browseId, params ->
-                                                        navController.navigate(Routes.forBrowse(browseId, params))
-                                                    },
-                                                    onPlayAll = { songs ->
-                                                        scope.launch(Dispatchers.IO) {
-                                                            controller.playQueue(
-                                                                songs.map { it.toQueueTrack() },
-                                                                0,
-                                                            )
-                                                        }
-                                                    },
-                                                )
+                                            row.entries.forEach { (_, shelf) ->
+                                                Box(Modifier.weight(shelf.items.size.coerceAtLeast(1) + 0.7f)) {
+                                                    HomeSectionBlock(
+                                                        sectionData = shelf,
+                                                        hot = false,
+                                                        hero = shelf.isHeroCardSection(),
+                                                        isSongsOnly = false,
+                                                        sectionSongs = emptyList(),
+                                                        horizontalLazyGridItemWidth = horizontalLazyGridItemWidth,
+                                                        gridRowHeight = gridRowHeight,
+                                                        playingId = playingId,
+                                                        isPlaying = isPlaying,
+                                                        framed = false,
+                                                        halfWidth = true,
+                                                        onPlaySong = ::playSong,
+                                                        onYtItem = ::onYtItem,
+                                                        onBrowse = { browseId, params ->
+                                                            navController.navigate(Routes.forBrowse(browseId, params))
+                                                        },
+                                                        onPlayAll = { songs ->
+                                                            scope.launch(Dispatchers.IO) {
+                                                                controller.playQueue(
+                                                                    songs.map { it.toQueueTrack() },
+                                                                    0,
+                                                                )
+                                                            }
+                                                        },
+                                                    )
+                                                }
                                             }
                                         }
                                     }
