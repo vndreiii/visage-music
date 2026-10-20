@@ -3,12 +3,20 @@ package com.music.vivi.player.video
 import com.music.innertube.VideoStreamCandidate
 import kotlin.math.abs
 
-/** Highest video height the user allows (data/CPU cap). */
+/** Highest video height the user allows (data/CPU cap). [AUTO] picks the cap from measured download speed. */
 enum class VideoQuality(val height: Int, val label: String) {
-    P360(360, "360p"), P480(480, "480p"), P720(720, "720p"), P1080(1080, "1080p");
+    AUTO(1080, "Auto"), P360(360, "360p"), P480(480, "480p"), P720(720, "720p"), P1080(1080, "1080p");
 
     companion object {
-        fun parse(name: String?): VideoQuality = entries.firstOrNull { it.name == name } ?: P720
+        fun parse(name: String?): VideoQuality = entries.firstOrNull { it.name == name } ?: AUTO
+
+        /** Highest fixed quality a connection of [mbps] can stream with headroom. */
+        fun forMbps(mbps: Double): VideoQuality = when {
+            mbps < 2.0 -> P360
+            mbps < 4.5 -> P480
+            mbps < 9.0 -> P720
+            else -> P1080
+        }
     }
 }
 

@@ -49,4 +49,13 @@ class VideoLogicTest {
         assertEquals("v", MusicVideoTypes.videoIdFor("a", MusicVideoTypes.ATV, "v"))
         assertNull(MusicVideoTypes.videoIdFor("a", MusicVideoTypes.ATV, null))
     }
+
+    @Test
+    fun autoQualityFollowsMeasuredSpeed() {
+        assertEquals(VideoQuality.P360, VideoQuality.forMbps(1.0))
+        assertEquals(VideoQuality.P480, VideoQuality.forMbps(3.0))
+        assertEquals(VideoQuality.P720, VideoQuality.forMbps(6.0))
+        assertEquals(VideoQuality.P1080, VideoQuality.forMbps(25.0))
+        assertEquals(VideoQuality.AUTO, VideoQuality.parse(null))
+    }
 }

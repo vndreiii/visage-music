@@ -23,6 +23,20 @@ object MusicVideoResolver {
         MusicVideoTypes.videoIdFor(trackId, item.musicVideoType, item.counterpartVideoId)
     }
 
+    /** Set by the app: the quality to prefetch at, or null while music videos are switched off. */
+    @Volatile var prefetchQuality: () -> VideoQuality? = { null }
+
+    /** Resolves [trackId]'s video ahead of time (cached; the stream's first chunks are fetched too). */
+    suspend fun prefetch(trackId: String) {
+        val cap = prefetchQuality() ?: return
+        if (!VisualChain.hasVideoCandidate(trackId, null)) return
+        resolve(trackId, cap)
+    }
+
+    /** The cached result for [trackId] at [cap], without any network work (null when not cached or expired). */
+    fun cached(trackId: String, cap: VideoQuality): ResolvedVideo? =
+        cache["$trackId@${cap.name}"]?.takeIf { System.currentTimeMillis() - it.at < TTL_MS }?.value
+
     suspend fun resolve(trackId: String, cap: VideoQuality): ResolvedVideo? {
         val key = "$trackId@${cap.name}"
         cache[key]?.takeIf { System.currentTimeMillis() - it.at < TTL_MS }?.let { return it.value }

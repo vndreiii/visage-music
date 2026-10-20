@@ -766,9 +766,9 @@ fun NowPlayingSettingsScreen(navController: NavController) {
                     SettingsDivider()
                     ChoiceRow(
                         icon = Icons.Outlined.Tune,
-                        title = "Quality cap",
+                        title = "Quality (Auto adapts to your connection speed)",
                         options = com.music.vivi.player.video.VideoQuality.entries.map { it to it.label },
-                        selected = com.music.vivi.player.video.VideoQuality.parse(prefs.getString(PrefKeys.PlayerVideoQuality, "P720")),
+                        selected = com.music.vivi.player.video.VideoQuality.parse(prefs.getString(PrefKeys.PlayerVideoQuality, "AUTO")),
                         onSelect = { prefs.setString(PrefKeys.PlayerVideoQuality, it.name) },
                     )
                 }

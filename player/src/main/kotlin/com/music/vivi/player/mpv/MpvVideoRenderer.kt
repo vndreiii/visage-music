@@ -45,8 +45,8 @@ interface FrameSink {
 class MpvVideoRenderer(
     private val url: String,
     private val sink: FrameSink,
-    /** Longest edge of the rendered frame; the video's own aspect ratio is kept. */
-    private val maxEdge: Int = 1280,
+    /** Longest edge of the rendered frame; the video's own aspect ratio is kept. Changeable while playing. */
+    maxEdge: Int = 1280,
     httpHeaders: Map<String, String> = emptyMap(),
     /** Start parked on the first frame until [setHeld] releases it (standby loop slot). */
     startHeld: Boolean = false,
@@ -55,6 +55,7 @@ class MpvVideoRenderer(
     /** Initial playback position (music-video sync starts mid-track). */
     private val startSec: Double = 0.0,
 ) : AutoCloseable {
+    @Volatile var maxEdge: Int = maxEdge
     private val lib = MpvLib.INSTANCE
     private val render = MpvRenderLib.INSTANCE
     private val handle: Pointer = lib.mpv_create() ?: error("mpv_create failed")

@@ -52,6 +52,13 @@ val desktopModule = module {
         get<SessionManager>().applyStoredSession()
         val library = get<LibraryRepository>()
         val fades = get<PlaybackFadeSettingsProvider>()
+        get<DesktopPrefs>().let { prefs ->
+            com.music.vivi.player.video.MusicVideoResolver.prefetchQuality = {
+                if (prefs.getBoolean(PrefKeys.PlayerVideoEnabled, false)) {
+                    com.music.vivi.player.video.VideoQuality.parse(prefs.getString(PrefKeys.PlayerVideoQuality, "AUTO"))
+                } else null
+            }
+        }
         DefaultPlaybackController.create(
             applyStoredSession = false,
             favorites = object : FavoriteStore {

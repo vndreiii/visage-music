@@ -1032,6 +1032,7 @@ class DefaultPlaybackController(
         if (next?.localPath != null) return
         val nextVideo = next?.videoId ?: _queueIds.value.getOrNull(i + 1)
         streams.prefetchNext(nextVideo)
+        if (nextVideo != null) scope.launch { runCatching { com.music.vivi.player.video.MusicVideoResolver.prefetch(nextVideo) } }
         // Also keep previous resolvable — already in cache via onBecameCurrent
         val prev = tracks.getOrNull(i - 1)
         if (prev?.localPath != null) return
