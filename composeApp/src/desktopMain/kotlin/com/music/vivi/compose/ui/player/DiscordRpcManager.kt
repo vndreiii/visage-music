@@ -26,7 +26,7 @@ class DiscordRpcManager(
     private val controller: PlaybackController by inject()
     private val prefs: DesktopPrefs by inject()
 
-    private val applicationId = 1411019391843172514L
+    private val applicationId = 839503426907930634L
     private var client: IPCClient? = null
     private var isConnected = false
 
