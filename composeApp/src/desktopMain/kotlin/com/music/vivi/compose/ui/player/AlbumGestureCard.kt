@@ -46,7 +46,6 @@ internal fun AlbumGestureCard(
     val y by animateFloatAsState(displacement.y, if (grabbed) spring(stiffness = 10000f) else spring(stiffness = 300f))
     Box(modifier.onSizeChanged { cardHeight = it.height }) {
         Box(Modifier.fillMaxSize().graphicsLayer { translationX = x; translationY = y; rotationZ = rotation }
-            .shadow(28.dp, RoundedCornerShape(28.dp), clip = false)
             .pointerInput(controller) {
                 val limit = 100.dp.toPx()
                 val commit = 72.dp.toPx()

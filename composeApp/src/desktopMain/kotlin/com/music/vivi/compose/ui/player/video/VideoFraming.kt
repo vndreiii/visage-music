@@ -115,8 +115,15 @@ fun Modifier.morphAspect(aspect: () -> Float): Modifier = layout { measurable, c
     layout(ww, h) { p.place(0, 0) }
 }
 
-/** Rounded clip whose radius is animated by [radius] (read in the draw phase). */
-fun Modifier.morphClip(radius: () -> androidx.compose.ui.unit.Dp): Modifier = graphicsLayer {
+/**
+ * Rounded clip whose radius is animated by [radius] (read in the draw phase). The optional [elevation] shadow is
+ * cast by this same layer, so it always matches the visible shape and follows any transform applied outside it.
+ */
+fun Modifier.morphClip(
+    elevation: androidx.compose.ui.unit.Dp = androidx.compose.ui.unit.Dp(0f),
+    radius: () -> androidx.compose.ui.unit.Dp,
+): Modifier = graphicsLayer {
     shape = androidx.compose.foundation.shape.RoundedCornerShape(radius())
     clip = true
+    shadowElevation = elevation.toPx()
 }
