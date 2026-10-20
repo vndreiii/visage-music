@@ -204,7 +204,8 @@ enum class VolumeControlStyle { SLIDER, COMPACT_PILL }
 
 enum class TopNavStyle { ICON_ONLY, ICON_AND_TEXT, TEXT_ONLY }
 
-enum class SliderStyle { DEFAULT, WAVY, SLIM, EXPRESSIVE, M3_EXPRESSIVE }
+/** A stored "DEFAULT" (removed style) fails valueOf and falls back to [M3_EXPRESSIVE] everywhere it is read. */
+enum class SliderStyle { M3_EXPRESSIVE, WAVY, SLIM, EXPRESSIVE }
 
 enum class PlayerButtonsStyle { DEFAULT, PRIMARY, TERTIARY }
 

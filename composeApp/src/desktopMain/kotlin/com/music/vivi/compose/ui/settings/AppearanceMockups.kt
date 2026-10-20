@@ -73,6 +73,7 @@ import com.music.vivi.compose.prefs.MiniPlayerStyle
 import com.music.vivi.compose.prefs.PlayerBackgroundStyle
 import com.music.vivi.compose.prefs.PlayerButtonsStyle
 import com.music.vivi.compose.prefs.SliderStyle
+import com.music.vivi.compose.ui.player.drawClassicSeek
 import com.music.vivi.compose.prefs.TopNavStyle
 import com.music.vivi.compose.theme.IdleArtworkPalette
 import com.music.vivi.compose.theme.LocalArtworkPalette
@@ -596,80 +597,7 @@ private fun SliderStyleCanvas(
             return@Canvas
         }
 
-        val wavy = squiggly || style == SliderStyle.WAVY
-        val slim = style == SliderStyle.SLIM
-        val expressive = style == SliderStyle.EXPRESSIVE
-        val stroke = when {
-            slim -> 2.5.dp.toPx()
-            expressive -> 7.dp.toPx()
-            else -> 4.5.dp.toPx()
-        }
-        val amp = when {
-            wavy && expressive -> 2.25.dp.toPx()
-            wavy -> 1.75.dp.toPx()
-            else -> 0f
-        }
-
-        fun waveY(x: Float): Float {
-            if (amp == 0f) return midY
-            val t = x / size.width + phase
-            return midY + sin(t * 2f * PI.toFloat() * 4f) * amp
-        }
-
-        if (wavy) {
-            val splitX = size.width * p
-            // Inactive (right): straight — no waviness.
-            if (splitX < size.width - 0.5f) {
-                drawLine(
-                    color = track,
-                    start = Offset(splitX, midY),
-                    end = Offset(size.width, midY),
-                    strokeWidth = stroke,
-                    cap = StrokeCap.Round,
-                )
-            }
-            // Active (left): wavy only.
-            if (splitX > 0.5f) {
-                val active = Path()
-                val steps = ((splitX / 4f).toInt()).coerceIn(8, 80)
-                for (i in 0..steps) {
-                    val x = splitX * i / steps
-                    val y = waveY(x)
-                    if (i == 0) active.moveTo(x, y) else active.lineTo(x, y)
-                }
-                active.lineTo(splitX, midY)
-                drawPath(active, primary, style = Stroke(width = stroke, cap = StrokeCap.Round))
-            }
-        } else {
-            val trackH = stroke
-            drawRoundRect(
-                color = track,
-                topLeft = Offset(0f, midY - trackH / 2f),
-                size = Size(size.width, trackH),
-                cornerRadius = CornerRadius(trackH),
-            )
-            drawRoundRect(
-                color = primary,
-                topLeft = Offset(0f, midY - trackH / 2f),
-                size = Size(size.width * p, trackH),
-                cornerRadius = CornerRadius(trackH),
-            )
-        }
-
-        val thumbR = when {
-            expressive -> 8.dp.toPx()
-            slim -> 5.dp.toPx()
-            else -> 6.5.dp.toPx()
-        }
-        val tx = size.width * p
-        drawCircle(color = primary, radius = thumbR, center = Offset(tx, midY))
-        if (expressive) {
-            drawCircle(
-                color = Color.White.copy(alpha = 0.9f),
-                radius = thumbR * 0.35f,
-                center = Offset(tx, midY),
-            )
-        }
+        drawClassicSeek(style, squiggly || style == SliderStyle.WAVY, p, phase, 1f, primary, track)
     }
 }
 

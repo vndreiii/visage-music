@@ -25,6 +25,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.Dp
@@ -34,8 +35,7 @@ import kotlin.math.PI
 import kotlin.math.sin
 
 /**
- * Live Now Playing / fullscreen seek bar. [SliderStyle.DEFAULT] matches the previous
- * Material3 white track look; other styles (and squiggly) actually change the drawing.
+ * Live Now Playing / fullscreen seek bar; the style (and squiggly) change the drawing.
  */
 @Composable
 fun PlayerSeekBar(
@@ -195,86 +195,56 @@ fun PlayerSeekBar(
             return@Canvas
         }
 
-        val slim = style == SliderStyle.SLIM
-        val expressive = style == SliderStyle.EXPRESSIVE
-        val stroke = when {
-            slim -> 2.5.dp.toPx()
-            expressive -> 7.dp.toPx()
-            else -> 4.5.dp.toPx()
-        }
-        val amp = when {
-            wavy && expressive -> 2.25.dp.toPx()
-            wavy -> 1.75.dp.toPx()
-            else -> 0f
-        }
+        drawClassicSeek(style, wavy, p, phase, waveAmount, activeColor, inactiveColor)
+    }
+}
 
-        fun waveY(x: Float): Float {
-            if (amp == 0f) return midY
-            val t = x / size.width + phase
-            // Slightly denser but smaller waves.
-            return midY + sin(t * 2f * PI.toFloat() * 4f) * amp
-        }
+/**
+ * Draws the classic (non-M3) seek styles; shared by the live seek bar and the settings preview.
+ * WAVY: a travelling sine wave on the played part, eased flat at both ends. SLIM: a thin line.
+ * EXPRESSIVE: a bold pill track with a ring handle.
+ */
+internal fun DrawScope.drawClassicSeek(
+    style: SliderStyle,
+    wavy: Boolean,
+    p: Float,
+    phase: Float,
+    waveAmount: Float,
+    active: Color,
+    inactive: Color,
+) {
+    val midY = size.height / 2f
+    val slim = style == SliderStyle.SLIM
+    val bold = style == SliderStyle.EXPRESSIVE
+    val stroke = when { slim -> 2.5.dp.toPx(); bold -> 12.dp.toPx(); else -> 4.dp.toPx() }
+    val thumbR = when { slim -> 5.dp.toPx(); bold -> 11.dp.toPx(); else -> 7.dp.toPx() }
+    val half = stroke / 2f
+    // Keep the whole handle inside the bar at both ends.
+    val tx = thumbR + (size.width - 2f * thumbR).coerceAtLeast(0f) * p
 
-        if (wavy) {
-            val splitX = size.width * p
-            // Inactive (right): straight track — no waviness.
-            if (splitX < size.width - 0.5f) {
-                drawLine(
-                    color = inactiveColor,
-                    start = Offset(splitX, midY),
-                    end = Offset(size.width, midY),
-                    strokeWidth = stroke,
-                    cap = StrokeCap.Round,
-                )
+    if (tx < size.width - half) {
+        drawLine(inactive, Offset(tx, midY), Offset(size.width - half, midY), stroke, StrokeCap.Round)
+    }
+    if (tx > half) {
+        if (wavy && waveAmount > 0.01f) {
+            val amp = (if (bold) 3.5.dp.toPx() else 3.dp.toPx()) * waveAmount
+            val wavelength = 26.dp.toPx()
+            val x0 = half
+            val x1 = tx
+            val path = Path()
+            val steps = ((x1 - x0) / 2.dp.toPx()).toInt().coerceIn(2, 600)
+            for (i in 0..steps) {
+                val x = x0 + (x1 - x0) * i / steps
+                val edge = minOf((x1 - x) / 14.dp.toPx(), (x - x0) / 10.dp.toPx()).coerceIn(0f, 1f)
+                val y = midY + sin(2f * PI.toFloat() * (x / wavelength - phase)) * amp * edge
+                if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
             }
-            // Active (left): wavy white path only.
-            if (splitX > 0.5f) {
-                val active = Path()
-                val steps = ((splitX / 4f).toInt()).coerceIn(8, 80)
-                for (i in 0..steps) {
-                    val x = splitX * i / steps
-                    val y = waveY(x)
-                    if (i == 0) active.moveTo(x, y) else active.lineTo(x, y)
-                }
-                // Ease into the straight inactive line at the playhead.
-                active.lineTo(splitX, midY)
-                drawPath(
-                    active,
-                    activeColor,
-                    style = Stroke(width = stroke, cap = StrokeCap.Round),
-                )
-            }
+            drawPath(path, active, style = Stroke(width = stroke, cap = StrokeCap.Round))
         } else {
-            val trackH = stroke
-            drawRoundRect(
-                color = inactiveColor,
-                topLeft = Offset(0f, midY - trackH / 2f),
-                size = Size(size.width, trackH),
-                cornerRadius = CornerRadius(trackH),
-            )
-            drawRoundRect(
-                color = activeColor,
-                topLeft = Offset(0f, midY - trackH / 2f),
-                size = Size(size.width * p, trackH),
-                cornerRadius = CornerRadius(trackH),
-            )
-        }
-
-        val thumbR = when {
-            expressive -> 8.dp.toPx()
-            slim -> 5.dp.toPx()
-            else -> 6.5.dp.toPx()
-        }
-        val tx = size.width * p
-        // Thumb sits on the join between wave and straight track.
-        val ty = if (wavy) midY else midY
-        drawCircle(color = activeColor, radius = thumbR, center = Offset(tx, ty))
-        if (expressive) {
-            drawCircle(
-                color = Color.Black.copy(alpha = 0.35f),
-                radius = thumbR * 0.35f,
-                center = Offset(tx, ty),
-            )
+            drawLine(active, Offset(half, midY), Offset(tx, midY), stroke, StrokeCap.Round)
         }
     }
+
+    drawCircle(active, radius = thumbR, center = Offset(tx, midY))
+    if (bold) drawCircle(Color.Black.copy(alpha = 0.4f), radius = thumbR * 0.52f, center = Offset(tx, midY))
 }
