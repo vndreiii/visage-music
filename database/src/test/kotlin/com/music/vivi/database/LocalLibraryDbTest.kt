@@ -77,3 +77,27 @@ class LocalLibraryDbTest {
         assertEquals(1, second.stats.cached)
     }
 }
+
+class LocalPruneTest {
+    @TempDir
+    lateinit var dir: File
+
+    @Test
+    fun pruneOutsideDropsTracksFromRemovedFolders() {
+        val driver = DatabaseFactory.createDriver(File(dir, "lib.db"))
+        val repo = LocalMusicRepository(VisageDatabase(driver), driver)
+        fun add(id: String, path: String) = repo.inTransaction {
+            upsertArtist("a", "A")
+            upsertAlbum("al", "Al", "a", "A", null, null, 1)
+            upsertTrack(id, id, "al", "a", "A", "Al", 1, path, 1, null, null, null, null, null, null, true, 1)
+        }
+        add("keep", "/mnt/new/FLACS/a.flac")
+        add("old", "/mnt/old/FLACS/b.flac")
+        add("sibling", "/mnt/newer/c.flac") // shares a string prefix with /mnt/new but is not inside it
+
+        val removed = LocalMusicScanner(repo).pruneOutside(listOf(File("/mnt/new")))
+
+        assertEquals(2, removed)
+        assertEquals(listOf("keep"), repo.allTracks().map { it.id })
+    }
+}

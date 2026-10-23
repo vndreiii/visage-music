@@ -22,16 +22,19 @@ import org.freedesktop.dbus.types.Variant
  * Falls back to zenity/kdialog only if the portal call fails.
  */
 object XdgPortalFolderPicker {
-    suspend fun pickDirectory(title: String = "Choose music folder"): File? =
+    suspend fun pickDirectory(title: String = "Choose music folder"): File? = pickDirectories(title).firstOrNull()
+
+    /** One or more folders; empty when the user cancels. */
+    suspend fun pickDirectories(title: String = "Choose music folders"): List<File> =
         withContext(Dispatchers.IO) {
             if (com.music.vivi.nativelib.HostOs.isWindows) return@withContext pickViaSwing(title)
-            // A successful null result means the user cancelled. Only failures fall back.
+            // A successful empty result means the user cancelled. Only failures fall back.
             runCatching { pickViaPortal(title) }.getOrElse {
                 runCatching { pickViaZenity(title) }.getOrElse { pickViaKdialog(title) }
             }
         }
 
-    private fun pickViaPortal(title: String): File? {
+    private fun pickViaPortal(title: String): List<File> {
         val connection = try {
             DBusConnectionBuilder.forSessionBus().withShared(false).build()
         } catch (e: DBusException) {
@@ -48,20 +51,20 @@ object XdgPortalFolderPicker {
             val options = linkedMapOf<String, Variant<*>>(
                 "handle_token" to Variant(token),
                 "directory" to Variant(true),
+                "multiple" to Variant(true),
                 "modal" to Variant(true),
             )
             // Subscribe before opening; a fast portal response must not be lost.
             val handlePath = "/org/freedesktop/portal/desktop/request/${connection.uniqueName.removePrefix(":").replace('.', '_')}/$token"
-            val future = CompletableFuture<File?>()
+            val future = CompletableFuture<List<File>>()
             val handler = DBusSigHandler<PortalRequestResponse> { signal ->
                 if (signal.path != handlePath) return@DBusSigHandler
                 if (signal.response.toInt() == 0) {
                     @Suppress("UNCHECKED_CAST")
                     val uris = signal.results["uris"]?.value as? List<*>
-                    val first = uris?.firstOrNull()?.toString()
-                    future.complete(first?.let { uriToFile(it) })
+                    future.complete(uris.orEmpty().mapNotNull { it?.toString()?.let(::uriToFile) })
                 } else {
-                    future.complete(null)
+                    future.complete(emptyList())
                 }
             }
             connection.addSigHandler(PortalRequestResponse::class.java, handler)
@@ -89,39 +92,40 @@ object XdgPortalFolderPicker {
     }.getOrNull()
 
     /** Windows (and any host without a portal): the Swing chooser in the system look and feel. */
-    private fun pickViaSwing(title: String): File? {
-        var picked: File? = null
+    private fun pickViaSwing(title: String): List<File> {
+        var picked: List<File> = emptyList()
         javax.swing.SwingUtilities.invokeAndWait {
             runCatching { javax.swing.UIManager.setLookAndFeel(javax.swing.UIManager.getSystemLookAndFeelClassName()) }
             val chooser = javax.swing.JFileChooser(System.getProperty("user.home")).apply {
                 dialogTitle = title
                 fileSelectionMode = javax.swing.JFileChooser.DIRECTORIES_ONLY
                 isAcceptAllFileFilterUsed = false
+                isMultiSelectionEnabled = true
             }
             if (chooser.showOpenDialog(null) == javax.swing.JFileChooser.APPROVE_OPTION) {
-                picked = chooser.selectedFile?.absoluteFile
+                picked = chooser.selectedFiles.map { it.absoluteFile }
             }
         }
-        return picked?.takeIf { it.isDirectory }
+        return picked.filter { it.isDirectory }
     }
 
-    private fun pickViaZenity(title: String): File? {
+    private fun pickViaZenity(title: String): List<File> {
         val proc = ProcessBuilder(
-            "zenity", "--file-selection", "--directory", "--title=$title",
+            "zenity", "--file-selection", "--directory", "--multiple", "--separator=\n", "--title=$title",
         ).redirectErrorStream(true).start()
         val out = proc.inputStream.bufferedReader().readText().trim()
-        return if (proc.waitFor() != 0 || out.isBlank()) null
-        else File(out).absoluteFile.takeIf { it.isDirectory }
+        return if (proc.waitFor() != 0 || out.isBlank()) emptyList()
+        else out.lines().map { File(it.trim()).absoluteFile }.filter { it.isDirectory }
     }
 
-    private fun pickViaKdialog(title: String): File? = runCatching {
+    private fun pickViaKdialog(title: String): List<File> = runCatching {
         val proc = ProcessBuilder(
             "kdialog", "--getexistingdirectory", System.getProperty("user.home"), "--title", title,
         ).redirectErrorStream(true).start()
         val out = proc.inputStream.bufferedReader().readText().trim()
-        if (proc.waitFor() != 0 || out.isBlank()) null
-        else File(out).absoluteFile.takeIf { it.isDirectory }
-    }.getOrNull()
+        if (proc.waitFor() != 0 || out.isBlank()) emptyList()
+        else listOfNotNull(File(out).absoluteFile.takeIf { it.isDirectory })
+    }.getOrDefault(emptyList())
 }
 
 @DBusInterfaceName("org.freedesktop.portal.FileChooser")

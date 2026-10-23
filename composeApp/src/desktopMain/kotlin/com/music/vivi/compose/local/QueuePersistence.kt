@@ -35,7 +35,7 @@ class QueuePersistence(private val prefs: DesktopPrefs, private val controller: 
                                 lyricsPath = props.getProperty("$i.lyrics"),
                                 embeddedLyrics = props.getProperty("$i.embeddedLyrics"),
                             )
-                        }
+                        }.filter { it.localPath == null || File(it.localPath!!).exists() } // files from removed or unmounted folders
                         controller.restoreQueue(tracks, props.getProperty("index")?.toIntOrNull() ?: 0, props.getProperty("position")?.toLongOrNull() ?: 0)
                     }
                 }.onFailure { System.err.println("Couldn't restore queue: ${it.message}") }
@@ -72,7 +72,7 @@ class QueuePersistence(private val prefs: DesktopPrefs, private val controller: 
             file.parentFile.mkdirs()
             val temporary = File.createTempFile("queue-", ".tmp", file.parentFile)
             try {
-                temporary.outputStream().use { props.store(it, "VIVI saved queue") }
+                temporary.outputStream().use { props.store(it, "VIsage saved queue") }
                 java.nio.file.Files.move(temporary.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
             } finally {
                 temporary.delete()

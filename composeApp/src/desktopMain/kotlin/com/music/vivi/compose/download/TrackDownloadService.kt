@@ -75,7 +75,7 @@ class TrackDownloadService(
             return
         }
         if (!YtDlpBinary.available()) {
-            _status.value = DownloadStatus.Failed("yt-dlp not found — install it or set VIVI_YTDLP")
+            _status.value = DownloadStatus.Failed("yt-dlp not found — install it or set VISAGE_YTDLP")
             return
         }
         scope.launch {

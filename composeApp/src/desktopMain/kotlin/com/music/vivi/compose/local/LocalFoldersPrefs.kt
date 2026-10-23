@@ -11,6 +11,9 @@ import kotlinx.coroutines.launch
 
 /** Helpers for local-folder prefs + XDG portal directory picker. */
 object LocalFoldersPrefs {
+    /** What [addFolders] did with the picked folders. */
+    data class AddResult(val added: List<String>, val alreadyCovered: List<String>, val notFolders: List<String>)
+
     fun folders(prefs: DesktopPrefs): List<String> =
         prefs.getString(PrefKeys.LocalMusicFolders, "")
             .split('|')
@@ -21,24 +24,61 @@ object LocalFoldersPrefs {
     fun setFolders(prefs: DesktopPrefs, paths: List<String>) {
         prefs.setString(
             PrefKeys.LocalMusicFolders,
-            paths.map { it.trim() }.filter { it.isNotEmpty() }.distinct().joinToString("|"),
+            paths.map { it.trim().trimEnd('/', '\\').ifEmpty { "/" } }.filter { it.isNotEmpty() }.distinct().joinToString("|"),
         )
     }
 
-    fun addFolder(prefs: DesktopPrefs, path: String) {
-        setFolders(prefs, folders(prefs) + path)
+    private fun covers(parent: String, child: String): Boolean {
+        val p = File(parent).toPath().normalize()
+        val c = File(child).toPath().normalize()
+        return c.startsWith(p)
+    }
+
+    /**
+     * Adds every folder in [picked]. A folder already inside a listed one is skipped; a folder that
+     * contains listed ones replaces them, so nothing is scanned twice.
+     */
+    fun addFolders(prefs: DesktopPrefs, picked: List<File>): AddResult {
+        var current = folders(prefs)
+        val added = mutableListOf<String>()
+        val covered = mutableListOf<String>()
+        val notFolders = mutableListOf<String>()
+        for (dir in picked) {
+            val path = dir.absolutePath.trimEnd('/', '\\').ifEmpty { "/" }
+            when {
+                !dir.isDirectory -> notFolders += path
+                current.any { covers(it, path) } -> covered += path
+                else -> {
+                    current = current.filterNot { covers(path, it) } + path
+                    added += path
+                }
+            }
+        }
+        setFolders(prefs, current)
+        return AddResult(added, covered, notFolders)
     }
 
     fun removeFolder(prefs: DesktopPrefs, path: String) {
         setFolders(prefs, folders(prefs).filterNot { it == path })
     }
 
-    suspend fun pickDirectory(title: String = "Choose music folder"): File? =
-        XdgPortalFolderPicker.pickDirectory(title)
+    /** Lets the user pick one or several folders; empty when cancelled. */
+    suspend fun pickDirectories(title: String = "Choose music folders"): List<File> =
+        XdgPortalFolderPicker.pickDirectories(title)
+}
+
+/** Result of asking for a scan, so the UI can say why nothing started. */
+sealed interface ScanStart {
+    data object Started : ScanStart
+    data object NoFolders : ScanStart
+    data object AlreadyRunning : ScanStart
+    data class Unreachable(val missing: List<String>) : ScanStart
 }
 
 /**
- * Startup auto-scan when [PrefKeys.LocalAutoScanOnStartup] is enabled.
+ * Startup auto-scan when [PrefKeys.LocalAutoScanOnStartup] is enabled, and the scan entry point for Settings.
+ * The index only ever holds what the configured folders say: rows from folders that were removed or
+ * changed are dropped at startup and after each scan.
  */
 class LocalLibraryBootstrap(
     private val prefs: DesktopPrefs,
@@ -47,16 +87,24 @@ class LocalLibraryBootstrap(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     fun maybeAutoScan() {
+        scope.launch {
+            runCatching { scanner.pruneOutside(LocalFoldersPrefs.folders(prefs).map { File(it) }) }
+                .onFailure { println("Local index cleanup failed: ${it.message}") }
+        }
         if (!prefs.getBoolean(PrefKeys.LocalAutoScanOnStartup, false)) return
         scanNow()
     }
 
-    fun scanNow() {
-        val dirs = LocalFoldersPrefs.folders(prefs).map { File(it) }.filter { it.isDirectory }
-        if (dirs.isEmpty()) return
+    fun scanNow(): ScanStart {
+        val configured = LocalFoldersPrefs.folders(prefs).map { File(it) }
+        if (configured.isEmpty()) return ScanStart.NoFolders
+        if (scanner.progress.value.running) return ScanStart.AlreadyRunning
+        val reachable = configured.filter { it.isDirectory }
+        if (reachable.isEmpty()) return ScanStart.Unreachable(configured.map { it.absolutePath })
         scope.launch {
-            runCatching { scanner.scan(dirs) }
-                .onFailure { println("Auto local scan failed: ${it.message}") }
+            runCatching { scanner.scan(reachable, configured) }
+                .onFailure { println("Local scan failed: ${it.message}") }
         }
+        return ScanStart.Started
     }
 }

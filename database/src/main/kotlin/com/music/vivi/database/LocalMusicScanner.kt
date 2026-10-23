@@ -48,7 +48,11 @@ class LocalMusicScanner(
         cancel.set(true)
     }
 
-    suspend fun scan(folders: List<File>): Int = withContext(Dispatchers.IO) {
+    /**
+     * Scans [folders]. [configured] is every folder the user has set up, reachable or not: rows outside all of
+     * them are dropped, while rows under an unmounted (unreachable) folder are kept until it is back.
+     */
+    suspend fun scan(folders: List<File>, configured: List<File> = folders): Int = withContext(Dispatchers.IO) {
         if (!scanMutex.tryLock()) return@withContext 0
         cancel.set(false)
         var ok = 0
@@ -105,6 +109,7 @@ class LocalMusicScanner(
                     roots.any { path.startsWith(it.toPath()) } && !File(track.file_path).exists()
                 }
                 repo.removeTracks(missing.map { it.id })
+                pruneOutside(configured)
             }
             _progress.value = LocalScanProgress(
                 scanned = ok,
@@ -209,6 +214,19 @@ class LocalMusicScanner(
                 playCount = existing?.play_count ?: 0L,
             )
         }
+    }
+
+    /** Drops indexed tracks that are not under any of [configured]; they come from folders the user removed or changed. */
+    fun pruneOutside(configured: List<File>): Int {
+        val bases = configured.flatMap { f ->
+            listOfNotNull(f.absoluteFile.toPath().normalize(), runCatching { f.canonicalFile.toPath() }.getOrNull())
+        }.distinct()
+        val orphans = repo.allTracks().filter { track ->
+            val path = File(track.file_path).toPath().normalize()
+            bases.none { path.startsWith(it) }
+        }
+        if (orphans.isNotEmpty()) repo.removeTracks(orphans.map { it.id })
+        return orphans.size
     }
 
     fun clearCache() {

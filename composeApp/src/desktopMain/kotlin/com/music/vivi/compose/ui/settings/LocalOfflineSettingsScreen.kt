@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.music.vivi.compose.download.TrackDownloadService
 import com.music.vivi.compose.local.LocalFoldersPrefs
+import com.music.vivi.compose.local.ScanStart
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.database.DatabaseFactory
@@ -63,7 +64,9 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
     val bootstrap = koinInject<com.music.vivi.compose.local.LocalLibraryBootstrap>()
     val prefVersion = rememberPrefsVersion(prefs)
     val progress by scanner.progress.collectAsState()
-    var folders by remember { mutableStateOf(LocalFoldersPrefs.folders(prefs)) }
+    val folders = remember(prefVersion) { LocalFoldersPrefs.folders(prefs) }
+    // Per folder: how many indexed tracks live under it, and whether it can be reached right now (drive mounted).
+    var folderStats by remember { mutableStateOf<Map<String, Pair<Boolean, Int>>>(emptyMap()) }
     var trackCount by remember { mutableStateOf(0L) }
     var offlineCount by remember { mutableStateOf(0L) }
     var statusMsg by remember { mutableStateOf<String?>(null) }
@@ -72,11 +75,25 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
         val counts = withContext(Dispatchers.IO) { localRepo.trackCount() to downloadedRepo.count() }
         trackCount = counts.first
         offlineCount = counts.second
-        folders = LocalFoldersPrefs.folders(prefs)
+        folderStats = withContext(Dispatchers.IO) {
+            val paths = localRepo.allTracks().map { File(it.file_path).toPath().normalize() }
+            LocalFoldersPrefs.folders(prefs).associateWith { folder ->
+                val root = File(folder).toPath().normalize()
+                File(folder).isDirectory to paths.count { it.startsWith(root) }
+            }
+        }
     }
     LaunchedEffect(progress.running, prefVersion) {
         if (!progress.running) refreshCounts()
-        statusMsg = progress.message
+        progress.message?.let { statusMsg = it }
+    }
+    fun startScan() {
+        statusMsg = when (val r = bootstrap.scanNow()) {
+            ScanStart.Started -> "Scanning…"
+            ScanStart.NoFolders -> "Add a music folder first."
+            ScanStart.AlreadyRunning -> "A scan is already running."
+            is ScanStart.Unreachable -> "Can't reach ${r.missing.joinToString()} — is the drive mounted?"
+        }
     }
 
     SettingsPage(title = "Local files", onBack = { navController.navigateUp() }) {
@@ -100,7 +117,7 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
                     modifier = Modifier.padding(top = 8.dp),
                 )
                 Text(
-                    "Offline is only what VIVI downloads — not your OS Downloads folder.",
+                    "Offline is only what VIsage downloads — not your OS Downloads folder.",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
@@ -116,6 +133,8 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
                 )
                 Spacer(Modifier.height(8.dp))
                 folders.forEach { path ->
+                    val stat = folderStats[path]
+                    val reachable = stat?.first ?: File(path).isDirectory
                     Row(
                         Modifier
                             .fillMaxWidth()
@@ -125,21 +144,24 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
                         Icon(
                             Icons.Outlined.Folder,
                             contentDescription = null,
+                            tint = if (reachable) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                             modifier = Modifier.size(22.dp),
                         )
                         Spacer(Modifier.width(12.dp))
-                        Text(
-                            path,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f),
-                        )
+                        Column(Modifier.weight(1f)) {
+                            Text(path, style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                if (reachable) "${stat?.second ?: 0} tracks" else "Not found — is the drive mounted?",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (reachable) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                            )
+                        }
                         TextButton(
                             onClick = {
                                 scope.launch {
                                     LocalFoldersPrefs.removeFolder(prefs, path)
                                     withContext(Dispatchers.IO) {
-                                        val root = File(path).toPath()
-                                        localRepo.removeTracks(localRepo.allTracks().filter { File(it.file_path).toPath().startsWith(root) }.map { it.id })
+                                        scanner.pruneOutside(LocalFoldersPrefs.folders(prefs).map { File(it) })
                                     }
                                     refreshCounts()
                                 }
@@ -150,7 +172,7 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
                 }
                 if (folders.isEmpty()) {
                     Text(
-                        "Add folders that hold your personal music collection.",
+                        "Add the folders that hold your music. You can pick several at once; subfolders are included.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -159,17 +181,23 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
                 OutlinedButton(
                     onClick = {
                         scope.launch {
-                            val dir = LocalFoldersPrefs.pickDirectory()
-                            if (dir != null) {
-                                LocalFoldersPrefs.addFolder(prefs, dir.absolutePath)
+                            val picked = LocalFoldersPrefs.pickDirectories()
+                            if (picked.isNotEmpty()) {
+                                val r = LocalFoldersPrefs.addFolders(prefs, picked)
+                                statusMsg = buildString {
+                                    if (r.added.isNotEmpty()) append("Added ${r.added.size} folder${if (r.added.size == 1) "" else "s"}. ")
+                                    if (r.alreadyCovered.isNotEmpty()) append("Already included: ${r.alreadyCovered.joinToString()}. ")
+                                    if (r.notFolders.isNotEmpty()) append("Not a folder: ${r.notFolders.joinToString()}.")
+                                }.trim()
                                 refreshCounts()
+                                if (r.added.isNotEmpty()) startScan()
                             }
                         }
                     },
                 ) {
                     Icon(Icons.Outlined.FolderOpen, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Add folder")
+                    Text("Add folders")
                 }
             }
         }
@@ -177,10 +205,8 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
         SettingsSection("Scan") {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
                 Button(
-                    onClick = {
-                        bootstrap.scanNow()
-                    },
-                    enabled = !progress.running && folders.isNotEmpty(),
+                    onClick = { startScan() },
+                    enabled = !progress.running,
                 ) {
                     Icon(Icons.Outlined.Refresh, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
@@ -214,7 +240,7 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
                 SwitchItem(
                     icon = Icons.Outlined.Refresh,
                     title = "Auto-scan on startup",
-                    subtitle = "Quietly look for new files when VIVI launches",
+                    subtitle = "Quietly look for new files when VIsage launches",
                     checked = prefs.getBoolean(PrefKeys.LocalAutoScanOnStartup, false),
                     onChecked = { prefs.setBoolean(PrefKeys.LocalAutoScanOnStartup, it) },
                 )

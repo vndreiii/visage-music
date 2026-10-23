@@ -1149,7 +1149,7 @@ fun DownloadsSettingsScreen(navController: NavController) {
                 modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
             ) {
                 Text(
-                    "yt-dlp wasn't found. Install it or set VIVI_YTDLP to enable downloads.",
+                    "yt-dlp wasn't found. Install it or set VISAGE_YTDLP to enable downloads.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onErrorContainer,
                     modifier = Modifier.padding(16.dp),

@@ -129,7 +129,7 @@ object CrashReporter {
             has("OutOfMemoryError") ->
                 "VIsage ran out of memory" to "The app needed more memory than it was given. Closing other apps or restarting VIsage usually fixes it."
             has("UnsatisfiedLinkError", "NoClassDefFoundError") ->
-                "A required component is missing" to "A native library (for example libmpv) or a part of the app could not be loaded. Reinstalling or rebuilding VIVI should fix it."
+                "A required component is missing" to "A native library (for example libmpv) or a part of the app could not be loaded. Reinstalling or rebuilding VIsage should fix it."
             has("SQLite", "SQLException") ->
                 "The music library database hit a problem" to "Reading or writing the local library failed. Restarting usually clears it; if it keeps happening, report it."
             has("UnknownHost", "ConnectException", "SocketTimeout", "SSLException") ->
