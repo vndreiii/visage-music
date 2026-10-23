@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.CoverImage
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
@@ -311,7 +312,8 @@ fun MiniPlayerBar(
                                 fontWeight = FontWeight.SemiBold,
                                 color = Color.White,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                overflow = TextOverflow.Clip,
+                                modifier = Modifier.visageMarquee(),
                             )
                             val credits = track?.artist.orEmpty()
                             if (onOpenArtist != null && credits.isNotBlank() && state != PlaybackState.Error && !idleEmpty) {
@@ -334,7 +336,8 @@ fun MiniPlayerBar(
                                     style = MaterialTheme.typography.bodySmall,
                                     color = Color.White.copy(alpha = 0.75f),
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    overflow = TextOverflow.Clip,
+                                    modifier = Modifier.visageMarquee(),
                                 )
                             }
                         }

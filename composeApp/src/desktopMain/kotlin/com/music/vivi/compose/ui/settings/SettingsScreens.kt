@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.settings
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Spring
@@ -328,14 +329,16 @@ private fun AccountCardRow(account: AccountInfo?, error: String?, showChevron: B
                     fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSecondaryContainer,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
                 Text(
                     account?.email ?: "YouTube Music account",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.75f),
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
             }
             if (showChevron) {
@@ -495,7 +498,8 @@ private fun PaletteGrid(
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.visageMarquee(),
                     )
                 }
             }

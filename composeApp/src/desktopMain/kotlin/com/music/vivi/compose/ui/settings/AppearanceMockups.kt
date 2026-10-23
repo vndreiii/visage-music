@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.settings
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -243,15 +244,17 @@ fun LivePlayerBackgroundHeroPreview(
                                     color = Color.White,
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    overflow = TextOverflow.Clip,
                                     style = MaterialTheme.typography.titleMedium,
+                                    modifier = Modifier.visageMarquee(),
                                 )
                                 Text(
                                     track?.artist.orEmpty().ifBlank { "Preview" },
                                     color = Color.White.copy(alpha = 0.7f),
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    overflow = TextOverflow.Clip,
                                     style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.visageMarquee(),
                                 )
                             }
                             Surface(
@@ -702,8 +705,9 @@ private fun TopNavChip(
             style = MaterialTheme.typography.labelSmall,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Clip,
             fontSize = 10.sp,
+            modifier = Modifier.visageMarquee(),
         )
         TopNavStyle.ICON_AND_TEXT -> Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, null, tint = tint, modifier = Modifier.size(14.dp))

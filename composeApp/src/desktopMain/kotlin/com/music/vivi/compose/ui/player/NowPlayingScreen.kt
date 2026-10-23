@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.player
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -1024,7 +1025,8 @@ internal fun QueuePillStrip(
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                overflow = TextOverflow.Clip,
+                                modifier = Modifier.visageMarquee(),
                             )
                             if (track.artist.isNotBlank()) {
                                 Text(
@@ -1032,7 +1034,8 @@ internal fun QueuePillStrip(
                                     color = Color.White.copy(alpha = 0.6f),
                                     style = MaterialTheme.typography.labelSmall,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    overflow = TextOverflow.Clip,
+                                    modifier = Modifier.visageMarquee(),
                                 )
                             }
                         }

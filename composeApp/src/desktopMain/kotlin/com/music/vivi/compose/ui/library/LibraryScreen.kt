@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.library
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 
 import androidx.compose.animation.AnimatedContent
@@ -517,7 +518,7 @@ fun LibraryScreen(navController: NavController) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 com.music.vivi.compose.ui.component.VisageBackButton(onClick = { openCollection = null })
                 Column(Modifier.weight(1f)) {
-                    Text(open.title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(open.title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
                     Text("${collectionTracks.size} tracks", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 com.music.vivi.compose.ui.expressive.ExpressiveButton(
@@ -944,14 +945,16 @@ internal fun LocalCoverCard(
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.visageMarquee(),
             )
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.visageMarquee(),
             )
         }
     }
@@ -1037,8 +1040,8 @@ private fun LocalTrackRow(track: Local_track, active: Boolean, onClick: () -> Un
             )
             Spacer(Modifier.width(12.dp))
             Column {
-                Text(track.title, color = primaryText, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(track.artist_name, color = secondaryText, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(track.title, color = primaryText, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
+                Text(track.artist_name, color = secondaryText, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
             }
         }
     }
@@ -1124,7 +1127,8 @@ private fun LocalTrackList(
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            overflow = TextOverflow.Clip,
+                            modifier = Modifier.visageMarquee(),
                         )
                         Text(
                             buildString {
@@ -1134,7 +1138,8 @@ private fun LocalTrackList(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            overflow = TextOverflow.Clip,
+                            modifier = Modifier.visageMarquee(),
                         )
                     }
                 }
@@ -1222,8 +1227,8 @@ private fun OfflineList(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).visageMarquee(),
         )
         if (tracks.isEmpty()) {
             EmptyContent("Nothing available offline yet")
@@ -1275,7 +1280,8 @@ private fun OfflineList(
                                     style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    overflow = TextOverflow.Clip,
+                                    modifier = Modifier.visageMarquee(),
                                 )
                                 Text(
                                     track.artist.ifBlank { File(track.file_path).extension.uppercase() },

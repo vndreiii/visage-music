@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.library.sidebar
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -270,12 +271,14 @@ internal fun FolderRowView(
             Column(Modifier.weight(1f).padding(start = 12.dp).alpha(f)) {
                 Text(
                     folder.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    maxLines = 1, overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
                 Text(
                     "Folder · " + if (row.count == 1) "1 item" else "${row.count} items",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    maxLines = 1, overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
             }
             Icon(

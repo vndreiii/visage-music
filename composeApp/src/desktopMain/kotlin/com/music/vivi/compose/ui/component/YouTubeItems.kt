@@ -109,11 +109,11 @@ fun YouTubeGridItem(
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
                 textAlign = if (item is ArtistItem) TextAlign.Center else TextAlign.Start,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .basicMarquee(),
+                    .visageMarquee(),
             )
             val subtitle = when (item) {
                 is SongItem -> joinByBullet(item.artists.joinToString { it.name }, item.album?.name)
@@ -194,7 +194,8 @@ fun YouTubeListItem(
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
                 val subtitle = when (item) {
                     is SongItem -> joinByBullet(item.artists.joinToString { it.name }, item.album?.name)
@@ -208,7 +209,8 @@ fun YouTubeListItem(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.secondary,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.visageMarquee(),
                     )
                 }
             }

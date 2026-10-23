@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.artist
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -154,13 +155,14 @@ fun ArtistInfoScreen(name: String, navController: NavController) {
                     LazyCoverImage(coverPath = track.cover_path, modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)))
                     Spacer(Modifier.width(14.dp))
                     Column(Modifier.weight(1f)) {
-                        Text(track.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(track.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
                         Text(
                             listOfNotNull(track.artist_name.takeIf { it.isNotBlank() }, track.album_title).joinToString(" · "),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            overflow = TextOverflow.Clip,
+                            modifier = Modifier.visageMarquee(),
                         )
                     }
                 }

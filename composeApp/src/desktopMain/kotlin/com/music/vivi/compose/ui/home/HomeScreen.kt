@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.home
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.mutableStateOf
@@ -900,8 +901,8 @@ private fun HomeCategoryHeader(
                 },
                 style = MaterialTheme.typography.headlineSmall,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp).visageMarquee(),
             )
         }
         if (onClick != null) {

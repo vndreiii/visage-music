@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.artist
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -59,7 +60,7 @@ fun ArtistLink(name: String, style: TextStyle, color: Color, hoverColor: Color, 
         style = style,
         color = tint,
         maxLines = 1,
-        overflow = TextOverflow.Ellipsis,
+        overflow = TextOverflow.Clip,
         modifier = Modifier
             .hoverable(source)
             .pointerHoverIcon(PointerIcon.Hand)
@@ -69,6 +70,6 @@ fun ArtistLink(name: String, style: TextStyle, color: Color, hoverColor: Color, 
                     val y = size.height - 1.5f
                     drawLine(tint, Offset(0f, y), Offset(size.width * underline, y), strokeWidth = 1.5f)
                 }
-            },
+            }.visageMarquee(),
     )
 }

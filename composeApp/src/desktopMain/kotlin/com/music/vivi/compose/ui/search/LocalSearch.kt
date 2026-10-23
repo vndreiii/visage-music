@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.search
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -79,13 +80,14 @@ fun LazyListScope.renderLocalHits(hits: List<Local_track>, onPlay: (Int) -> Unit
             modifier = Modifier.fillMaxWidth(),
         ) {
             Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
-                Text(t.title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
+                Text(t.title, maxLines = 1, overflow = TextOverflow.Clip, fontWeight = FontWeight.Medium, modifier = Modifier.visageMarquee())
                 Text(
                     "${t.artist_name} · ${t.album_title}",
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.visageMarquee(),
                 )
             }
         }

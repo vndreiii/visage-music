@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.player.queue
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
@@ -326,7 +327,8 @@ private fun QueuePanelBody(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.visageMarquee(),
                     )
                     NextLabel(
                         if (radioActive) "Next from Radio" else "Next in Queue",
@@ -551,14 +553,16 @@ private fun NowPlayingHeader(track: NowPlaying?) {
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.visageMarquee(),
             )
             Text(
                 track?.artist.orEmpty(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.visageMarquee(),
             )
         }
     }
@@ -632,7 +636,8 @@ private fun ModeChip(
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 softWrap = false,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.visageMarquee(),
             )
         }
     }
@@ -679,13 +684,14 @@ private fun QueueSongRow(
             }
         }
         Column(Modifier.padding(start = 12.dp).weight(1f)) {
-            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
+            Text(title, maxLines = 1, overflow = TextOverflow.Clip, fontWeight = FontWeight.Medium, modifier = Modifier.visageMarquee())
             Text(
                 subtitle,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.visageMarquee(),
             )
         }
         trailing?.invoke()

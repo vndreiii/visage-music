@@ -44,16 +44,18 @@ fun NavigationTitle(
                     Text(
                         text = it,
                         style = MaterialTheme.typography.labelLarge,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Clip,
                         maxLines = 1,
+                        modifier = Modifier.visageMarquee(),
                     )
                 }
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
                     maxLines = 1,
+                    modifier = Modifier.visageMarquee(),
                 )
             }
             if (onPlayAllClick != null) {

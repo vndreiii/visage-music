@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.tags
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -327,8 +328,8 @@ private fun TrackBrowser(state: TagManagerState, modifier: Modifier) {
 @Composable
 private fun GroupHeader(h: TagBrowser.Row.Header, modifier: Modifier) {
     Row(modifier.fillMaxWidth().padding(start = 12.dp, top = 14.dp, bottom = 4.dp), verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text(h.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-        Text("${h.count} · ${h.subtitle}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        Text(h.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.weight(1f, fill = false).visageMarquee())
+        Text("${h.count} · ${h.subtitle}", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
     }
 }
 
@@ -379,10 +380,10 @@ private fun TrackRow(
                 VisageMotion.effectsDefault(), label = "cellColor",
             )
             Text(
-                text.ifBlank { "—" }, Modifier.weight(c.weight).padding(end = 8.dp),
+                text.ifBlank { "—" }, Modifier.weight(c.weight).padding(end = 8.dp).visageMarquee(),
                 style = if (c.label == "Title") MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium) else MaterialTheme.typography.bodyMedium,
                 color = if (text.isBlank() && c.missing == null) MaterialTheme.colorScheme.onSurfaceVariant else color,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                maxLines = 1, overflow = TextOverflow.Clip,
             )
         }
         Box(Modifier.width(48.dp), contentAlignment = Alignment.CenterStart) {

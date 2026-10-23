@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.library
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -340,7 +341,7 @@ private fun LabelCard(
         ) {
             Icon(icon, null, tint = Color.White.copy(alpha = 0.22f), modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(44.dp))
             Column(Modifier.align(Alignment.BottomStart).padding(14.dp)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
                 Text(subtitle, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
             }
         }

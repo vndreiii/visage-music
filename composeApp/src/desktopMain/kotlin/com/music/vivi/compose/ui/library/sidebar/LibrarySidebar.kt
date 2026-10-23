@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.library.sidebar
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
@@ -868,13 +869,15 @@ private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayback, ac
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    maxLines = 1, overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
                 Text(
                     e.subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    maxLines = 1, overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
             }
             Box(Modifier.alpha(f)) {
@@ -914,11 +917,12 @@ private fun LibraryGridCard(r: SidebarRow.Item, playback: EntryPlayback, actions
             Text(
                 e.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
                 color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp),
+                maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.padding(top = 8.dp).visageMarquee(),
             )
             Text(
                 e.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                maxLines = 1, overflow = TextOverflow.Clip,
+                modifier = Modifier.visageMarquee(),
             )
         }
         EntryMenu(menu, { menu = false }, e, actions, r.folderId, r.hidden)

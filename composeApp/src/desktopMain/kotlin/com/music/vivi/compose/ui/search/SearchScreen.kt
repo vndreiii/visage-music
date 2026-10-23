@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.search
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
@@ -676,14 +677,16 @@ private fun ChartSuggestionRow(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
                 Text(
                     track.artist,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -835,9 +838,9 @@ private fun SuggestionRow(
             Text(
                 text,
                 style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f).padding(horizontal = 14.dp),
+                modifier = Modifier.weight(1f).padding(horizontal = 14.dp).visageMarquee(),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
             )
             IconButton(onClick = onAutocomplete, modifier = Modifier.size(36.dp)) {
                 Icon(
@@ -890,7 +893,8 @@ private fun RecommendedRow(
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
                 if (subtitle.isNotBlank()) {
                     Text(
@@ -898,7 +902,8 @@ private fun RecommendedRow(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.visageMarquee(),
                     )
                 }
             }

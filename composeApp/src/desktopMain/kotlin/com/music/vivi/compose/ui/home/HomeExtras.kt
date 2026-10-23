@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.home
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -70,7 +71,8 @@ internal fun HomeHeader(
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.visageMarquee(),
         )
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -188,16 +190,16 @@ private fun RecentCard(event: Play_event, active: Boolean, playing: Boolean, onC
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp).visageMarquee(),
             )
             Text(
                 event.artists,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 4.dp),
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.padding(horizontal = 4.dp).visageMarquee(),
             )
         }
     }

@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.player
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.AnimatedVisibility
@@ -395,14 +396,16 @@ private fun TrackActionsPane(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
                 Text(
                     track?.artist.orEmpty().ifBlank { "—" },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
             }
             IconButton(onClick = onFavorite, modifier = Modifier.size(40.dp)) {
@@ -513,7 +516,7 @@ private fun PlaylistPickerPane(
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text(local.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(local.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
                             Text(
                                 "${local.song_count ?: 0} tracks",
                                 style = MaterialTheme.typography.bodySmall,
@@ -587,7 +590,8 @@ private fun PlaylistPickerPane(
                                         style = MaterialTheme.typography.bodyMedium,
                                         fontWeight = FontWeight.SemiBold,
                                         maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
+                                        overflow = TextOverflow.Clip,
+                                        modifier = Modifier.visageMarquee(),
                                     )
                                     val sub = buildString {
                                         playlist.author?.name?.let { append(it) }
@@ -602,7 +606,8 @@ private fun PlaylistPickerPane(
                                             style = MaterialTheme.typography.bodySmall,
                                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                                             maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
+                                            overflow = TextOverflow.Clip,
+                                            modifier = Modifier.visageMarquee(),
                                         )
                                     }
                                 }

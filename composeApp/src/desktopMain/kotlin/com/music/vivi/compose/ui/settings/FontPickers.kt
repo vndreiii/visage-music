@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.settings
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -99,8 +100,8 @@ private fun FontValue(key: String) {
             fontFamily = fontFamilyFor(key),
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 180.dp).padding(horizontal = 14.dp, vertical = 8.dp),
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.widthIn(max = 180.dp).padding(horizontal = 14.dp, vertical = 8.dp).visageMarquee(),
         )
     }
 }
@@ -189,8 +190,8 @@ private fun FontRow(choice: FontChoice, selected: Boolean, onClick: () -> Unit) 
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.weight(1f).visageMarquee(),
         )
         if (selected) Icon(Icons.Filled.Check, contentDescription = "Selected", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
     }

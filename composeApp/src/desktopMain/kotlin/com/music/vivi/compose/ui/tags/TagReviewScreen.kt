@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.tags
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -96,8 +97,8 @@ private fun ProposalCard(p: TrackProposal, track: TagTrack?, modifier: Modifier,
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f)) {
-                    Text(track?.let { it.tags.value(TagField.Title).ifBlank { it.stem } }.orEmpty(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(track?.path.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(track?.let { it.tags.value(TagField.Title).ifBlank { it.stem } }.orEmpty(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
+                    Text(track?.path.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
                 }
                 ExpressiveButton(if (p.skipped) "Skipped" else "Skip", { update { it.copy(skipped = !it.skipped) } }, size = ExpressiveSize.XSmall, style = if (p.skipped) ExpressiveStyle.Filled else ExpressiveStyle.Text, selected = if (p.skipped) true else null)
                 ExpressiveButton("Accept all", { update { it.copy(skipped = false, overrides = it.changes.associate { c -> c.field to true }, coverChoice = it.best?.candidate?.coverUrl != null) } }, size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal)
@@ -135,11 +136,11 @@ private fun ChangeRow(c: FieldChange, on: Boolean, onToggle: (Boolean) -> Unit) 
         Checkbox(on, onToggle, Modifier.size(40.dp))
         Text(c.field.label, Modifier.width(92.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
-            c.old.ifBlank { "—" }, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            c.old.ifBlank { "—" }, Modifier.weight(1f).visageMarquee(), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Clip,
             color = MaterialTheme.colorScheme.onSurfaceVariant, textDecoration = if (c.old.isBlank()) null else TextDecoration.LineThrough,
         )
         Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, Modifier.padding(horizontal = 8.dp).size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(c.new, Modifier.weight(1.2f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.primary)
+        Text(c.new, Modifier.weight(1.2f).visageMarquee(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Clip, color = MaterialTheme.colorScheme.primary)
     }
 }
 

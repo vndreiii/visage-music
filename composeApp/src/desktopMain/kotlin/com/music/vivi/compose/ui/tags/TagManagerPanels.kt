@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.tags
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -72,7 +73,8 @@ internal fun SidePanel(state: TagManagerState) {
                 Column(Modifier.weight(1f)) {
                     Text(
                         if (n == 1) state.selectedTracks.firstOrNull()?.let { it.tags.value(TagField.Title).ifBlank { it.stem } }.orEmpty() else "$n tracks selected",
-                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Clip,
+                        modifier = Modifier.visageMarquee(),
                     )
                     Text(
                         when {
@@ -295,8 +297,8 @@ private fun ToolsPanel(state: TagManagerState) {
                         state.duplicateGroups.take(20).forEach { g ->
                             Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, onClick = { state.selectIds(g.map { it.id }) }, modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(12.dp)) {
-                                    Text("${g.first().tags.value(TagField.Artist)} — ${g.first().tags.value(TagField.Title)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    g.forEach { Text(it.path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                    Text("${g.first().tags.value(TagField.Artist)} — ${g.first().tags.value(TagField.Title)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
+                                    g.forEach { Text(it.path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee()) }
                                 }
                             }
                         }
@@ -318,8 +320,8 @@ private fun PreviewList(items: List<Pair<TagTrack, Tags>>, empty: String) {
     items.take(6).forEach { (t, edits) ->
         Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(10.dp)) {
-                Text(t.fileName, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                edits.forEach { (f, v) -> Text("${f.label}: ${t.tags.value(f).ifBlank { "—" }} → $v", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                Text(t.fileName, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
+                edits.forEach { (f, v) -> Text("${f.label}: ${t.tags.value(f).ifBlank { "—" }} → $v", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee()) }
             }
         }
     }

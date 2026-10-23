@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.playlist
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -172,12 +173,14 @@ fun LocalPlaylistScreen(playlistId: String, navController: NavController) {
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text(
                         song.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Clip,
                         color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.visageMarquee(),
                     )
                     Text(
                         song.artists, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        maxLines = 1, overflow = TextOverflow.Clip,
+                        modifier = Modifier.visageMarquee(),
                     )
                 }
                 IconButton(onClick = { scope.launch(Dispatchers.IO) { repo.moveInLocalPlaylist(playlistId, index, index - 1) } }, enabled = index > 0) {

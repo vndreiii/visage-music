@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.player
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.animateDpAsState
@@ -466,8 +467,8 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                                     style = MaterialTheme.typography.bodyMedium,
                                     color = Color.White.copy(alpha = 0.5f),
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(top = 4.dp),
+                                    overflow = TextOverflow.Clip,
+                                    modifier = Modifier.padding(top = 4.dp).visageMarquee(),
                                 )
                             }
                         }
