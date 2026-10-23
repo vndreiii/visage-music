@@ -109,7 +109,8 @@ internal fun Modifier.wheelScroll(
     val scope = rememberCoroutineScope()
     val notchPx = with(LocalDensity.current) { 110.dp.toPx() }
     val classifier = remember(state) { WheelClassifier() }
-    val backdrop = com.music.vivi.compose.ui.glass.LocalBackdropScroll.current
+    // Only vertical scrolling moves the page background; a sideways wheel over a shelf or chip row must not.
+    val backdrop = com.music.vivi.compose.ui.glass.LocalBackdropScroll.current?.takeIf { axis == WheelAxis.Vertical }
     val driver = remember(state, notchPx, backdrop) {
         WheelDriver(state, scope, notchPx, backdrop?.let { b -> { d: Float -> b.y = (b.y + d).coerceAtLeast(0f) } })
     }
