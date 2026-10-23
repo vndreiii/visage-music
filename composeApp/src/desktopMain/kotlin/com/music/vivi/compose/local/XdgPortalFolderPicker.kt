@@ -34,7 +34,30 @@ object XdgPortalFolderPicker {
             }
         }
 
-    private fun pickViaPortal(title: String): List<File> {
+    /** One image file via the portal (so it matches the user's own file chooser); null when cancelled. */
+    suspend fun pickImage(title: String = "Choose image"): File? = withContext(Dispatchers.IO) {
+        val exts = listOf("png", "jpg", "jpeg", "gif", "bmp", "webp")
+        if (com.music.vivi.nativelib.HostOs.isWindows) return@withContext pickImageViaAwt(title, exts)
+        runCatching { pickViaPortal(title, directory = false, multiple = false, imageFilter = true).firstOrNull() }.getOrElse {
+            runCatching { pickImageViaZenity(title) }.getOrElse { pickImageViaAwt(title, exts) }
+        }
+    }
+
+    private fun pickImageViaZenity(title: String): File? {
+        val proc = ProcessBuilder("zenity", "--file-selection", "--title=$title", "--file-filter=Images | *.png *.jpg *.jpeg *.gif *.bmp *.webp")
+            .redirectErrorStream(true).start()
+        val out = proc.inputStream.bufferedReader().readText().trim()
+        return if (proc.waitFor() != 0 || out.isBlank()) null else File(out).takeIf { it.isFile }
+    }
+
+    private fun pickImageViaAwt(title: String, exts: List<String>): File? = runCatching {
+        val dlg = java.awt.FileDialog(null as java.awt.Frame?, title, java.awt.FileDialog.LOAD)
+        dlg.setFilenameFilter { _, n -> n.lowercase().substringAfterLast('.', "") in exts }
+        dlg.isVisible = true
+        if (dlg.file != null && dlg.directory != null) File(dlg.directory, dlg.file) else null
+    }.getOrNull()
+
+    private fun pickViaPortal(title: String, directory: Boolean = true, multiple: Boolean = true, imageFilter: Boolean = false): List<File> {
         val connection = try {
             DBusConnectionBuilder.forSessionBus().withShared(false).build()
         } catch (e: DBusException) {
@@ -50,10 +73,14 @@ object XdgPortalFolderPicker {
             val token = "vivi_${UUID.randomUUID().toString().replace("-", "").take(12)}"
             val options = linkedMapOf<String, Variant<*>>(
                 "handle_token" to Variant(token),
-                "directory" to Variant(true),
-                "multiple" to Variant(true),
+                "directory" to Variant(directory),
+                "multiple" to Variant(multiple),
                 "modal" to Variant(true),
             )
+            if (imageFilter) {
+                val patterns = listOf("png", "jpg", "jpeg", "gif", "bmp", "webp").map { PortalPattern(UInt32(0), "*.$it") }
+                options["filters"] = Variant(listOf(PortalFilter("Images", patterns)), "a(sa(us))")
+            }
             // Subscribe before opening; a fast portal response must not be lost.
             val handlePath = "/org/freedesktop/portal/desktop/request/${connection.uniqueName.removePrefix(":").replace('.', '_')}/$token"
             val future = CompletableFuture<List<File>>()
@@ -143,3 +170,13 @@ class PortalRequestResponse @Throws(DBusException::class) constructor(
     val response: UInt32,
     val results: Map<String, Variant<*>>,
 ) : DBusSignal(path, response, results)
+
+class PortalPattern(
+    @org.freedesktop.dbus.annotations.Position(0) val kind: UInt32,
+    @org.freedesktop.dbus.annotations.Position(1) val pattern: String,
+) : org.freedesktop.dbus.Struct()
+
+class PortalFilter(
+    @org.freedesktop.dbus.annotations.Position(0) val name: String,
+    @org.freedesktop.dbus.annotations.Position(1) val patterns: List<PortalPattern>,
+) : org.freedesktop.dbus.Struct()

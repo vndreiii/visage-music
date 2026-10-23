@@ -241,16 +241,7 @@ private fun CoverEditor(state: TagManagerState) {
     }
 }
 
-private suspend fun pickImage(): File? = withContext(Dispatchers.IO) {
-    runCatching {
-        val dlg = java.awt.FileDialog(null as java.awt.Frame?, "Choose cover image", java.awt.FileDialog.LOAD)
-        dlg.setFilenameFilter { _, name -> name.lowercase().let { it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".png") || it.endsWith(".gif") || it.endsWith(".bmp") } }
-        dlg.isVisible = true
-        val f = dlg.file
-        val d = dlg.directory
-        if (f != null && d != null) File(d, f) else null
-    }.getOrNull()
-}
+private suspend fun pickImage(): File? = com.music.vivi.compose.local.XdgPortalFolderPicker.pickImage("Choose cover image")
 
 // ── tools ────────────────────────────────────────────────────────────────────────────────
 

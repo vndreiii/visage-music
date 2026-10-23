@@ -164,14 +164,7 @@ internal object FolderCovers {
         }.getOrNull()
     }
 
-    suspend fun pick(): File? = withContext(Dispatchers.IO) {
-        runCatching {
-            val dlg = java.awt.FileDialog(null as java.awt.Frame?, "Choose folder cover", java.awt.FileDialog.LOAD)
-            dlg.setFilenameFilter { _, n -> n.lowercase().let { it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".png") || it.endsWith(".gif") || it.endsWith(".bmp") || it.endsWith(".webp") } }
-            dlg.isVisible = true
-            if (dlg.file != null && dlg.directory != null) File(dlg.directory, dlg.file) else null
-        }.getOrNull()
-    }
+    suspend fun pick(): File? = com.music.vivi.compose.local.XdgPortalFolderPicker.pickImage("Choose folder cover")
 
     /** Deletes an app-owned copy that is no longer referenced. */
     fun discard(path: String?) {
