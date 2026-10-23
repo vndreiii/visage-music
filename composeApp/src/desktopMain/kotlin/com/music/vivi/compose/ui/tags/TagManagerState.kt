@@ -101,6 +101,8 @@ class TagManagerState(
 
     // auto-tag review
     var proposals by mutableStateOf<List<TrackProposal>?>(null)
+    /** The review page was stepped away from while matching continues; shown again when the Tag Manager is reopened. */
+    var reviewHidden by mutableStateOf(false)
     var autoRunning by mutableStateOf(false)
     var autoDone by mutableStateOf(0)
     var autoTotal by mutableStateOf(0)
@@ -250,7 +252,7 @@ class TagManagerState(
 
     fun startAutoTag(targets: List<TagTrack> = selectedTracks, coversOnly: Boolean = false, network: Boolean = true) {
         if (autoRunning || targets.isEmpty()) return
-        autoRunning = true; autoDone = 0; autoTotal = targets.size; autoNote = null
+        autoRunning = true; autoDone = 0; autoTotal = targets.size; autoNote = null; reviewHidden = false
         proposals = emptyList()
         autoJob = scope.launch {
             var netFailures = 0
@@ -270,13 +272,19 @@ class TagManagerState(
                 autoDone++
             }
             autoRunning = false
+            reviewHidden = false // done: bring the review back if it was stepped away from
             if (proposals.isNullOrEmpty()) autoNote = "No matches found for the selected tracks."
             else if (netFailures > 0) autoNote = "$netFailures track(s) failed to look up."
         }
     }
 
     fun cancelAutoTag() { autoJob?.cancel(); autoRunning = false }
-    fun closeReview() { cancelAutoTag(); proposals = null; autoNote = null }
+
+    /** Leaves the review. While matching is still running it only steps aside (the floating button brings it back). */
+    fun closeReview() {
+        if (autoRunning) { reviewHidden = true; return }
+        proposals = null; autoNote = null
+    }
 
     fun updateProposal(id: String, f: (TrackProposal) -> TrackProposal) {
         proposals = proposals?.map { if (it.trackId == id) f(it) else it }

@@ -121,7 +121,7 @@ fun TagManagerScreen(navController: NavController) {
     // The state lives in the host, not here: auto-tagging keeps running when this page is left.
     val state = remember { TagManagerHost.get(repo, prefs) }
     val nativeWriter = TagManagerHost.nativeWriter
-    LaunchedEffect(Unit) { state.load() }
+    LaunchedEffect(Unit) { state.reviewHidden = false; state.load() }
 
     Column(Modifier.fillMaxSize()) {
         DetailPageHeader(
@@ -136,7 +136,7 @@ fun TagManagerScreen(navController: NavController) {
             Banner("The native tag writer isn't available, so tags can't be read or written. Build native/visage-native and restart.", error = true)
         }
         AnimatedContent(
-            targetState = state.proposals != null,
+            targetState = state.proposals != null && !state.reviewHidden,
             transitionSpec = { fadeIn(VisageMotion.fadeInSpec()) togetherWith fadeOut(VisageMotion.fadeOutSpec()) },
             label = "tagMode",
             modifier = Modifier.weight(1f),
