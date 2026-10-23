@@ -757,14 +757,17 @@ internal class QueueDragState(private val list: androidx.compose.foundation.lazy
     /** Height of the lifted row; the rows it passes slide by this much so they make room live. */
     var itemHeight by mutableFloatStateOf(0f)
     val active get() = from >= 0
+    /** True while the released row glides into its slot; input is ignored until it lands. */
+    var settling by mutableStateOf(false)
 
     fun start(index: Int) {
+        if (settling) return
         from = index; to = index; dy = 0f
         itemHeight = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }?.size?.toFloat() ?: 0f
     }
 
     fun move(delta: Float) {
-        if (!active) return
+        if (!active || settling) return
         dy += delta
         val info = list.layoutInfo
         val me = info.visibleItemsInfo.firstOrNull { it.index == from } ?: return
@@ -782,10 +785,28 @@ internal class QueueDragState(private val list: androidx.compose.foundation.lazy
             ?.let { to = it.index }
     }
 
-    /** Returns (from,to) when a reorder should be applied, then resets. */
-    fun finish(): Pair<Int, Int>? {
-        val result = if (active && to >= 0 && to != from) from to to else null
-        from = -1; to = -1; dy = 0f
+    /**
+     * Lets go of the row: it glides to the slot it hovers over (or back where it started), then everything resets.
+     * Returns (from,to) when a reorder should be applied.
+     */
+    suspend fun finish(): Pair<Int, Int>? {
+        if (!active || settling) return null
+        settling = true
+        val result = if (to >= 0 && to != from) from to to else null
+        val info = list.layoutInfo
+        val me = info.visibleItemsInfo.firstOrNull { it.index == from }
+        val dest = result?.let { (_, t) -> info.visibleItemsInfo.firstOrNull { it.index == t } }
+        val target = when {
+            me == null || dest == null -> 0f
+            // The row ends up with its near edge flush to the slot it replaces.
+            to > from -> dest.offset + dest.size - me.size - me.offset.toFloat()
+            else -> (dest.offset - me.offset).toFloat()
+        }
+        try {
+            androidx.compose.animation.core.animate(dy, target, animationSpec = VisageMotion.spatialFast()) { v, _ -> dy = v }
+        } finally {
+            from = -1; to = -1; dy = 0f; settling = false
+        }
         return result
     }
 }
@@ -816,11 +837,12 @@ private fun UpcomingRow(
     val shift by animateFloatAsState(shiftTarget, VisageMotion.spatialFast(), label = "queueShift")
     val pos by rememberUpdatedState(position)
     val onDropNow by rememberUpdatedState(onDrop)
+    val settleScope = rememberCoroutineScope()
 
     fun Modifier.reorder(immediate: Boolean): Modifier = pointerInput(immediate) {
         val start = { _: androidx.compose.ui.geometry.Offset -> drag.start(pos) }
-        val end = { drag.finish()?.let { (f, t) -> onDropNow(f, t) }; Unit }
-        val cancel = { drag.finish(); Unit }
+        val end = { settleScope.launch { drag.finish()?.let { (f, t) -> onDropNow(f, t) } }; Unit }
+        val cancel = { settleScope.launch { drag.finish() }; Unit }
         val onMove = { change: androidx.compose.ui.input.pointer.PointerInputChange, amount: androidx.compose.ui.geometry.Offset ->
             change.consume(); drag.move(amount.y)
         }
