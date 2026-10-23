@@ -474,7 +474,7 @@ fun LibraryScreen(navController: NavController) {
     Column(Modifier.fillMaxSize()) {
         // Tabs and actions share one row, vertically centred, with room below so content never touches the sticky header.
         Row(
-            Modifier.fillMaxWidth().padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
+            Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.weight(1f)) {
@@ -482,6 +482,7 @@ fun LibraryScreen(navController: NavController) {
                     chips = LibraryTab.entries.map { it to it.label },
                     currentValue = tab,
                     onValueUpdate = { next -> if (next != null) { tab = next; openCollection = null } },
+                    gutter = 16.dp, // the page's content inset, so the first chip lines up with the cards below
                 )
             }
             com.music.vivi.compose.ui.expressive.ExpressiveButton(
@@ -501,8 +502,8 @@ fun LibraryScreen(navController: NavController) {
             onQuery = { query = it; openCollection = null },
             placeholder = "Search your library — songs, artists, albums",
             height = 48.dp,
-            // Same left edge as the first tab chip (4dp row inset + 20dp chip gutter), right edge with the Refresh label.
-            modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
+            // Full content width: same 16dp inset as the cards and the first tab chip.
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
         )
         if (refreshing || scanProgress.running) {
             LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
