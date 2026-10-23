@@ -72,6 +72,14 @@ val desktopModule = module {
                     else -> null
                 }
             },
+            // A local queue that runs out keeps going with random tracks from the local library.
+            fileQueueFiller = { exclude ->
+                get<com.music.vivi.database.LocalMusicRepository>().allTracks()
+                    .filter { "local:${it.id}" !in exclude }
+                    .shuffled()
+                    .take(25)
+                    .map { it.toQueueTrack() }
+            },
             streamSettings = {
                 val prefs = get<DesktopPrefs>()
                 com.music.vivi.player.stream.StreamSettings(

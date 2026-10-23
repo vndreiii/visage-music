@@ -40,6 +40,11 @@ class DefaultPlaybackController(
     private val enableMpris: Boolean = true,
     private val engineFactory: ((MpvPlayer.State) -> Unit, (Double, Double) -> Unit, (String) -> Unit) -> PlaybackEngine =
         { state, position, error -> MpvPlayer(state, position, error) },
+    /**
+     * Called when a queue of local files runs out: returns more tracks to keep playing, skipping the ids
+     * in the argument. Empty (the default) leaves the queue to end.
+     */
+    private val fileQueueFiller: suspend (excludeIds: Set<String>) -> List<QueueTrack> = { emptyList() },
 ) : PlaybackController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val playMutex = Mutex()
@@ -641,7 +646,7 @@ class DefaultPlaybackController(
             else -> {
                 val seed = q.getOrNull(i)
                 if (seed != null) {
-                    expandQueueFromRadioAwait(seed, replaceUpcoming = true)
+                    extendQueueAtEnd(seed)
                     val after = (desiredIndex.get().takeIf { it >= 0 } ?: _queueIndex.value) + 1
                     if (after < _queueIds.value.size) after else -1
                 } else -1
@@ -744,7 +749,7 @@ class DefaultPlaybackController(
             return
         }
         val seed = q.getOrNull(i) ?: return
-        expandQueueFromRadioAwait(seed, replaceUpcoming = true)
+        extendQueueAtEnd(seed)
         val nextIdx = (desiredIndex.get().takeIf { it >= 0 } ?: _queueIndex.value) + 1
         if (nextIdx < _queueIds.value.size) {
             requestIndex(nextIdx, haltPlayer = false)
@@ -1129,6 +1134,32 @@ class DefaultPlaybackController(
         id.startsWith("local:") || id.startsWith("offline:") ||
             _queueTracks.value.any { it.videoId == id && it.localPath != null }
 
+    /** The queue ran out after [seedId]: a YouTube song continues with its radio, a local file with random local files. */
+    private suspend fun extendQueueAtEnd(seedId: String) {
+        if (seedId.startsWith("local:")) {
+            appendRandomFiles()
+            return
+        }
+        expandQueueFromRadioAwait(seedId, replaceUpcoming = true)
+    }
+
+    private suspend fun appendRandomFiles() {
+        val extra = runCatching {
+            withContext(Dispatchers.IO) { fileQueueFiller(_queueIds.value.toHashSet()) }
+        }.getOrDefault(emptyList())
+        if (extra.isEmpty()) return
+        playMutex.withLock {
+            val current = _queueTracks.value
+            val have = current.map { it.videoId }.toHashSet()
+            val merged = current + extra.filter { it.videoId !in have }.distinctBy { it.videoId }
+            if (merged.size == current.size) return@withLock
+            _queueTracks.value = merged
+            _queueIds.value = merged.map { it.videoId }
+            println("Queue ran out: added ${merged.size - current.size} random local tracks")
+        }
+        schedulePrefetchAfterCurrent()
+    }
+
     private suspend fun expandQueueFromRadioAwait(
         seedId: String,
         replaceUpcoming: Boolean = false,
@@ -1361,7 +1392,7 @@ class DefaultPlaybackController(
         }
         val seed = q.getOrNull(i) ?: return
         scope.launch {
-            expandQueueFromRadioAwait(seed, replaceUpcoming = true)
+            extendQueueAtEnd(seed)
             val nextIdx = (desiredIndex.get().takeIf { it >= 0 } ?: _queueIndex.value) + 1
             if (nextIdx < _queueIds.value.size) {
                 requestIndex(nextIdx, haltPlayer = _state.value != PlaybackState.Ended)
@@ -1484,7 +1515,11 @@ class DefaultPlaybackController(
             fadeSettings: () -> PlaybackFadeSettings = { PlaybackFadeSettings() },
             streamSettings: () -> com.music.vivi.player.stream.StreamSettings = { com.music.vivi.player.stream.StreamSettings() },
             fileTrackResolver: suspend (String) -> QueueTrack? = { null },
+            fileQueueFiller: suspend (excludeIds: Set<String>) -> List<QueueTrack> = { emptyList() },
         ): PlaybackController =
-            DefaultPlaybackController(applyStoredSession, favorites, fadeSettings, streamSettings, fileTrackResolver)
+            DefaultPlaybackController(
+                applyStoredSession, favorites, fadeSettings, streamSettings, fileTrackResolver,
+                fileQueueFiller = fileQueueFiller,
+            )
     }
 }

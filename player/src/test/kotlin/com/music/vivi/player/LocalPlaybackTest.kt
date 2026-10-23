@@ -30,7 +30,10 @@ class LocalPlaybackTest {
         override fun close() { halt() }
     }
 
-    private suspend fun fixture(crossfade: Boolean = false, block: suspend (DefaultPlaybackController, List<FakeEngine>, List<QueueTrack>) -> Unit) {
+    private suspend fun fixture(
+        crossfade: Boolean = false,
+        filler: suspend (Set<String>) -> List<QueueTrack> = { emptyList() },
+        block: suspend (DefaultPlaybackController, List<FakeEngine>, List<QueueTrack>) -> Unit) {
         val directory = Files.createTempDirectory("vivi-playback-test").toFile()
         val tracks = (0..2).map { i ->
             val file = directory.resolve("song $i.flac").apply { writeText("fixture") }
@@ -42,6 +45,7 @@ class LocalPlaybackTest {
             fadeSettings = { PlaybackFadeSettings(crossfadeEnabled = crossfade, crossfadeSeconds = 1, playPauseFadeEnabled = false) },
             enableMpris = false,
             engineFactory = { state, _, _ -> FakeEngine(state).also { engines += it } },
+            fileQueueFiller = filler,
         )
         try { block(controller, engines, tracks) } finally { controller.release(); directory.deleteRecursively() }
     }
@@ -82,6 +86,17 @@ class LocalPlaybackTest {
             eventually { engines[0].loaded == tracks[0].localPath && controller.state.value == PlaybackState.Playing }
             controller.next()
             eventually { controller.queueIndex.value == 1 }
+        }
+    }
+
+    @Test fun `a finished local queue continues with random local tracks`() = runBlocking {
+        val extra = (10..12).map { QueueTrack("local:$it", title = "Extra $it", localPath = "/tmp/extra$it.flac", durationMs = 60_000) }
+        var excluded = emptySet<String>()
+        fixture(filler = { ex -> excluded = ex; extra }) { controller, _, tracks ->
+            controller.playLocalQueue(tracks, tracks.lastIndex)
+            controller.next()
+            eventually { controller.queueIds.value.size == tracks.size + extra.size && controller.queueIndex.value == tracks.size }
+            assertEquals(tracks.map { it.videoId }.toSet(), excluded)
         }
     }
 
