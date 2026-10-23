@@ -18,6 +18,8 @@ data class TrackProposal(
     val coverChoice: Boolean? = null,
     val hasCoverNow: Boolean = false,
     val skipped: Boolean = false,
+    /** Values the user typed over the proposed ones, per field. They win over the candidate's value. */
+    val valueEdits: Map<TagField, String> = emptyMap(),
 ) {
     val best: ScoredCandidate? get() = options.getOrNull(chosen)
     val changes: List<FieldChange> get() = best?.let { TagDiff.changes(current, it.candidate.tags) }.orEmpty()
@@ -26,10 +28,18 @@ data class TrackProposal(
     fun accepted(change: FieldChange): Boolean =
         overrides[change.field] ?: TagDiff.defaultAccept(change, best?.score ?: 0.0)
 
+    /** What would be written for [change]: the user's own text if they typed one, else the candidate's value. */
+    fun valueOf(change: FieldChange): String = valueEdits[change.field] ?: change.new
+
+    fun isEdited(change: FieldChange): Boolean = change.field in valueEdits
+
     fun acceptsCover(): Boolean = coverChoice ?: (best?.candidate?.coverUrl != null && (!hasCoverNow))
 
     /** The edit map to write: accepted fields only. Empty when skipped. */
-    fun edits(): Tags = if (skipped) emptyMap() else changes.filter(::accepted).associate { it.field to it.new }
+    fun edits(): Tags = if (skipped) emptyMap() else changes.filter(::accepted).mapNotNull { c ->
+        val v = valueOf(c).trim()
+        if (v.isEmpty() || v == c.old) null else c.field to v
+    }.toMap()
 }
 
 object TagDiff {
