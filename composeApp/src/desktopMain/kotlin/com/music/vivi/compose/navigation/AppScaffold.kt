@@ -1,5 +1,7 @@
 package com.music.vivi.compose.navigation
 
+import androidx.compose.ui.layout.layout
+import kotlin.math.roundToInt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -221,6 +223,8 @@ fun FrameWindowScope.AppScaffold(
     // Blur setting on and the full-width mini-player style: the bar spans the whole window (not just the inset,
     // rounded main pane) and the sidebars and pages end above it.
     val miniAtRoot = glassOn && !onNowPlaying && resolveMiniPlayerStyle(prefs) == MiniPlayerStyle.FULL_WIDTH_BAR
+    val bandColor = MaterialTheme.colorScheme.background
+    val miniStyle = resolveMiniPlayerStyle(prefs)
     var miniBarHeightPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val miniBarInset = if (miniAtRoot) with(androidx.compose.ui.platform.LocalDensity.current) { miniBarHeightPx.toDp() } else 0.dp
     com.music.vivi.compose.ui.glass.ProvideGlass(glassState, scroll = backdropScroll) {
@@ -294,8 +298,6 @@ fun FrameWindowScope.AppScaffold(
                                 },
                             ),
                     ) {
-                        val bandColor = MaterialTheme.colorScheme.background
-                        val miniStyle = resolveMiniPlayerStyle(prefs)
                         Box(Modifier.weight(1f).fillMaxSize().trackMainPane()) {
                             VisageNavHost(
                                 navController = navController,
@@ -306,37 +308,6 @@ fun FrameWindowScope.AppScaffold(
                                 onCloseQueue = { closePinnedQueue(); fullscreenQueue = false },
                                 modifier = Modifier.fillMaxSize().nestedScroll(backdropNested).glassSource(glassState),
                             )
-                            if (!onNowPlaying && !miniAtRoot) {
-                                if (!glassOn) Box(
-                                    Modifier
-                                        .align(Alignment.BottomCenter)
-                                        .fillMaxWidth()
-                                        .height(120.dp)
-                                        .background(
-                                            Brush.verticalGradient(
-                                                0f to Color.Transparent,
-                                                0.45f to bandColor.copy(alpha = 0.35f),
-                                                1f to bandColor.copy(alpha = 0.85f),
-                                            ),
-                                        ),
-                                )
-                                MiniPlayerBar(
-                                    onExpand = {
-                                        navController.navigate(Routes.NOW_PLAYING) {
-                                            launchSingleTop = true
-                                        }
-                                    },
-                                    onOpenArtist = { navController.openArtistByName(it) },
-                                    styleOverride = miniStyle,
-                                    modifier = Modifier.align(
-                                        if (miniStyle == MiniPlayerStyle.COMPACT_EDGE) {
-                                            Alignment.BottomEnd
-                                        } else {
-                                            Alignment.BottomCenter
-                                        },
-                                    ),
-                                )
-                            }
                         }
                     }
                     AnimatedQueuePinnedRail(
@@ -351,6 +322,48 @@ fun FrameWindowScope.AppScaffold(
                         navController = navController,
                         onStateChange = ::setLibraryState,
                     )
+                }
+            }
+            if (!onNowPlaying && !miniAtRoot) {
+                // At window level (not inside the inset, rounded pane) so the pill sits flush on the bottom edge,
+                // but laid out over the main pane's horizontal bounds.
+                Box(
+                    Modifier.fillMaxSize().layout { m, c ->
+                        val r = com.music.vivi.compose.ui.component.MainPane.bounds
+                        val w = r?.width?.roundToInt()?.coerceIn(0, c.maxWidth) ?: c.maxWidth
+                        val p = m.measure(androidx.compose.ui.unit.Constraints.fixed(w, c.maxHeight))
+                        layout(c.maxWidth, c.maxHeight) { p.place(r?.left?.roundToInt() ?: 0, 0) }
+                    },
+                ) {
+                            if (!glassOn) Box(
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .height(120.dp)
+                                    .background(
+                                        Brush.verticalGradient(
+                                            0f to Color.Transparent,
+                                            0.45f to bandColor.copy(alpha = 0.35f),
+                                            1f to bandColor.copy(alpha = 0.85f),
+                                        ),
+                                    ),
+                            )
+                            MiniPlayerBar(
+                                onExpand = {
+                                    navController.navigate(Routes.NOW_PLAYING) {
+                                        launchSingleTop = true
+                                    }
+                                },
+                                onOpenArtist = { navController.openArtistByName(it) },
+                                styleOverride = miniStyle,
+                                modifier = Modifier.align(
+                                    if (miniStyle == MiniPlayerStyle.COMPACT_EDGE) {
+                                        Alignment.BottomEnd
+                                    } else {
+                                        Alignment.BottomCenter
+                                    },
+                                ),
+                            )
                 }
             }
             if (miniAtRoot) {
