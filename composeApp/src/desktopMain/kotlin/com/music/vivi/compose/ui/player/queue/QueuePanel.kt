@@ -114,6 +114,7 @@ import com.music.vivi.database.Play_event
 import com.music.vivi.player.NowPlaying
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 
@@ -434,8 +435,12 @@ private fun QueuePanelBody(
                 }
 
                 val drag = remember(listState) { QueueDragState(listState) }
+                val dropBase = queueIndex + 1
                 LazyColumn(
-                    modifier = Modifier.weight(1f).smoothWheelScroll(listState),
+                    modifier = Modifier.weight(1f).smoothWheelScroll(listState)
+                        .queueReorder(drag, listState, maxIndex = { shown.coerceAtMost(upcoming.size) - 1 }) { f, t ->
+                            controller.moveQueueItem(dropBase + f, dropBase + t)
+                        },
                     state = listState,
                     contentPadding = PaddingValues(bottom = 24.dp),
                 ) {
@@ -465,7 +470,6 @@ private fun QueuePanelBody(
                                 },
                                 onMove = { to -> controller.moveQueueItem(base + i, base + to) },
                                 onRemove = { controller.removeFromQueue(base + i) },
-                                onDrop = { from, to -> controller.moveQueueItem(base + from, base + to) },
                             )
                         }
                     }
@@ -753,40 +757,57 @@ internal fun queuePlaceholderCount(upcomingSize: Int, shown: Int, maximum: Int):
     (upcomingSize - shown).coerceIn(0, maximum)
 
 
-/** Drag-to-reorder state for the upcoming list; indexes are positions within the upcoming tracks. */
+/**
+ * Drag-to-reorder state for the upcoming list; indexes are positions within the upcoming tracks.
+ * The gesture lives on the list (see [queueReorder]) and tracks the pointer in the list's own coordinates, so the
+ * lifted row keeps following it while the list auto-scrolls and never depends on the row staying composed.
+ */
 internal class QueueDragState(private val list: androidx.compose.foundation.lazy.LazyListState) {
     var from by mutableIntStateOf(-1)
     var to by mutableIntStateOf(-1)
-    var dy by mutableFloatStateOf(0f)
     /** Height of the lifted row; the rows it passes slide by this much so they make room live. */
     var itemHeight by mutableFloatStateOf(0f)
+    var pointerY by mutableFloatStateOf(0f)
+    private var downY = 0f
+    private var startCentre = 0f
+    private var scrolled by mutableFloatStateOf(0f)
+    private var settleDy by mutableStateOf<Float?>(null)
     val active get() = from >= 0
     /** True while the released row glides into its slot; input is ignored until it lands. */
     var settling by mutableStateOf(false)
 
-    fun start(index: Int) {
-        if (settling) return
-        from = index; to = index; dy = 0f
-        itemHeight = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }?.size?.toFloat() ?: 0f
+    /** How far the lifted row is drawn from its layout slot. The list scrolling under it is part of this. */
+    val dy: Float get() = settleDy ?: (pointerY - downY + scrolled)
+
+    fun begin(index: Int, offset: Int, size: Int, y: Float) {
+        from = index; to = index; itemHeight = size.toFloat()
+        downY = y; pointerY = y; startCentre = offset + size / 2f; scrolled = 0f; settleDy = null
     }
 
-    fun move(delta: Float) {
+    /** Re-derives the target slot from where the lifted row's centre now is. */
+    fun update(maxIndex: Int) {
         if (!active || settling) return
-        dy += delta
+        val items = list.layoutInfo.visibleItemsInfo.filter { it.index <= maxIndex }
+        if (items.isEmpty()) return
+        val centre = startCentre + (pointerY - downY)
+        to = (items.firstOrNull { centre >= it.offset && centre < it.offset + it.size }
+            ?: if (centre < items.first().offset) items.first() else items.last()).index
+    }
+
+    /** Called every frame while dragging: scrolls the list when the pointer rests near its top or bottom edge. */
+    fun autoScroll(edge: Float, maxIndex: Int) {
+        if (!active || settling) return
         val info = list.layoutInfo
-        val me = info.visibleItemsInfo.firstOrNull { it.index == from } ?: return
-        val centre = me.offset + me.size / 2f + dy
-        // Edge auto-scroll: keep the row under the pointer while the list moves beneath it.
-        val edge = 56f
-        val scroll = when {
-            centre < info.viewportStartOffset + edge -> -14f
-            centre > info.viewportEndOffset - edge -> 14f
+        val top = info.viewportStartOffset + edge
+        val bottom = info.viewportEndOffset - edge
+        val speed = when {
+            pointerY < top -> -(((top - pointerY) / edge).coerceIn(0f, 1.5f)) * 18f
+            pointerY > bottom -> (((pointerY - bottom) / edge).coerceIn(0f, 1.5f)) * 18f
             else -> 0f
         }
-        if (scroll != 0f) dy += list.dispatchRawDelta(scroll)
-        val c = me.offset + me.size / 2f + dy
-        info.visibleItemsInfo.firstOrNull { c >= it.offset && c < it.offset + it.size && it.key.toString().isNotEmpty() }
-            ?.let { to = it.index }
+        if (speed == 0f) return
+        scrolled += list.dispatchRawDelta(speed)
+        update(maxIndex)
     }
 
     /**
@@ -806,12 +827,75 @@ internal class QueueDragState(private val list: androidx.compose.foundation.lazy
             to > from -> dest.offset + dest.size - me.size - me.offset.toFloat()
             else -> (dest.offset - me.offset).toFloat()
         }
+        val start = dy
+        settleDy = start
         try {
-            androidx.compose.animation.core.animate(dy, target, animationSpec = VisageMotion.spatialFast()) { v, _ -> dy = v }
+            androidx.compose.animation.core.animate(start, target, animationSpec = VisageMotion.spatialFast()) { v, _ -> settleDy = v }
         } finally {
-            from = -1; to = -1; dy = 0f; settling = false
+            from = -1; to = -1; settleDy = null; scrolled = 0f; settling = false
         }
         return result
+    }
+}
+
+/** Hold a row (or drag its handle) to lift it; see [QueueDragState]. */
+internal fun Modifier.queueReorder(
+    drag: QueueDragState,
+    list: androidx.compose.foundation.lazy.LazyListState,
+    maxIndex: () -> Int,
+    onDrop: (Int, Int) -> Unit,
+): Modifier = pointerInput(list, drag) {
+    val holdMs = 220L
+    val wobble = 10.dp.toPx()
+    val handleSlop = 3.dp.toPx()
+    val handleZone = 56.dp.toPx()
+    val edge = 72.dp.toPx()
+    coroutineScope {
+        val scope = this
+        launch {
+            while (true) { delay(16); drag.autoScroll(edge, maxIndex()) }
+        }
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+            if (drag.settling || currentEvent.buttons.isSecondaryPressed) return@awaitEachGesture
+            val hit = list.layoutInfo.visibleItemsInfo.firstOrNull {
+                down.position.y >= it.offset && down.position.y < it.offset + it.size && it.index <= maxIndex()
+            } ?: return@awaitEachGesture
+            val onHandle = down.position.x >= size.width - handleZone
+            var lifted = false
+            if (onHandle) {
+                while (true) {
+                    val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                    if (!ch.pressed) return@awaitEachGesture
+                    if ((ch.position - down.position).getDistance() > handleSlop) { lifted = true; break }
+                }
+            } else {
+                // A mouse wobbles, so the hold tolerates a few dp of drift rather than cancelling on the touch slop.
+                val gaveUp = withTimeoutOrNull(holdMs) {
+                    while (true) {
+                        val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull true
+                        if (!ch.pressed || (ch.position - down.position).getDistance() > wobble) return@withTimeoutOrNull true
+                    }
+                    @Suppress("UNREACHABLE_CODE") false
+                }
+                if (gaveUp == true) return@awaitEachGesture
+                lifted = true
+            }
+            if (!lifted) return@awaitEachGesture
+            drag.begin(hit.index, hit.offset, hit.size, down.position.y)
+            while (true) {
+                // Initial pass: consume before the row's own click sees the release, so letting go never plays the track.
+                val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                ch.consume()
+                if (!ch.pressed) break
+                drag.pointerY = ch.position.y
+                drag.update(maxIndex())
+            }
+            scope.launch { drag.finish()?.let { (f, t) -> onDrop(f, t) } }
+        }
     }
 }
 
@@ -826,7 +910,6 @@ private fun UpcomingRow(
     onPlay: () -> Unit,
     onMove: (Int) -> Unit,
     onRemove: () -> Unit,
-    onDrop: (Int, Int) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     val dragging = drag.from == position
@@ -840,61 +923,6 @@ private fun UpcomingRow(
     }
     val shift by animateFloatAsState(shiftTarget, VisageMotion.spatialFast(), label = "queueShift")
     val pos by rememberUpdatedState(position)
-    val onDropNow by rememberUpdatedState(onDrop)
-    val settleScope = rememberCoroutineScope()
-
-    // Hand-rolled instead of detectDragGesturesAfterLongPress: that gives up as soon as the pointer drifts past the
-    // touch slop during the hold, which a mouse does constantly. Here the hold tolerates a few dp of wobble and is
-    // shorter; the handle starts dragging as soon as it moves.
-    fun Modifier.reorder(immediate: Boolean): Modifier = pointerInput(immediate) {
-        val holdMs = 220L
-        val wobble = 10.dp.toPx()
-        val handleSlop = 3.dp.toPx()
-        awaitEachGesture {
-            val down = awaitFirstDown(requireUnconsumed = false)
-            if (drag.settling || down.isConsumed && !immediate) return@awaitEachGesture
-            var lifted = false
-            if (immediate) {
-                // Handle: lift once it moves a hair.
-                while (true) {
-                    val ev = awaitPointerEvent()
-                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
-                    if (!ch.pressed) return@awaitEachGesture
-                    if ((ch.position - down.position).getDistance() > handleSlop) { lifted = true; break }
-                }
-            } else {
-                // Row body: hold still-ish for a moment.
-                val gaveUp = withTimeoutOrNull(holdMs) {
-                    while (true) {
-                        val ev = awaitPointerEvent()
-                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull true
-                        if (!ch.pressed || (ch.position - down.position).getDistance() > wobble) return@withTimeoutOrNull true
-                    }
-                    @Suppress("UNREACHABLE_CODE") false
-                }
-                if (gaveUp == true) return@awaitEachGesture
-                lifted = true
-            }
-            if (!lifted) return@awaitEachGesture
-            drag.start(pos)
-            try {
-                while (true) {
-                    // Initial pass: consume before the row's own click sees the release, so letting go never plays the track.
-                    val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
-                    if (!ch.pressed) { ch.consume(); break }
-                    // positionChange, not position deltas: the row moves under the pointer as it is dragged, so its local
-                    // coordinates shift by the same amount and a plain difference would only count part of the motion.
-                    drag.move(ch.positionChange().y)
-                    ch.consume()
-                }
-                settleScope.launch { drag.finish()?.let { (f, t) -> onDropNow(f, t) } }
-            } catch (e: androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException) {
-                settleScope.launch { drag.finish() }
-            }
-        }
-    }
-
     Box(
         Modifier
             .fillMaxWidth()
@@ -910,8 +938,7 @@ private fun UpcomingRow(
                 } else translationY = shift
             }
             .then(if (dragging) Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp)) else Modifier)
-            .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true }
-            .reorder(immediate = false),
+            .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true },
     ) {
         QueueSongRow(
             title = track.title.ifBlank { track.videoId },
@@ -924,7 +951,7 @@ private fun UpcomingRow(
                     Icons.Filled.DragHandle,
                     contentDescription = "Drag to reorder",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp).size(22.dp).reorder(immediate = true),
+                    modifier = Modifier.padding(start = 8.dp).size(22.dp),
                 )
             },
         )
