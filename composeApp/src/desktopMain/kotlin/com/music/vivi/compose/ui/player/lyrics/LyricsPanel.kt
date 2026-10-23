@@ -32,6 +32,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -313,7 +314,7 @@ private fun LyricsDelayPill(delayMs: Int, onChange: (Int) -> Unit, modifier: Mod
         modifier = modifier.hoverable(hover).graphicsLayer { this.alpha = alpha },
     ) {
         Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { onChange(stepLyricsDelay(delayMs, -1)) }) {
+            DelayStepButton(direction = -1, delayMs = delayMs, onChange = onChange) {
                 Icon(Icons.Outlined.Remove, "Lyrics earlier", tint = Color.White)
             }
             Surface(
@@ -330,11 +331,40 @@ private fun LyricsDelayPill(delayMs: Int, onChange: (Int) -> Unit, modifier: Mod
                     modifier = Modifier.widthIn(min = 56.dp).padding(horizontal = 8.dp, vertical = 8.dp),
                 )
             }
-            IconButton(onClick = { onChange(stepLyricsDelay(delayMs, 1)) }) {
+            DelayStepButton(direction = 1, delayMs = delayMs, onChange = onChange) {
                 Icon(Icons.Outlined.Add, "Lyrics later", tint = Color.White)
             }
         }
     }
+}
+
+/** Step button: a click nudges 100 ms; holding repeats, and speeds up to 500 ms steps after two seconds. */
+@Composable
+private fun DelayStepButton(direction: Int, delayMs: Int, onChange: (Int) -> Unit, content: @Composable () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val current by rememberUpdatedState(delayMs)
+    val change by rememberUpdatedState(onChange)
+    var repeated by remember { mutableStateOf(false) }
+    LaunchedEffect(pressed) {
+        if (!pressed) return@LaunchedEffect
+        repeated = false
+        kotlinx.coroutines.delay(450)
+        val heldSince = System.nanoTime()
+        while (true) {
+            repeated = true
+            val steps = if ((System.nanoTime() - heldSince) / 1_000_000 > 2_000) 5 else 1
+            change(stepLyricsDelay(current, direction * steps))
+            kotlinx.coroutines.delay(90)
+        }
+    }
+    IconButton(
+        onClick = {
+            // The click that ends a hold must not add one more step.
+            if (repeated) repeated = false else change(stepLyricsDelay(current, direction))
+        },
+        interactionSource = source,
+    ) { content() }
 }
 
 @Composable
