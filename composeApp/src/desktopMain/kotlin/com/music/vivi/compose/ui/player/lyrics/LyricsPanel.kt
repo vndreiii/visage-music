@@ -22,7 +22,9 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.outlined.FormatAlignRight
+import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.FormatAlignCenter
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material3.Icon
@@ -37,6 +39,11 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.graphics.graphicsLayer
+import kotlinx.coroutines.launch
+import com.music.vivi.database.LyricsCacheRepository
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -82,8 +89,11 @@ private const val IDLE_COLLAPSE_MS = 2_400L
 @Composable
 internal fun rememberLyricsClock(position: StateFlow<Long>, playing: Boolean, offsetMs: Int): State<Float> {
     val out = remember { mutableFloatStateOf(0f) }
-    val interp = remember { PositionInterpolator() }
+    // Cap the run-ahead: when the engine stops reporting (buffering) the lyrics hold instead of racing on.
+    val interp = remember { PositionInterpolator(maxExtrapolateMs = 600f) }
     val offset by rememberUpdatedState(offsetMs)
+    // Paused clocks only redraw on a report; re-evaluate right away when the offset is nudged.
+    LaunchedEffect(offsetMs) { out.floatValue = interp.estimate(System.nanoTime()) + offsetMs }
     LaunchedEffect(position) {
         position.collect {
             val now = System.nanoTime()
@@ -139,39 +149,68 @@ fun LyricsPanel(
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    val cache = koinInject<LyricsCacheRepository>()
+    val scope = rememberCoroutineScope()
+    // Per-song delay (ms, + = lyrics later), persisted next to the cached lyrics.
+    var songDelayMs by remember { mutableIntStateOf(0) }
+    // Provider of the lyrics on screen (cached choice or the one that just answered).
+    var shownProvider by remember { mutableStateOf<LyricsProvider?>(null) }
+    // The in-panel provider picker forces one fresh fetch; the effect consumes the request.
+    val pendingForce = remember { arrayOfNulls<LyricsProvider>(1) }
+    var forceTick by remember { mutableIntStateOf(0) }
+
     val provider = remember(prefsTick) {
         runCatching {
             LyricsProvider.valueOf(prefs.getString(PrefKeys.LyricsProvider, LyricsProvider.LRCLIB.name))
         }.getOrDefault(LyricsProvider.LRCLIB)
     }
 
-    LaunchedEffect(nowPlaying?.videoId, nowPlaying?.title, provider, durationMs) {
+    val hasDuration = durationMs > 0
+    LaunchedEffect(nowPlaying?.videoId, nowPlaying?.title, hasDuration, forceTick) {
         val track = nowPlaying
         if (track == null) {
             parsed = ParsedLyrics.Empty
+            shownProvider = null
+            songDelayMs = 0
             return@LaunchedEffect
         }
+        val force = pendingForce[0].also { pendingForce[0] = null }
         loading = true
         error = null
         parsed = ParsedLyrics.Empty
+        val cached = withContext(Dispatchers.IO) { runCatching { cache.get(track.videoId) }.getOrNull() }
+        songDelayMs = cached?.offsetMs ?: 0
         val localLyrics = withContext(Dispatchers.IO) {
             val file = track.lyricsPath?.let { java.io.File(it) }
                 ?: track.localPath?.let { java.io.File(it).let { audio -> java.io.File(audio.parentFile, audio.nameWithoutExtension + ".lrc") } }
             runCatching { file?.takeIf { it.isFile }?.readText() }.getOrNull()?.takeIf { it.isNotBlank() }
                 ?: track.embeddedLyrics?.takeIf { it.isNotBlank() }
         }
-        val result = if (localLyrics != null) Result.success(localLyrics) else fetchLyrics(
-            provider = provider,
-            title = track.title,
-            artist = track.artist,
-            durationMs = durationMs.takeIf { it > 0 } ?: track.durationMs,
-            album = track.album,
-            videoId = track.videoId,
-        )
+        var fetched: FetchedLyrics? = null
+        val cachedText = cached?.lyrics
+        val result = when {
+            localLyrics != null -> Result.success(localLyrics)
+            force == null && cachedText != null -> {
+                shownProvider = cached.provider?.let { n -> LyricsProvider.entries.firstOrNull { it.name == n } }
+                Result.success(cachedText)
+            }
+            else -> fetchLyricsWithSource(
+                provider = force ?: provider,
+                title = track.title,
+                artist = track.artist,
+                durationMs = durationMs.takeIf { it > 0 } ?: track.durationMs,
+                album = track.album,
+                videoId = track.videoId,
+            ).onSuccess { fetched = it; shownProvider = it.provider }.map { it.text }
+        }
+        if (localLyrics != null) shownProvider = null
         loading = false
         result.onSuccess { raw ->
             parsed = withContext(Dispatchers.Default) { LyricsParser.parse(raw) }
             if (parsed.lines.isEmpty()) error = "No lyrics found"
+            else fetched?.let { f ->
+                withContext(Dispatchers.IO) { runCatching { cache.putLyrics(track.videoId, f.provider.name, f.text) } }
+            }
         }.onFailure {
             error = it.message ?: "Lyrics lookup failed"
             parsed = ParsedLyrics.Empty
@@ -186,7 +225,7 @@ fun LyricsPanel(
             showBackground = cfg.showBackgroundVocals,
         )
     }
-    val clock = rememberLyricsClock(controller.positionMs, playbackState == PlaybackState.Playing, cfg.syncOffsetMs)
+    val clock = rememberLyricsClock(controller.positionMs, playbackState == PlaybackState.Playing, cfg.syncOffsetMs - songDelayMs)
     val accent = lyricsAccent(cfg.accent)
     val bgStyle = remember(prefsTick) {
         runCatching { PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name)) }
@@ -230,8 +269,12 @@ fun LyricsPanel(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             LyricsProviderControl(
-                current = provider,
-                onSelect = { prefs.setString(PrefKeys.LyricsProvider, it.name) },
+                current = shownProvider ?: provider,
+                onSelect = {
+                    prefs.setString(PrefKeys.LyricsProvider, it.name)
+                    pendingForce[0] = it
+                    forceTick++
+                },
             )
             LyricsAlignControls(
                 current = align,
@@ -240,6 +283,54 @@ fun LyricsPanel(
                     prefs.setString(PrefKeys.LyricsTextAlign, next.name)
                 },
             )
+        }
+
+        if (!loading && error == null && timeline.lines.isNotEmpty() && parsed.isSynced) {
+            LyricsDelayPill(
+                delayMs = songDelayMs,
+                onChange = { next ->
+                    songDelayMs = next
+                    val id = nowPlaying?.videoId
+                    if (id != null) scope.launch(Dispatchers.IO) { runCatching { cache.setOffset(id, next) } }
+                },
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+            )
+        }
+    }
+}
+
+/** Floating +/- pill: nudges this song's lyrics delay in 100 ms steps; tap the value to reset. */
+@Composable
+private fun LyricsDelayPill(delayMs: Int, onChange: (Int) -> Unit, modifier: Modifier = Modifier) {
+    val hover = remember { MutableInteractionSource() }
+    val hovered by hover.collectIsHoveredAsState()
+    val alpha by androidx.compose.animation.core.animateFloatAsState(if (hovered) 1f else 0.55f, label = "delayPillAlpha")
+    Surface(
+        shape = CircleShape,
+        color = Color.Black.copy(alpha = 0.34f),
+        modifier = modifier.hoverable(hover).graphicsLayer { this.alpha = alpha },
+    ) {
+        Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = { onChange(stepLyricsDelay(delayMs, -1)) }) {
+                Icon(Icons.Outlined.Remove, "Lyrics earlier", tint = Color.White)
+            }
+            Surface(
+                onClick = { onChange(0) },
+                shape = RoundedCornerShape(999.dp),
+                color = Color.Transparent,
+            ) {
+                Text(
+                    formatLyricsDelay(delayMs),
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.widthIn(min = 56.dp).padding(horizontal = 8.dp, vertical = 8.dp),
+                )
+            }
+            IconButton(onClick = { onChange(stepLyricsDelay(delayMs, 1)) }) {
+                Icon(Icons.Outlined.Add, "Lyrics later", tint = Color.White)
+            }
         }
     }
 }

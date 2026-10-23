@@ -219,4 +219,23 @@ class LyricsSyncTest {
         val frozen = ip.estimate(1300 * ms)
         assertEquals(frozen, ip.estimate(5000 * ms), 0.5f)
     }
+
+    @Test
+    fun interpolatorHoldsDuringAStall() {
+        val ms = 1_000_000L
+        val ip = PositionInterpolator(maxExtrapolateMs = 600f)
+        ip.report(1000, 0)
+        ip.setPlaying(true, 0)
+        assertEquals(1400f, ip.estimate(400 * ms), 0.5f)
+        // no report for 5s (buffering): never more than 600ms past the last known position
+        assertEquals(1600f, ip.estimate(5000 * ms), 0.5f)
+    }
+
+    @Test
+    fun lrcOffsetTagShiftsTimestamps() {
+        val parsed = LyricsParser.parse("[offset:500]\n[00:10.00]hello\n[00:20.00]world")
+        assertEquals(listOf(9500L, 19500L), parsed.lines.map { it.timeMs })
+        val negative = LyricsParser.parse("[offset:-250]\n[00:10.00]hello\n[00:20.00]world")
+        assertEquals(listOf(10250L, 20250L), negative.lines.map { it.timeMs })
+    }
 }

@@ -150,6 +150,10 @@ fun LyricsSettingsScreen(navController: NavController) {
                             androidx.compose.material3.Icon(Icons.Outlined.Restore, null, Modifier.padding(end = 6.dp))
                             Text("Reset to defaults")
                         }
+                        val lyricsCache = koinInject<com.music.vivi.database.LyricsCacheRepository>()
+                        TextButton(onClick = { Thread { runCatching { lyricsCache.purgeLyrics() } }.start() }) {
+                            Text("Clear lyrics cache")
+                        }
                     }
                 }
 

@@ -63,6 +63,15 @@ CREATE TABLE downloaded_track (
 
 CREATE INDEX downloaded_track_by_time ON downloaded_track(downloaded_at_ms DESC);
 
+-- Fetched lyrics + per-song sync offset (provider/lyrics NULL when only an offset is stored).
+CREATE TABLE lyrics_cache (
+  track_key TEXT NOT NULL PRIMARY KEY,
+  provider TEXT,
+  lyrics TEXT,
+  offset_ms INTEGER NOT NULL DEFAULT 0,
+  updated_at_ms INTEGER NOT NULL
+);
+
 -- Local library (user-chosen folders).
 CREATE TABLE local_artist (
   id TEXT NOT NULL PRIMARY KEY,

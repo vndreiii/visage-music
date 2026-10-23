@@ -8,6 +8,7 @@ import com.music.vivi.database.DownloadedTrackRepository
 import com.music.vivi.database.LibraryRepository
 import com.music.vivi.database.LocalMusicRepository
 import com.music.vivi.database.LocalMusicScanner
+import com.music.vivi.database.LyricsCacheRepository
 import com.music.vivi.database.PlayHistoryRepository
 import com.music.vivi.database.VisageDatabase
 import org.koin.dsl.module
@@ -20,6 +21,7 @@ val coreModule = module {
     single { LibraryRepository(get()) }
     single { PlayHistoryRepository(get()) }
     single { DownloadedTrackRepository(get()) }
+    single { LyricsCacheRepository(get()) }
     single { LocalMusicRepository(get(), get()) }
     single { LocalMusicScanner(get()) }
 }

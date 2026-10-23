@@ -72,8 +72,25 @@ object LyricsParser {
         val timed = out.filter { it.timeMs != null }
         val sorted = timed.sortedBy { it.timeMs } // stable
         val withTranslations = attachTranslations(sorted)
-        val finished = finishEnds(withTranslations)
+        val finished = applyOffsetTag(finishEnds(withTranslations), lrcOffsetMs(text))
         return ParsedLyrics(finished, isSynced = true, hasProviderWordSync = providerWords)
+    }
+
+    private val offsetTag = Regex("""(?im)^\s*\[offset:\s*([+-]?\d+)\s*]""")
+
+    /** The LRC `[offset:ms]` header: positive means the lyrics show earlier (timestamps shift back). */
+    internal fun lrcOffsetMs(text: String): Long =
+        offsetTag.find(text)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+
+    internal fun applyOffsetTag(lines: List<LyricsLine>, offsetMs: Long): List<LyricsLine> {
+        if (offsetMs == 0L) return lines
+        return lines.map { l ->
+            l.copy(
+                timeMs = l.timeMs?.let { (it - offsetMs).coerceAtLeast(0L) },
+                endMs = l.endMs?.let { (it - offsetMs).coerceAtLeast(0L) },
+                words = l.words.map { w -> w.copy(startMs = (w.startMs - offsetMs).coerceAtLeast(0L), endMs = (w.endMs - offsetMs).coerceAtLeast(0L)) },
+            )
+        }
     }
 
     // ---- single line ----

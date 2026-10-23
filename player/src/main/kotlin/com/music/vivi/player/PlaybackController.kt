@@ -87,6 +87,10 @@ interface PlaybackController {
     fun playNext(track: QueueTrack)
     /** Append [track] to the end of the queue. */
     fun addToQueue(track: QueueTrack)
+    /** Move queue entry [from] to [to] (absolute queue indexes); playback of the current song is untouched. */
+    fun moveQueueItem(from: Int, to: Int)
+    /** Remove queue entry at [index] (the current song cannot be removed). */
+    fun removeFromQueue(index: Int)
     fun play()
     fun pause()
 

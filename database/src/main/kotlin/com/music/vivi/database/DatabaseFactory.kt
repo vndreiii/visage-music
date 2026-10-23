@@ -157,6 +157,19 @@ object DatabaseFactory {
             driver.execute(null, "CREATE INDEX IF NOT EXISTS local_track_by_album ON local_track(album_id, track_number)", 0)
             driver.execute(null, "CREATE INDEX IF NOT EXISTS local_track_by_artist ON local_track(artist_id)", 0)
         }
+        driver.execute(
+            null,
+            """
+            CREATE TABLE IF NOT EXISTS lyrics_cache (
+              track_key TEXT NOT NULL PRIMARY KEY,
+              provider TEXT,
+              lyrics TEXT,
+              offset_ms INTEGER NOT NULL DEFAULT 0,
+              updated_at_ms INTEGER NOT NULL
+            )
+            """.trimIndent(),
+            0,
+        )
         migrateLibraryFolders(driver)
         migrateLocalLibrary(driver)
     }

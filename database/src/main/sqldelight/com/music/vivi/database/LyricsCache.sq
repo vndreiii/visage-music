@@ -1,0 +1,21 @@
+selectByKey:
+SELECT * FROM lyrics_cache WHERE track_key = ?;
+
+insertIgnore:
+INSERT OR IGNORE INTO lyrics_cache(track_key, provider, lyrics, offset_ms, updated_at_ms)
+VALUES (?, NULL, NULL, 0, ?);
+
+updateLyrics:
+UPDATE lyrics_cache SET provider = ?, lyrics = ?, updated_at_ms = ? WHERE track_key = ?;
+
+updateOffset:
+UPDATE lyrics_cache SET offset_ms = ?, updated_at_ms = ? WHERE track_key = ?;
+
+purgeLyrics:
+UPDATE lyrics_cache SET provider = NULL, lyrics = NULL;
+
+deleteEmpty:
+DELETE FROM lyrics_cache WHERE lyrics IS NULL AND offset_ms = 0;
+
+countLyrics:
+SELECT COUNT(*) FROM lyrics_cache WHERE lyrics IS NOT NULL;
