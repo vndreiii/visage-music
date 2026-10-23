@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.library.sidebar
 
+import com.music.vivi.compose.ui.expressive.VisageTextField
 import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -436,9 +437,9 @@ internal fun FolderDialog(
                             .imageDropTarget({ dropHover = it }, ::importFile),
                     ) { FolderCover(draftFolder, thumbs, Modifier.fillMaxSize(), RoundedCornerShape(20.dp)) }
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        OutlinedTextField(
+                        VisageTextField(
                             title, { title = it }, singleLine = true, label = { Text("Title") },
-                            shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier.fillMaxWidth(),
                         )
                         Text("Drop an image on the tile", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
@@ -478,9 +479,9 @@ internal fun FolderDialog(
                             Text(if (busy) "Working…" else "or paste a link", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedTextField(
+                            VisageTextField(
                                 url, { url = it }, placeholder = { Text("https://… image link") }, singleLine = true,
-                                shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f),
+                                modifier = Modifier.weight(1f),
                             )
                             ExpressiveButton(
                                 "Use", { busy = true; scope.launch { useImage(FolderCovers.importUrl(url.trim())) } },

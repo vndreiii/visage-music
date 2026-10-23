@@ -34,6 +34,11 @@ import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -98,29 +103,16 @@ import org.koin.compose.koinInject
 import org.koin.core.context.GlobalContext
 import java.io.File
 
-private val PanelWidth = 420.dp
+private val PanelWidth = 460.dp
 
 @Composable
 fun TagManagerScreen(navController: NavController) {
     val repo = koinInject<LocalMusicRepository>()
     val prefs = koinInject<DesktopPrefs>()
     val scope = rememberCoroutineScope()
-    val nativeWriter = remember { NativeTagWriter { DatabaseFactory.coversDir() } }
-    val state = remember {
-        TagManagerState(
-            scope = scope,
-            repo = repo,
-            prefs = prefs,
-            writer = nativeWriter,
-            lookup = NativeTagLookup {
-                prefs.getString(PrefKeys.TagAcoustidKey, "").ifBlank { System.getenv("VISAGE_ACOUSTID_KEY").orEmpty() }.ifBlank { null }
-            },
-            backupRoot = File(AppPaths.data(), "tag-backups"),
-            refreshLibrary = {
-                runCatching { GlobalContext.get().get<LibraryCache>().loadLocal() }
-            },
-        )
-    }
+    // The state lives in the host, not here: auto-tagging keeps running when this page is left.
+    val state = remember { TagManagerHost.get(repo, prefs) }
+    val nativeWriter = TagManagerHost.nativeWriter
     LaunchedEffect(Unit) { state.load() }
 
     Column(Modifier.fillMaxSize()) {
@@ -132,7 +124,7 @@ fun TagManagerScreen(navController: NavController) {
                 else -> "${state.tracks.size} local tracks" + state.missingCount.takeIf { it > 0 }?.let { " · $it need attention" }.orEmpty()
             },
         )
-        AnimatedVisibility(!nativeWriter.available, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+        AnimatedVisibility(nativeWriter?.available == false, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
             Banner("The native tag writer isn't available, so tags can't be read or written. Build native/visage-native and restart.", error = true)
         }
         AnimatedContent(
@@ -187,15 +179,15 @@ private fun Banner(text: String, error: Boolean = false) {
 @Composable
 private fun Toolbar(state: TagManagerState) {
     val counts = remember(state.tracks, state.modified) { TagBrowser.counts(state.tracks, state.modified) }
-    Column(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             SearchField(state.query, { state.query = it }, Modifier.weight(1f))
             ConnectedButtonGroup(
                 options = TagGrouping.entries.map { it to it.label },
                 selected = state.grouping,
                 onSelect = { state.grouping = it },
-                size = ExpressiveSize.XSmall,
-                modifier = Modifier.width(280.dp),
+                size = ExpressiveSize.Small,
+                modifier = Modifier.width(340.dp),
             )
         }
         ChipsRow(
@@ -211,19 +203,19 @@ private fun Toolbar(state: TagManagerState) {
             ExpressiveButton(
                 text = if (allSelected) "Clear selection" else "Select all (${visible.size})",
                 onClick = { if (allSelected) state.select(state.selection.clear()) else state.select(state.selection.selectAll(visible.map { it.id })) },
-                style = ExpressiveStyle.Tonal, size = ExpressiveSize.XSmall, enabled = visible.isNotEmpty(),
+                style = ExpressiveStyle.Tonal, size = ExpressiveSize.Small, enabled = visible.isNotEmpty(),
             )
             AnimatedVisibility(state.selection.ids.isNotEmpty(), enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
                 ExpressiveButton(
                     text = "Auto-tag ${state.selection.ids.size}",
-                    onClick = { state.startAutoTag() }, size = ExpressiveSize.XSmall, enabled = !state.autoRunning && !state.busy,
+                    onClick = { state.startAutoTag() }, size = ExpressiveSize.Small, enabled = !state.autoRunning && !state.busy,
                 )
             }
             val needy = remember(visible) { visible.filter { TagHealth.of(it).any } }
             AnimatedVisibility(state.selection.ids.isEmpty() && needy.isNotEmpty(), enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
                 ExpressiveButton(
                     text = "Auto-tag ${needy.size} missing",
-                    onClick = { state.startAutoTag(needy) }, size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal, enabled = !state.autoRunning && !state.busy,
+                    onClick = { state.startAutoTag(needy) }, size = ExpressiveSize.Small, style = ExpressiveStyle.Tonal, enabled = !state.autoRunning && !state.busy,
                 )
             }
             Spacer(Modifier.weight(1f))
@@ -231,7 +223,7 @@ private fun Toolbar(state: TagManagerState) {
             AnimatedVisibility(note != null, enter = fadeIn(), exit = fadeOut()) {
                 Text(note.orEmpty(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text("${state.selection.ids.size} selected", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("${state.selection.ids.size} selected", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -244,15 +236,15 @@ private fun SearchField(value: String, onChange: (String) -> Unit, modifier: Mod
         VisageMotion.effectsDefault(), label = "searchBg",
     )
     Row(
-        modifier.height(44.dp).clip(RoundedCornerShape(22.dp)).background(bg).padding(horizontal = 14.dp),
+        modifier.height(56.dp).clip(RoundedCornerShape(28.dp)).background(bg).padding(horizontal = 18.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(Icons.Outlined.Search, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(Icons.Outlined.Search, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Box(Modifier.weight(1f)) {
-            if (value.isEmpty()) Text("Search title, artist, album, file name…", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (value.isEmpty()) Text("Search title, artist, album, file name…", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             BasicTextField(
                 value, onChange, singleLine = true,
-                textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
+                textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
                 cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
                 modifier = Modifier.fillMaxWidth().pointerInput(Unit) { awaitEachGesture { awaitFirstDown(requireUnconsumed = false); focused.value = true } },
             )
@@ -287,10 +279,11 @@ private fun TrackBrowser(state: TagManagerState, modifier: Modifier) {
     BoxWithConstraints(modifier.padding(start = 12.dp, end = 8.dp)) {
         val cols = allColumns.filter { maxWidth - (if (state.selection.ids.isEmpty()) 0.dp else 0.dp) >= it.minWidth }
         Column(Modifier.fillMaxSize()) {
-            Row(Modifier.fillMaxWidth().padding(start = 8.dp, end = 12.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Spacer(Modifier.width(48.dp + 52.dp))
-                cols.forEach { Text(it.label, Modifier.weight(it.weight).padding(end = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
-                Text("Cover", Modifier.width(48.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Same insets as TrackRow (8 + checkbox 48 + cover 48 + gap 12), so every title sits over its column.
+            Row(Modifier.fillMaxWidth().padding(end = 12.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Spacer(Modifier.width(116.dp))
+                cols.forEach { Text(it.label, Modifier.weight(it.weight).padding(end = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+                Text("Cover", Modifier.width(56.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             AnimatedContent(visible.isEmpty(), transitionSpec = { fadeIn(VisageMotion.fadeInSpec()) togetherWith fadeOut(VisageMotion.fadeOutSpec()) }, label = "tagEmpty") { empty ->
                 if (empty) {
@@ -303,8 +296,8 @@ private fun TrackBrowser(state: TagManagerState, modifier: Modifier) {
                 } else LazyColumn(
                     state = listState,
                     contentPadding = PaddingValues(bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    modifier = Modifier.fillMaxSize().smoothWheelScroll(listState),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    modifier = Modifier.fillMaxSize().smoothWheelScroll(listState).dragSelect(listState, { rows }, state),
                 ) {
                     items(rows, key = { it.key }) { row ->
                         when (row) {
@@ -324,6 +317,88 @@ private fun TrackBrowser(state: TagManagerState, modifier: Modifier) {
         }
     }
 }
+
+/**
+ * Press on a row and drag across others to select them all (hold Ctrl to add to the current selection). Near the top or
+ * bottom edge the list scrolls on its own. A plain click is left to the row.
+ */
+private fun Modifier.dragSelect(listState: LazyListState, rows: () -> List<TagBrowser.Row>, state: TagManagerState): Modifier =
+    pointerInput(listState, state) {
+        val slop = viewConfiguration.touchSlop
+        val edge = 56.dp.toPx()
+        var active = false
+        var lastY = 0f
+        var edgeSpeed = 0f
+        var startIndex = -1
+        var base: Set<String> = emptySet()
+        var anchorId: String? = null
+
+        fun indexAt(y: Float): Int? =
+            listState.layoutInfo.visibleItemsInfo.firstOrNull { y >= it.offset && y < it.offset + it.size + 2 }?.index
+
+        fun apply() {
+            val list = rows()
+            val y = lastY.coerceIn(0f, size.height - 1f)
+            val visible = listState.layoutInfo.visibleItemsInfo
+            val current = indexAt(y) ?: (if (lastY < 0f) visible.firstOrNull()?.index else visible.lastOrNull()?.index) ?: return
+            val from = minOf(startIndex, current)
+            val to = maxOf(startIndex, current)
+            val ids = (from..to).mapNotNull { (list.getOrNull(it) as? TagBrowser.Row.Item)?.track?.id }
+            state.selection = TagSelection(base + ids, anchorId)
+        }
+
+        coroutineScope {
+        // Keeps scrolling while the pointer rests near an edge.
+        launch {
+            while (true) {
+                delay(16)
+                if (active && edgeSpeed != 0f) {
+                    listState.dispatchRawDelta(edgeSpeed)
+                    apply()
+                }
+            }
+        }
+
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+            val list = rows()
+            val first = indexAt(down.position.y) ?: return@awaitEachGesture
+            val item = list.getOrNull(first) as? TagBrowser.Row.Item ?: return@awaitEachGesture
+            startIndex = first
+            anchorId = item.track.id
+            lastY = down.position.y
+            active = false
+            try {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!change.pressed) break
+                    lastY = change.position.y
+                    if (!active && kotlin.math.abs(change.position.y - down.position.y) > slop) {
+                        active = true
+                        val m = currentEvent.keyboardModifiers
+                        base = if (m.isCtrlPressed || m.isMetaPressed) state.selection.ids else emptySet()
+                    }
+                    if (active) {
+                        change.consume()
+                        edgeSpeed = when {
+                            lastY < edge -> -(edge - lastY) * 0.5f
+                            lastY > size.height - edge -> (lastY - (size.height - edge)) * 0.5f
+                            else -> 0f
+                        }.coerceIn(-48f, 48f)
+                        apply()
+                    }
+                }
+            } finally {
+                edgeSpeed = 0f
+                if (active) {
+                    active = false
+                    state.loadEditor() // read the files once the drag is over, not on every row passed
+                }
+            }
+        }
+        }
+    }
 
 @Composable
 private fun GroupHeader(h: TagBrowser.Row.Header, modifier: Modifier) {
@@ -364,11 +439,11 @@ private fun TrackRow(
                     }
                 }
             }
-            .padding(start = 4.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+            .padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Checkbox(selected, { onToggle() }, Modifier.size(40.dp))
-        Box(Modifier.size(40.dp).clip(RoundedCornerShape(8.dp))) {
+        Checkbox(selected, { onToggle() }, Modifier.size(48.dp))
+        Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp))) {
             CoverImage(track.coverPath?.takeIf { !it.startsWith("opus-lazy://") && it != "embedded" }?.let { File(it) }, seed = track.id, modifier = Modifier.fillMaxSize())
         }
         Spacer(Modifier.width(12.dp))
@@ -381,15 +456,15 @@ private fun TrackRow(
             )
             Text(
                 text.ifBlank { "—" }, Modifier.weight(c.weight).padding(end = 8.dp).visageMarquee(),
-                style = if (c.label == "Title") MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium) else MaterialTheme.typography.bodyMedium,
+                style = if (c.label == "Title") MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium) else MaterialTheme.typography.bodyLarge,
                 color = if (text.isBlank() && c.missing == null) MaterialTheme.colorScheme.onSurfaceVariant else color,
                 maxLines = 1, overflow = TextOverflow.Clip,
             )
         }
-        Box(Modifier.width(48.dp), contentAlignment = Alignment.CenterStart) {
+        Box(Modifier.width(56.dp), contentAlignment = Alignment.CenterStart) {
             val tint by animateColorAsState(if (health.missingCover) MaterialTheme.colorScheme.error.copy(alpha = 0.8f) else MaterialTheme.colorScheme.primary, VisageMotion.effectsDefault(), label = "coverTint")
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (health.missingCover) Icons.Outlined.Image else Icons.Outlined.Check, if (health.missingCover) "No cover" else "Has cover", Modifier.size(18.dp), tint = tint)
+                Icon(if (health.missingCover) Icons.Outlined.Image else Icons.Outlined.Check, if (health.missingCover) "No cover" else "Has cover", Modifier.size(22.dp), tint = tint)
                 if (modified) Box(Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.tertiary))
                 if (track.readonly) Icon(Icons.Outlined.ErrorOutline, "Read-only", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }

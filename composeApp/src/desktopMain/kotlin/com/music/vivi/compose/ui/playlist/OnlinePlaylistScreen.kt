@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.playlist
 
+import com.music.vivi.compose.ui.expressive.VisageTextField
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
@@ -173,7 +174,7 @@ fun OnlinePlaylistScreen(
 
                 if (searching) {
                     item(key = "search") {
-                        OutlinedTextField(
+                        VisageTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
                             modifier = Modifier

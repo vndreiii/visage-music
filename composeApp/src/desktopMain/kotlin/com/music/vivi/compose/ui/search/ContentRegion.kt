@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.search
 
+import com.music.vivi.compose.ui.expressive.VisageTextField
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -177,19 +178,11 @@ private fun PickerColumn(
     Column(modifier) {
         Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         Spacer(Modifier.height(8.dp))
-        TextField(
+        VisageTextField(
             value = query,
             onValueChange = { query = it },
             singleLine = true,
-            placeholder = { Text(searchHint) },
-            shape = RoundedCornerShape(16.dp),
-            colors = TextFieldDefaults.colors(
-                focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                focusedIndicatorColor = Color.Transparent,
-                unfocusedIndicatorColor = Color.Transparent,
-                disabledIndicatorColor = Color.Transparent,
-            ),
+            label = { Text(searchHint) },
             modifier = Modifier.fillMaxWidth(),
         )
         Spacer(Modifier.height(8.dp))

@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.settings
 
+import com.music.vivi.compose.ui.expressive.VisageTextField
 import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -1163,7 +1164,7 @@ fun DownloadsSettingsScreen(navController: NavController) {
 
         SettingsSection("Save to") {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                OutlinedTextField(
+                VisageTextField(
                     value = pathDraft,
                     onValueChange = { pathDraft = it },
                     singleLine = true,
@@ -1314,7 +1315,7 @@ private fun ManualCookieSection(onImported: (AccountInfo) -> Unit) {
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                OutlinedTextField(
+                VisageTextField(
                     value = text,
                     onValueChange = { text = it },
                     label = { Text("Cookie") },

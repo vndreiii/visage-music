@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.playlist
 
+import com.music.vivi.compose.ui.expressive.VisageTextField
 import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -201,7 +202,7 @@ fun LocalPlaylistScreen(playlistId: String, navController: NavController) {
         AlertDialog(
             onDismissRequest = { renaming = false },
             title = { Text("Rename playlist") },
-            text = { OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("Name") }, shape = RoundedCornerShape(14.dp)) },
+            text = { VisageTextField(text, { text = it }, singleLine = true, label = { Text("Name") }, ) },
             confirmButton = {
                 TextButton(onClick = {
                     renaming = false

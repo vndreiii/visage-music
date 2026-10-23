@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.settings
 
+import com.music.vivi.compose.ui.expressive.VisageTextField
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
@@ -124,13 +125,12 @@ fun KeybindsSettingsScreen(navController: NavController) {
 
         Spacer(Modifier.height(16.dp))
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OutlinedTextField(
+            VisageTextField(
                 value = query,
                 onValueChange = { query = it },
                 singleLine = true,
                 placeholder = { Text("Search actions or keys") },
                 leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                shape = RoundedCornerShape(16.dp),
                 modifier = Modifier.weight(1f),
             )
             AnimatedContent(confirmReset, transitionSpec = { fadeIn(VisageMotion.fadeInSpec()) togetherWith fadeOut(VisageMotion.fadeOutSpec()) }, label = "resetAll") { confirming ->

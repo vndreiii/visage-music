@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.library.sidebar
 
+import com.music.vivi.compose.ui.expressive.VisageTextField
 import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
@@ -818,9 +819,9 @@ private fun NameDialog(title: String, initial: String, confirm: String, onDismis
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = {
-            OutlinedTextField(
+            VisageTextField(
                 value = text, onValueChange = { text = it }, singleLine = true,
-                label = { Text("Name") }, shape = RoundedCornerShape(14.dp),
+                label = { Text("Name") }, 
             )
         },
         confirmButton = { TextButton(onClick = { onConfirm(text.trim().ifBlank { "New playlist" }) }) { Text(confirm) } },

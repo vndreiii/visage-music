@@ -373,6 +373,13 @@ fun FrameWindowScope.AppScaffold(
         }
       }
       if (overlayTopBar) Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()) { topBar() }
+      // Tag Manager work (auto-tag / writing) goes on in the background; this takes you back to it.
+      if (current != Routes.TAG_MANAGER) {
+          com.music.vivi.compose.ui.tags.TagWorkFab(
+              onOpen = { navController.navigate(Routes.TAG_MANAGER) { launchSingleTop = true } },
+              modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 96.dp),
+          )
+      }
     }
     }
 }
