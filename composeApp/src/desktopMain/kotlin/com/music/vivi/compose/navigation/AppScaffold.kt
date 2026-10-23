@@ -377,7 +377,7 @@ fun FrameWindowScope.AppScaffold(
       if (current != Routes.TAG_MANAGER) {
           com.music.vivi.compose.ui.tags.TagWorkFab(
               onOpen = { navController.navigate(Routes.TAG_MANAGER) { launchSingleTop = true } },
-              modifier = Modifier.align(Alignment.BottomEnd).padding(end = 24.dp, bottom = 96.dp),
+              modifier = Modifier.align(Alignment.BottomStart).padding(start = 32.dp, bottom = 32.dp + miniBarInset),
           )
       }
     }
