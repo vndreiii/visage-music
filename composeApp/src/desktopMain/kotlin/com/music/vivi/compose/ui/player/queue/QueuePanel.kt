@@ -860,13 +860,19 @@ internal class QueueDragState(private val list: androidx.compose.foundation.lazy
 }
 
 /** Hold a row (or drag its handle) to lift it; see [QueueDragState]. */
+@Composable
 internal fun Modifier.queueReorder(
     drag: QueueDragState,
     list: androidx.compose.foundation.lazy.LazyListState,
     maxIndex: () -> Int,
     trackAt: (Int) -> com.music.vivi.player.QueueTrack?,
     onDrop: (Int, Int) -> Unit,
-): Modifier = pointerInput(list, drag) {
+): Modifier {
+    // The gesture outlives recompositions, but the queue changes under it (playback extends it): read the latest.
+    val maxIndex by rememberUpdatedState(maxIndex)
+    val trackAt by rememberUpdatedState(trackAt)
+    val onDrop by rememberUpdatedState(onDrop)
+    return pointerInput(list, drag) {
     val holdMs = 220L
     val wobble = 10.dp.toPx()
     val handleSlop = 3.dp.toPx()
@@ -934,6 +940,7 @@ internal fun Modifier.queueReorder(
             }
         }
     }
+}
 }
 
 /** The carried row, drawn over the list at the pointer (clamped inside the list) rather than inside its lazy slot. */
