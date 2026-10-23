@@ -39,16 +39,26 @@ fun PageBackground(modifier: Modifier = Modifier.fillMaxSize(), nowPlayingStyle:
     Box(modifier.clipToBounds()) {
         for (slot in 0..(if (nowPlayingStyle) 0 else 1)) {
             Box(
-                Modifier.fillMaxSize().graphicsLayer {
-                    val h = size.height
-                    val drift = if (nowPlayingStyle || h <= 0f) 0f else (scroll?.y ?: 0f) * 0.25f
-                    val period = 2f * h
-                    val p = if (period > 0f) ((drift % period) + period) % period else 0f
-                    val tile = (p / h).toInt().coerceAtLeast(0) + slot
-                    translationY = tile * h - p
-                    scaleY = if (tile % 2 == 1) -1f else 1f
-                    clip = true
-                },
+                Modifier
+                    // Each tile reaches 2px into its neighbours: where two clipped layers meet on a fractional pixel
+                    // both edges are anti-aliased and the black behind them shows as a hairline. The content is
+                    // mirrored around the join, so the overlap is invisible.
+                    .layout { measurable, c ->
+                        val ov = Overlap.dp.roundToPx()
+                        val placeable = measurable.measure(Constraints.fixed(c.maxWidth, c.maxHeight + 2 * ov))
+                        layout(c.maxWidth, c.maxHeight) { placeable.place(0, -ov) }
+                    }
+                    .graphicsLayer {
+                        val ov = Overlap.dp.toPx()
+                        val h = size.height - 2 * ov
+                        val drift = if (nowPlayingStyle || h <= 0f) 0f else (scroll?.y ?: 0f) * 0.25f
+                        val period = 2f * h
+                        val p = if (period > 0f) ((drift % period) + period) % period else 0f
+                        val tile = (p / h).toInt().coerceAtLeast(0) + slot
+                        translationY = tile * h - p
+                        scaleY = if (tile % 2 == 1) -1f else 1f
+                        clip = true
+                    },
             ) {
                 // The layer blurs its own edges, which fades them to transparent. Draw it larger than the tile and let
                 // the tile clip the excess, so that faded rim never shows (no dark band at the seams or window sides).
@@ -74,3 +84,6 @@ fun PageBackground(modifier: Modifier = Modifier.fillMaxSize(), nowPlayingStyle:
 
 /** How far past the tile the background layer is drawn; covers the reach of its 150dp blur. */
 private const val BleedDp = 320
+
+/** Pixels each tile extends past its slot on both sides. */
+private const val Overlap = 2
