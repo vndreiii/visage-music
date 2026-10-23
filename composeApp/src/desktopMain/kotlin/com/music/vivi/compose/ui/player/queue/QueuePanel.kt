@@ -49,6 +49,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -839,15 +842,56 @@ private fun UpcomingRow(
     val onDropNow by rememberUpdatedState(onDrop)
     val settleScope = rememberCoroutineScope()
 
+    // Hand-rolled instead of detectDragGesturesAfterLongPress: that gives up as soon as the pointer drifts past the
+    // touch slop during the hold, which a mouse does constantly. Here the hold tolerates a few dp of wobble and is
+    // shorter; the handle starts dragging as soon as it moves.
     fun Modifier.reorder(immediate: Boolean): Modifier = pointerInput(immediate) {
-        val start = { _: androidx.compose.ui.geometry.Offset -> drag.start(pos) }
-        val end = { settleScope.launch { drag.finish()?.let { (f, t) -> onDropNow(f, t) } }; Unit }
-        val cancel = { settleScope.launch { drag.finish() }; Unit }
-        val onMove = { change: androidx.compose.ui.input.pointer.PointerInputChange, amount: androidx.compose.ui.geometry.Offset ->
-            change.consume(); drag.move(amount.y)
+        val holdMs = 220L
+        val wobble = 10.dp.toPx()
+        val handleSlop = 3.dp.toPx()
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false)
+            if (drag.settling || down.isConsumed && !immediate) return@awaitEachGesture
+            var lifted = false
+            if (immediate) {
+                // Handle: lift once it moves a hair.
+                while (true) {
+                    val ev = awaitPointerEvent()
+                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                    if (!ch.pressed) return@awaitEachGesture
+                    if ((ch.position - down.position).getDistance() > handleSlop) { lifted = true; break }
+                }
+            } else {
+                // Row body: hold still-ish for a moment.
+                val gaveUp = withTimeoutOrNull(holdMs) {
+                    while (true) {
+                        val ev = awaitPointerEvent()
+                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull true
+                        if (!ch.pressed || (ch.position - down.position).getDistance() > wobble) return@withTimeoutOrNull true
+                    }
+                    @Suppress("UNREACHABLE_CODE") false
+                }
+                if (gaveUp == true) return@awaitEachGesture
+                lifted = true
+            }
+            if (!lifted) return@awaitEachGesture
+            drag.start(pos)
+            var last = currentEvent.changes.firstOrNull { it.id == down.id }?.position ?: down.position
+            try {
+                while (true) {
+                    // Initial pass: consume before the row's own click sees the release, so letting go never plays the track.
+                    val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                    if (!ch.pressed) { ch.consume(); break }
+                    drag.move(ch.position.y - last.y)
+                    last = ch.position
+                    ch.consume()
+                }
+                settleScope.launch { drag.finish()?.let { (f, t) -> onDropNow(f, t) } }
+            } catch (e: androidx.compose.ui.input.pointer.PointerEventTimeoutCancellationException) {
+                settleScope.launch { drag.finish() }
+            }
         }
-        if (immediate) detectDragGestures(onDragStart = start, onDragEnd = end, onDragCancel = cancel, onDrag = onMove)
-        else detectDragGesturesAfterLongPress(onDragStart = start, onDragEnd = end, onDragCancel = cancel, onDrag = onMove)
     }
 
     Box(
