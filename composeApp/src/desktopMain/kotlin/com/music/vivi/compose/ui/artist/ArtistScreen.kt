@@ -49,6 +49,10 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -273,16 +277,28 @@ internal fun ArtistPageHeader(
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Box(Modifier.fillMaxWidth().aspectRatio(2.4f)) {
-            Box(Modifier.fillMaxSize()) { banner() }
+            // The banner fades to transparent (not to an opaque colour), so whatever the page has behind it, including
+            // the tinted blur background, shows through with no visible edge.
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, MaterialTheme.colorScheme.surface),
-                        ),
-                    ),
-            )
+                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+                    .drawWithContent {
+                        drawContent()
+                        drawRect(
+                            brush = Brush.verticalGradient(
+                                colorStops = arrayOf(
+                                    0f to Color.Black,
+                                    0.45f to Color.Black,
+                                    0.7f to Color.Black.copy(alpha = 0.6f),
+                                    0.88f to Color.Black.copy(alpha = 0.18f),
+                                    1f to Color.Transparent,
+                                ),
+                            ),
+                            blendMode = BlendMode.DstIn,
+                        )
+                    },
+            ) { banner() }
             Box(
                 Modifier
                     .align(Alignment.BottomCenter)

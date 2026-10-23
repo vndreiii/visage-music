@@ -3,6 +3,9 @@ package com.music.vivi.compose.ui.glass
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -35,11 +38,8 @@ fun PageBackground(modifier: Modifier = Modifier.fillMaxSize(), nowPlayingStyle:
     // pattern repeats forever. Two tiles are enough to cover the window at any offset. Now Playing does not drift.
     Box(modifier.clipToBounds()) {
         for (slot in 0..(if (nowPlayingStyle) 0 else 1)) {
-            PlayerBackgroundLayer(
-                style = style,
-                artworkUrl = track?.artworkUrl,
-                showClearArtwork = false,
-                modifier = Modifier.fillMaxSize().graphicsLayer {
+            Box(
+                Modifier.fillMaxSize().graphicsLayer {
                     val h = size.height
                     val drift = if (nowPlayingStyle || h <= 0f) 0f else (scroll?.y ?: 0f) * 0.25f
                     val period = 2f * h
@@ -47,10 +47,30 @@ fun PageBackground(modifier: Modifier = Modifier.fillMaxSize(), nowPlayingStyle:
                     val tile = (p / h).toInt().coerceAtLeast(0) + slot
                     translationY = tile * h - p
                     scaleY = if (tile % 2 == 1) -1f else 1f
-                    // Slot 1 only matters while the first tile has slid up; off-window layers are skipped by the clip.
+                    clip = true
                 },
-                darknessOverride = darkness,
-            )
+            ) {
+                // The layer blurs its own edges, which fades them to transparent. Draw it larger than the tile and let
+                // the tile clip the excess, so that faded rim never shows (no dark band at the seams or window sides).
+                Box(
+                    Modifier.layout { measurable, c ->
+                        val pad = BleedDp.dp.roundToPx()
+                        val placeable = measurable.measure(Constraints.fixed(c.maxWidth + 2 * pad, c.maxHeight + 2 * pad))
+                        layout(c.maxWidth, c.maxHeight) { placeable.place(-pad, -pad) }
+                    },
+                ) {
+                    PlayerBackgroundLayer(
+                        style = style,
+                        artworkUrl = track?.artworkUrl,
+                        showClearArtwork = false,
+                        modifier = Modifier.fillMaxSize(),
+                        darknessOverride = darkness,
+                    )
+                }
+            }
         }
     }
 }
+
+/** How far past the tile the background layer is drawn; covers the reach of its 150dp blur. */
+private const val BleedDp = 320

@@ -92,7 +92,7 @@ fun ArtistInfoScreen(name: String, navController: NavController) {
     LazyColumn(
         state = state,
         modifier = Modifier.fillMaxSize().smoothWheelScroll(state),
-        contentPadding = PaddingValues(bottom = 128.dp),
+        contentPadding = PaddingValues(bottom = 100.dp),
     ) {
         item(key = "toolbar") { ArtistBackBar { navController.navigateUp() } }
         item(key = "header") {
