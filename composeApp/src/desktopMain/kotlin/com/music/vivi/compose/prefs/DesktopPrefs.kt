@@ -34,6 +34,9 @@ class DesktopPrefs(
     @Synchronized
     fun setString(key: String, value: String) {
         if (props.getProperty(key) == value) return
+        // Another running copy of the app may have saved since we loaded; merge its changes instead of
+        // overwriting the whole file with our older snapshot (that is how a folder list could vanish).
+        reloadFromDisk()
         props.setProperty(key, value)
         persist()
         listeners.forEach { it() }
@@ -58,6 +61,12 @@ class DesktopPrefs(
 
     fun setFloat(key: String, value: Float) {
         setString(key, value.toString())
+    }
+
+    private fun reloadFromDisk() {
+        runCatching {
+            if (file.exists()) file.inputStream().use { props.load(it) }
+        }
     }
 
     private fun persist() {
