@@ -31,7 +31,7 @@ object MainPane {
     fun update(rect: Rect) { if (bounds != rect) bounds = rect }
 
     /**
-     * True while the floating mini-player is showing on a page other than Home. Toasts then sit in the gap beside
+     * True while the floating mini-player is showing. Toasts then sit in the gap beside
      * it (left of the pill) rather than above it, matching the Tag Manager's split status bar.
      */
     var splitAroundPill by mutableStateOf(false)

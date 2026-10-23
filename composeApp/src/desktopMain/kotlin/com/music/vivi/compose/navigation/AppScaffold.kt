@@ -229,7 +229,7 @@ fun FrameWindowScope.AppScaffold(
     val nowPlayingForSplit by playbackController.nowPlaying.collectAsState()
     androidx.compose.runtime.SideEffect {
         com.music.vivi.compose.ui.component.MainPane.splitAroundPill =
-            nowPlayingForSplit != null && !onNowPlaying && !miniAtRoot && current != Routes.HOME &&
+            nowPlayingForSplit != null && !onNowPlaying && !miniAtRoot &&
                 miniStyle == MiniPlayerStyle.FLOATING_PILL
     }
     var miniBarHeightPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
