@@ -52,6 +52,8 @@ internal fun ShaderBackground(
     palette: ArtworkPalette?,
     artworkUrl: String?,
     modifier: Modifier = Modifier,
+    /** Pixels the pattern has drifted down; the shader mirrors it, so any value repeats seamlessly. Read while drawing. */
+    scrollY: (() -> Float)? = null,
 ) {
     val loaded = if (kind.usesImage) rememberShrunkArtwork(artworkUrl, kind.imageEdge) else null
     // The shown cover only changes once the next one has loaded; the old layer then fades out
@@ -69,8 +71,8 @@ internal fun ShaderBackground(
         }
     }
     Box(modifier.fillMaxSize()) {
-        leaving?.let { ShaderLayer(kind, palette, it.image, Modifier) }
-        ShaderLayer(kind, palette, shown.image, Modifier.graphicsLayer { alpha = fade.value })
+        leaving?.let { ShaderLayer(kind, palette, it.image, Modifier, scrollY) }
+        ShaderLayer(kind, palette, shown.image, Modifier.graphicsLayer { alpha = fade.value }, scrollY)
     }
 }
 
@@ -82,10 +84,11 @@ private fun ShaderLayer(
     palette: ArtworkPalette?,
     image: Image?,
     modifier: Modifier,
+    scrollY: (() -> Float)?,
 ) {
     val effective = if (kind.usesImage && image == null) BackgroundShader.AURORA else kind
 
-    val effect = remember(effective) { runCatching { RuntimeEffect.makeForShader(effective.sksl) }.getOrNull() }
+    val effect = remember(effective) { runCatching { RuntimeEffect.makeForShader(withScroll(effective.sksl)) }.getOrNull() }
     if (effect == null) {
         Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.surface))
         return
@@ -117,6 +120,7 @@ private fun ShaderLayer(
             .drawBehind {
                 builder.uniform("iResolution", size.width, size.height)
                 builder.uniform("iTime", time.floatValue)
+                builder.uniform("scrollY", scrollY?.invoke() ?: 0f)
                 colors.forEachIndexed { i, c -> builder.uniform("c$i", c.red, c.green, c.blue) }
                 if (effective.usesImage && imageShader != null && image != null) {
                     builder.child("img", imageShader)
@@ -126,6 +130,25 @@ private fun ShaderLayer(
             },
     )
 }
+
+/**
+ * Makes a shader scrollable: its pixel coordinate is shifted down by `scrollY` and folded back into the window
+ * height like a mirror (0..H..0..H), so the pattern repeats forever with no seam and only the visible pixels are
+ * ever computed. All shaders start with `half4 main(float2 fc) {`.
+ */
+internal fun withScroll(sksl: String): String = sksl.replace(
+    "half4 main(float2 fc) {",
+    """
+    uniform float scrollY;
+    float2 foldScroll(float2 p) {
+        float h = iResolution.y;
+        float t = mod(p.y + scrollY, 2.0 * h);
+        return float2(p.x, t > h ? 2.0 * h - t : t);
+    }
+    half4 main(float2 fc0) {
+        float2 fc = foldScroll(fc0);
+    """.trimIndent(),
+)
 
 /**
  * Five colours for the shaders: the vivid cover colours first, padded with lighter/darker

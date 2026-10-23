@@ -83,6 +83,8 @@ fun PlayerBackgroundLayer(
     modifier: Modifier = Modifier,
     /** 0..1 darkening; null reads the Now Playing darkness setting. */
     darknessOverride: Float? = null,
+    /** Pixels to drift the (shader) background down by; mirrored, so it repeats seamlessly. Styles without a shader ignore it. */
+    scrollY: (() -> Float)? = null,
 ) {
     val prefs = org.koin.compose.koinInject<com.music.vivi.compose.prefs.DesktopPrefs>()
     @Suppress("UNUSED_VARIABLE")
@@ -96,14 +98,14 @@ fun PlayerBackgroundLayer(
     }) {
         when (style) {
             PlayerBackgroundStyle.DEFAULT -> Box(Modifier.fillMaxSize().background(themeSurface))
-            PlayerBackgroundStyle.GRADIENT -> ShaderBackground(BackgroundShader.AURORA, palette, artworkUrl)
-            PlayerBackgroundStyle.BLUR -> ShaderBackground(BackgroundShader.BLUR, palette, artworkUrl)
-            PlayerBackgroundStyle.GLOW_ANIMATED -> ShaderBackground(BackgroundShader.GLOW, palette, artworkUrl)
+            PlayerBackgroundStyle.GRADIENT -> ShaderBackground(BackgroundShader.AURORA, palette, artworkUrl, scrollY = scrollY)
+            PlayerBackgroundStyle.BLUR -> ShaderBackground(BackgroundShader.BLUR, palette, artworkUrl, scrollY = scrollY)
+            PlayerBackgroundStyle.GLOW_ANIMATED -> ShaderBackground(BackgroundShader.GLOW, palette, artworkUrl, scrollY = scrollY)
             PlayerBackgroundStyle.FLUID -> GlowCoverBg(palette, artworkUrl, FLUID_SHADER_SKSL)
-            PlayerBackgroundStyle.WAVE -> ShaderBackground(BackgroundShader.WAVE, palette, artworkUrl)
-            PlayerBackgroundStyle.XMB -> ShaderBackground(BackgroundShader.XMB, palette, artworkUrl)
-            PlayerBackgroundStyle.DISTORT -> ShaderBackground(BackgroundShader.DISTORT, palette, artworkUrl)
-            PlayerBackgroundStyle.LIVE_MESH -> ShaderBackground(BackgroundShader.MESH, palette, artworkUrl)
+            PlayerBackgroundStyle.WAVE -> ShaderBackground(BackgroundShader.WAVE, palette, artworkUrl, scrollY = scrollY)
+            PlayerBackgroundStyle.XMB -> ShaderBackground(BackgroundShader.XMB, palette, artworkUrl, scrollY = scrollY)
+            PlayerBackgroundStyle.DISTORT -> ShaderBackground(BackgroundShader.DISTORT, palette, artworkUrl, scrollY = scrollY)
+            PlayerBackgroundStyle.LIVE_MESH -> ShaderBackground(BackgroundShader.MESH, palette, artworkUrl, scrollY = scrollY)
             PlayerBackgroundStyle.APPLE_MUSIC -> AppleMusicBg(
                 artworkUrl = artworkUrl,
                 canvasVideoUrl = canvasVideoUrl,
