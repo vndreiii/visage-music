@@ -1256,6 +1256,13 @@ fun AccountSettingsScreen(navController: NavController) {
                 },
             )
         }
+        ManualCookieSection(
+            onImported = { info ->
+                account = info
+                error = null
+                loginKey++
+            },
+        )
         androidx.compose.runtime.key(loginKey) { com.music.vivi.compose.ui.YtLoginPanel(
             modifier = Modifier.padding(horizontal = 4.dp),
             onLoggedIn = {
@@ -1265,6 +1272,70 @@ fun AccountSettingsScreen(navController: NavController) {
                 }
             },
         ) }
+    }
+}
+
+/** Paste-a-cookie sign-in for accounts the embedded browser does not pick up correctly. */
+@Composable
+private fun ManualCookieSection(onImported: (AccountInfo) -> Unit) {
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var expanded by remember { mutableStateOf(false) }
+    var text by remember { mutableStateOf("") }
+    var busy by remember { mutableStateOf(false) }
+    var message by remember { mutableStateOf<String?>(null) }
+    Column(Modifier.padding(horizontal = 4.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        com.music.vivi.compose.ui.expressive.ExpressiveButton(
+            text = if (expanded) "Hide cookie import" else "Import cookie manually",
+            onClick = { expanded = !expanded },
+            style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Tonal,
+        )
+        AnimatedVisibility(expanded) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    "Use this if signing in above gives you no recommendations or the wrong account " +
+                        "(common with accounts that were once Google+ or have a separate YouTube channel).\n\n" +
+                        "1. In your normal browser, open music.youtube.com and make sure you are on the right " +
+                        "account (profile picture → Switch account).\n" +
+                        "2. Open developer tools (F12) → Network tab, reload, and click any request to " +
+                        "music.youtube.com (e.g. one named \"browse\").\n" +
+                        "3. Under Request Headers, copy the whole value of \"cookie\" and paste it below. " +
+                        "A cookies.txt export of youtube.com also works.\n\n" +
+                        "The cookie is a login key: never share it. It is stored only on this device, " +
+                        "and signing out of Google in your browser invalidates it.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedTextField(
+                    value = text,
+                    onValueChange = { text = it },
+                    label = { Text("Cookie") },
+                    minLines = 3,
+                    maxLines = 6,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    com.music.vivi.compose.ui.expressive.ExpressiveButton(
+                        text = if (busy) "Checking…" else "Import",
+                        enabled = text.isNotBlank() && !busy,
+                        onClick = {
+                            busy = true
+                            message = null
+                            scope.launch {
+                                com.music.vivi.player.login.ManualCookieImport.import(text)
+                                    .onSuccess { info ->
+                                        text = ""
+                                        message = "Signed in as ${info.name}."
+                                        onImported(info)
+                                    }
+                                    .onFailure { message = it.message ?: it.toString() }
+                                busy = false
+                            }
+                        },
+                    )
+                    message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+        }
     }
 }
 

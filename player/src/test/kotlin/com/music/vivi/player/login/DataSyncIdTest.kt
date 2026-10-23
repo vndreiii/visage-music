@@ -8,7 +8,7 @@ class DataSyncIdTest {
     fun `delegation uses brand identity rather than user identity`() {
         assertEquals("brand", normalizeDataSyncId("brand||user"))
         assertEquals("", normalizeDataSyncId("||user"))
-        assertEquals("brand", normalizeDataSyncId("brand||"))
+        assertEquals("", normalizeDataSyncId("regular||"))
         assertEquals("brand", normalizeDataSyncId("brand"))
         assertEquals("", normalizeDataSyncId(null))
     }
