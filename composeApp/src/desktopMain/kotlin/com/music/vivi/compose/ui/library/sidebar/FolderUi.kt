@@ -108,6 +108,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.music.vivi.compose.ui.dnd.dropTarget
+import androidx.compose.ui.zIndex
 
 // ── Palette / icons ────────────────────────────────────────────────────────────────────────────
 
@@ -240,12 +242,23 @@ internal fun FolderRowView(
     val accent = folderAccentColor(folder, MaterialTheme.colorScheme.primary)
     val bg by animateFloatAsState(if (hovered) 1f else if (row.open) 0.55f else 0f, VisageMotion.effectsDefault(), label = "folderBg")
     val rot by animateFloatAsState(if (row.open) 0f else -90f, VisageMotion.effectsDefault(), label = "folderChevron")
-    Box(modifier.padding(vertical = 1.dp)) {
+    // A library entry carried over this folder drops into it; the folder grows to say so.
+    val dropMod = Modifier.dropTarget<LibraryEntry>("folder:${folder.id}") { e -> actions.drop(folder, e) }
+    val dropHover by animateFloatAsState(
+        if (com.music.vivi.compose.ui.dnd.TrackDrag.hoverKey == "folder:${folder.id}") 1f else 0f,
+        androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 420f), label = "folderDrop",
+    )
+    Box(
+        modifier.then(dropMod).padding(vertical = 1.dp)
+            .zIndex(dropHover)
+            .graphicsLayer { val sc = 1f + 0.05f * dropHover; scaleX = sc; scaleY = sc },
+    ) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(accent.copy(alpha = 0.10f * bg).compositeOver(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = bg)))
+                .background(accent.copy(alpha = 0.35f * dropHover.coerceIn(0f, 1f)))
                 .hoverable(interaction)
                 .onSecondary { menu = true }
                 .clickable { actions.toggle(folder) }
@@ -293,6 +306,8 @@ internal class FolderActions(
     val edit: (LibraryFolderModel) -> Unit,
     val delete: (LibraryFolderModel) -> Unit,
     val setSort: (LibraryFolderModel, FolderSort) -> Unit,
+    /** A library entry was dropped on the folder; returns the toast text. */
+    val drop: suspend (LibraryFolderModel, LibraryEntry) -> String?,
 )
 
 @Composable

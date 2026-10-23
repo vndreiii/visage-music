@@ -38,8 +38,12 @@ object XdgPortalFolderPicker {
     suspend fun pickImage(title: String = "Choose image"): File? = withContext(Dispatchers.IO) {
         val exts = listOf("png", "jpg", "jpeg", "gif", "bmp", "webp")
         if (com.music.vivi.nativelib.HostOs.isWindows) return@withContext pickImageViaAwt(title, exts)
+        // Filtered first; if the portal balks at the filter, the same portal without one, and only then a toolkit dialog.
         runCatching { pickViaPortal(title, directory = false, multiple = false, imageFilter = true).firstOrNull() }.getOrElse {
-            runCatching { pickImageViaZenity(title) }.getOrElse { pickImageViaAwt(title, exts) }
+            println("XDG portal image pick (filtered) failed: ${it.message}")
+            runCatching { pickViaPortal(title, directory = false, multiple = false, imageFilter = false).firstOrNull() }.getOrElse {
+                runCatching { pickImageViaZenity(title) }.getOrElse { pickImageViaAwt(title, exts) }
+            }
         }
     }
 
@@ -172,11 +176,11 @@ class PortalRequestResponse @Throws(DBusException::class) constructor(
 ) : DBusSignal(path, response, results)
 
 class PortalPattern(
-    @org.freedesktop.dbus.annotations.Position(0) val kind: UInt32,
-    @org.freedesktop.dbus.annotations.Position(1) val pattern: String,
+    @JvmField @field:org.freedesktop.dbus.annotations.Position(0) val kind: UInt32,
+    @JvmField @field:org.freedesktop.dbus.annotations.Position(1) val pattern: String,
 ) : org.freedesktop.dbus.Struct()
 
 class PortalFilter(
-    @org.freedesktop.dbus.annotations.Position(0) val name: String,
-    @org.freedesktop.dbus.annotations.Position(1) val patterns: List<PortalPattern>,
+    @JvmField @field:org.freedesktop.dbus.annotations.Position(0) val name: String,
+    @JvmField @field:org.freedesktop.dbus.annotations.Position(1) val patterns: List<PortalPattern>,
 ) : org.freedesktop.dbus.Struct()

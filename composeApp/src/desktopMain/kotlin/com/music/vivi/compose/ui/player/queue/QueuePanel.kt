@@ -52,6 +52,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import com.music.vivi.compose.ui.dnd.TrackDrag
+import com.music.vivi.compose.ui.dnd.carryOnDrag
 import kotlin.math.roundToInt
 import androidx.compose.ui.input.pointer.positionChange
 import kotlinx.coroutines.withTimeoutOrNull
@@ -389,41 +390,19 @@ private fun QueuePanelBody(
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
                     // The current song can be carried off like any queue row (to drop on a playlist); it has no order to change.
-                    val carryScope = rememberCoroutineScope()
-                    var carryOrigin by remember { mutableStateOf(androidx.compose.ui.geometry.Offset.Zero) }
                     Box(
-                        Modifier
-                            .onGloballyPositioned { carryOrigin = it.positionInWindow() }
-                            .pointerInput(Unit) {
-                                val slop = 6.dp.toPx()
-                                awaitEachGesture {
-                                    val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                                    if (currentEvent.buttons.isSecondaryPressed) return@awaitEachGesture
-                                    while (true) {
-                                        val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
-                                        if (!ch.pressed) return@awaitEachGesture
-                                        if ((ch.position - down.position).getDistance() > slop) break
-                                    }
-                                    val np = nowPlaying ?: return@awaitEachGesture
-                                    TrackDrag.begin(
-                                        com.music.vivi.player.QueueTrack(
-                                            videoId = np.videoId, title = np.title, artist = np.artist, artworkUrl = np.artworkUrl,
-                                            localPath = np.localPath, durationMs = np.durationMs, album = np.album,
-                                            lyricsPath = np.lyricsPath, embeddedLyrics = np.embeddedLyrics,
-                                        ),
-                                        carryOrigin + down.position,
-                                    )
-                                    while (true) {
-                                        val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
-                                        ch.consume()
-                                        if (!ch.pressed) break
-                                        TrackDrag.moveTo(carryOrigin + ch.position)
-                                    }
-                                    carryScope.launch { TrackDrag.release() }
-                                }
-                            },
+                        Modifier.carryOnDrag {
+                            nowPlaying?.let { np ->
+                                com.music.vivi.compose.ui.dnd.DragCard(
+                                    np.title, np.artist, np.artworkUrl,
+                                    com.music.vivi.player.QueueTrack(
+                                        videoId = np.videoId, title = np.title, artist = np.artist, artworkUrl = np.artworkUrl,
+                                        localPath = np.localPath, durationMs = np.durationMs, album = np.album,
+                                        lyricsPath = np.lyricsPath, embeddedLyrics = np.embeddedLyrics,
+                                    ),
+                                )
+                            }
+                        },
                     ) {
                         QueueSongRow(
                             title = nowPlaying!!.title,

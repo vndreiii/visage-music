@@ -14,6 +14,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -43,13 +47,18 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
-/** Somewhere a carried track can be dropped, e.g. a playlist row in the library sidebar. */
+/** What the carried card shows, plus what it stands for (a [QueueTrack], a library entry, ...). */
+class DragCard(val title: String, val subtitle: String, val art: String?, val payload: Any)
+
+/** Somewhere a carried card can be dropped, e.g. a playlist or folder in the library sidebar. */
 class TrackDropTarget(
     val key: String,
     val coords: LayoutCoordinates,
-    /** Whether this target can take the track at all (e.g. a local file cannot go into a YouTube playlist). */
-    val accepts: (QueueTrack) -> Boolean,
-    val accept: suspend (QueueTrack) -> String?,
+    /** Targets that don't handle this kind of payload are ignored entirely (no hover, no red). */
+    val handles: (Any) -> Boolean,
+    /** Whether this target can take it (e.g. a local file cannot go into a YouTube playlist); otherwise it turns red. */
+    val accepts: (Any) -> Boolean,
+    val accept: suspend (Any) -> String?,
 )
 
 /**
@@ -57,8 +66,9 @@ class TrackDropTarget(
  * draws the carried card (dangling from the pointer) above everything; drop targets register with [trackDropTarget].
  */
 object TrackDrag {
-    var track by mutableStateOf<QueueTrack?>(null)
+    var card by mutableStateOf<DragCard?>(null)
         private set
+    val track: QueueTrack? get() = card?.payload as? QueueTrack
     /** Pointer in window coordinates. */
     var pointer by mutableStateOf(Offset.Zero)
     var hoverKey by mutableStateOf<String?>(null)
@@ -78,49 +88,106 @@ object TrackDrag {
     fun register(t: TrackDropTarget) { targets[t.key] = t }
     fun unregister(key: String) { targets.remove(key) }
 
-    val carrying get() = track != null && !releasing
+    val carrying get() = card != null && !releasing
 
-    fun begin(t: QueueTrack, at: Offset) {
-        track = t; pointer = at; releasing = false; landingAt = null; hoverKey = null
+    fun begin(t: QueueTrack, at: Offset) = begin(DragCard(t.title.ifBlank { t.videoId }, t.artist.ifBlank { "Queued track" }, t.artworkUrl, t), at)
+
+    fun begin(c: DragCard, at: Offset) {
+        card = c; pointer = at; releasing = false; landingAt = null; hoverKey = null; hoverRejected = false
     }
 
     fun moveTo(p: Offset) {
-        if (track == null || releasing) return
+        val c = card ?: return
+        if (releasing) return
         pointer = p
-        val h = hit(p)
+        val h = hit(p, c.payload)
         hoverKey = h?.key
-        hoverRejected = h != null && !h.accepts(track!!)
+        hoverRejected = h != null && !h.accepts(c.payload)
     }
 
-    private fun hit(p: Offset): TrackDropTarget? =
-        targets.values.firstOrNull { it.coords.isAttached && it.coords.boundsInWindow().contains(p) }
+    private fun hit(p: Offset, payload: Any): TrackDropTarget? =
+        targets.values.firstOrNull { it.handles(payload) && it.coords.isAttached && it.coords.boundsInWindow().contains(p) }
 
     /** Gives the card back (pointer re-entered the queue). */
-    fun cancel() { track = null; hoverKey = null; hoverRejected = false; releasing = false; landingAt = null }
+    fun cancel() { card = null; hoverKey = null; hoverRejected = false; releasing = false; landingAt = null }
 
     /** Lets go: drops on the hovered target if any, otherwise the card just fades. Returns when the card is gone. */
     suspend fun release() {
-        val t = track ?: return
-        val target = hit(pointer)
+        val c = card ?: return
+        val target = hit(pointer, c.payload)
         releasing = true
         if (target != null) {
             // A refused drop does not fly in; the toast says why.
-            if (target.accepts(t)) landingAt = target.coords.boundsInWindow().center
-            message = runCatching { target.accept(t) }.getOrElse { it.message ?: "Couldn't add" }
+            if (target.accepts(c.payload)) landingAt = target.coords.boundsInWindow().center
+            message = runCatching { target.accept(c.payload) }.getOrElse { it.message ?: "Couldn't add" }
         }
         // The overlay animates itself out; it clears the state through [finishRelease].
     }
 
-    fun finishRelease() { track = null; hoverKey = null; hoverRejected = false; releasing = false; landingAt = null }
+    fun finishRelease() { card = null; hoverKey = null; hoverRejected = false; releasing = false; landingAt = null }
 }
 
-/** Marks this layout as a drop target for carried tracks. [accept] returns the toast text (null = nothing to say). */
+/** Marks this layout as a drop target for carried payloads of type [T]. [accept] returns the toast text. */
 @Composable
-fun Modifier.trackDropTarget(key: String, accepts: (QueueTrack) -> Boolean = { true }, accept: suspend (QueueTrack) -> String?): Modifier {
+inline fun <reified T : Any> Modifier.dropTarget(
+    key: String,
+    noinline accepts: (T) -> Boolean = { true },
+    noinline accept: suspend (T) -> String?,
+): Modifier = dropTargetFor(key, { it is T }, { (it as? T)?.let(accepts) ?: false }, { (it as? T)?.let { v -> accept(v) } })
+
+@Composable
+fun Modifier.dropTargetFor(
+    key: String,
+    handles: (Any) -> Boolean,
+    accepts: (Any) -> Boolean,
+    accept: suspend (Any) -> String?,
+): Modifier {
     DisposableEffect(key) { onDispose { TrackDrag.unregister(key) } }
     val latest by androidx.compose.runtime.rememberUpdatedState(accept)
     val latestAccepts by androidx.compose.runtime.rememberUpdatedState(accepts)
-    return onGloballyPositioned { TrackDrag.register(TrackDropTarget(key, it, { t -> latestAccepts(t) }) { t -> latest(t) }) }
+    val latestHandles by androidx.compose.runtime.rememberUpdatedState(handles)
+    return onGloballyPositioned {
+        TrackDrag.register(TrackDropTarget(key, it, { p -> latestHandles(p) }, { p -> latestAccepts(p) }) { p -> latest(p) })
+    }
+}
+
+/** Marks this layout as a drop target for carried queue tracks. */
+@Composable
+fun Modifier.trackDropTarget(key: String, accepts: (QueueTrack) -> Boolean = { true }, accept: suspend (QueueTrack) -> String?): Modifier =
+    dropTarget<QueueTrack>(key, accepts, accept)
+
+/**
+ * Lets this element be carried: once the pointer moves a few dp with the button down, [card] is picked up and hangs
+ * from the pointer until release. Return null from [card] to opt out (e.g. pinned entries).
+ */
+@Composable
+fun Modifier.carryOnDrag(card: () -> DragCard?): Modifier {
+    var origin by remember { mutableStateOf(Offset.Zero) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    val latest by androidx.compose.runtime.rememberUpdatedState(card)
+    return onGloballyPositioned { origin = it.positionInWindow() }.pointerInput(Unit) {
+        val slop = 8.dp.toPx()
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+            if (currentEvent.buttons.isSecondaryPressed || TrackDrag.card != null) return@awaitEachGesture
+            val c = latest() ?: return@awaitEachGesture
+            while (true) {
+                val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                if (!ch.pressed) return@awaitEachGesture
+                if ((ch.position - down.position).getDistance() > slop) break
+            }
+            TrackDrag.begin(c, origin + down.position)
+            while (true) {
+                val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                ch.consume()
+                if (!ch.pressed) break
+                TrackDrag.moveTo(origin + ch.position)
+            }
+            scope.launch { TrackDrag.release() }
+        }
+    }
 }
 
 /**
@@ -131,8 +198,8 @@ fun Modifier.trackDropTarget(key: String, accepts: (QueueTrack) -> Boolean = { t
 fun TrackDragOverlay(modifier: Modifier = Modifier) {
     var origin by remember { mutableStateOf(Offset.Zero) }
     Box(modifier.fillMaxSize().onGloballyPositioned { origin = it.positionInWindow() }) {
-        val track = TrackDrag.track
-        if (track != null) {
+        val card = TrackDrag.card
+        if (card != null) {
             var pos by remember { mutableStateOf(TrackDrag.pointer) }
             var vel by remember { mutableStateOf(Offset.Zero) }
             var angle by remember { mutableFloatStateOf(0f) }
@@ -189,11 +256,11 @@ fun TrackDragOverlay(modifier: Modifier = Modifier) {
             ) {
                 Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))) {
-                        CoverImage(track.artworkUrl, track.title, modifier = Modifier.fillMaxSize())
+                        CoverImage(card.art, card.title, modifier = Modifier.fillMaxSize())
                     }
                     Column(Modifier.padding(start = 10.dp)) {
-                        Text(track.title.ifBlank { track.videoId }, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(track.artist.ifBlank { "Queued track" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(card.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(card.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }

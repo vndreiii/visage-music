@@ -148,6 +148,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
+import com.music.vivi.compose.ui.expressive.ExpressiveStyle
+import com.music.vivi.compose.ui.expressive.ExpressiveButton
+import com.music.vivi.compose.ui.dnd.DragCard
+import com.music.vivi.compose.ui.dnd.carryOnDrag
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.zIndex
 import com.music.vivi.compose.ui.dnd.trackDropTarget
@@ -400,6 +404,10 @@ private fun LibraryPanel(
             edit = { editingFolder = it; showFolderDialog = true },
             delete = { deletingFolder = it },
             setSort = { f, s -> scope.launch(Dispatchers.IO) { repo.setFolderSort(f.id, s.name) } },
+            drop = { f, e ->
+                if (e.key in f.children) "${e.title} is already in ${f.title}"
+                else { withContext(Dispatchers.IO) { repo.addToFolder(f.id, e.dbType(), e.id) }; "Added ${e.title} to ${f.title}" }
+            },
         )
     }
     fun setFilter(v: LibraryFilter) { filter = v; prefs.setString(SidebarKeys.LibraryFilter, v.name) }
@@ -819,18 +827,36 @@ private fun EmptyState(loading: Boolean, searching: Boolean, onCreate: () -> Uni
 @Composable
 private fun NameDialog(title: String, initial: String, confirm: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var text by remember { mutableStateOf(initial) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            VisageTextField(
-                value = text, onValueChange = { text = it }, singleLine = true,
-                label = { Text("Name") }, 
-            )
-        },
-        confirmButton = { TextButton(onClick = { onConfirm(text.trim().ifBlank { "New playlist" }) }) { Text(confirm) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
+    // Same card as the folder dialog: a live preview tile next to the field, expressive buttons underneath.
+    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            modifier = Modifier.widthIn(max = 440.dp).fillMaxWidth(),
+        ) {
+            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Text(title, style = MaterialTheme.typography.headlineSmall)
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    com.music.vivi.compose.ui.component.GeneratedCover(
+                        text.ifBlank { "playlist" },
+                        Modifier.size(104.dp).clip(RoundedCornerShape(20.dp)),
+                    )
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        VisageTextField(
+                            value = text, onValueChange = { text = it }, singleLine = true,
+                            label = { Text("Name") }, modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text("You can change the cover later", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
+                    ExpressiveButton("Cancel", onDismiss, style = ExpressiveStyle.Text)
+                    ExpressiveButton(confirm, { onConfirm(text.trim().ifBlank { "New playlist" }) })
+                }
+            }
+        }
+    }
 }
 
 // ── Rows ─────────────────────────────────────────────────────────────────────────────────────
@@ -858,7 +884,7 @@ private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayback, ac
     val bg by animateFloatAsState(if (hovered || isCurrent) 1f else 0f, VisageMotion.effectsDefault(), label = "rowBg")
     // A queue row carried over this playlist drops into it.
     val (dropTarget, dropTint) = rememberEntryDrop(e)
-    Box(modifier.then(dropTarget).alpha(dim).padding(start = if (nested) 14.dp * f else 0.dp, top = 1.dp, bottom = 1.dp)
+    Box(modifier.then(dropTarget).carryOnDrag { if (e.pinned) null else DragCard(e.title, e.subtitle, e.thumbnail, e) }.alpha(dim).padding(start = if (nested) 14.dp * f else 0.dp, top = 1.dp, bottom = 1.dp)
         .let { m -> if (folderAccent != null) m.drawBehind {
             drawRoundRect(folderAccent.copy(alpha = 0.55f * f), Offset(-8.dp.toPx(), 6.dp.toPx()), Size(2.dp.toPx(), size.height - 12.dp.toPx()), CornerRadius(1.dp.toPx()))
         } else m }) {
@@ -916,6 +942,7 @@ private fun LibraryGridCard(r: SidebarRow.Item, playback: EntryPlayback, actions
     val primary = MaterialTheme.colorScheme.primary
     Box(
         modifier.then(dropTarget)
+            .carryOnDrag { if (e.pinned) null else DragCard(e.title, e.subtitle, e.thumbnail, e) }
             .zIndex(dropHover)
             .graphicsLayer { val sc = 1f + 0.1f * dropHover; scaleX = sc; scaleY = sc }
             .alpha(if (r.hidden) 0.5f else 1f),
