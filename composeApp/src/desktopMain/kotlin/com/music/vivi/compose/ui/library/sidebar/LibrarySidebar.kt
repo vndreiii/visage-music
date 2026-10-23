@@ -148,6 +148,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
+import androidx.compose.ui.zIndex
 import com.music.vivi.compose.ui.dnd.trackDropTarget
 import com.music.vivi.compose.ui.dnd.TrackDrag
 import org.koin.core.context.GlobalContext
@@ -855,11 +856,7 @@ private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayback, ac
     var menu by remember { mutableStateOf(false) }
     val bg by animateFloatAsState(if (hovered || isCurrent) 1f else 0f, VisageMotion.effectsDefault(), label = "rowBg")
     // A queue row carried over this playlist drops into it.
-    val dropRepo = koinInject<LibraryRepository>()
-    val dropYt = koinInject<YouTubeMusicService>()
-    val dropTarget = if (e.isPlaylist) Modifier.trackDropTarget(e.key) { t -> dropTrackOnto(e, t, dropRepo, dropYt) } else Modifier
-    val dropHover = TrackDrag.hoverKey == e.key
-    val dropTint by animateFloatAsState(if (dropHover) 1f else 0f, VisageMotion.effectsDefault(), label = "dropTint")
+    val (dropTarget, dropTint) = rememberEntryDrop(e)
     Box(modifier.then(dropTarget).alpha(dim).padding(start = if (nested) 14.dp * f else 0.dp, top = 1.dp, bottom = 1.dp)
         .let { m -> if (folderAccent != null) m.drawBehind {
             drawRoundRect(folderAccent.copy(alpha = 0.55f * f), Offset(-8.dp.toPx(), 6.dp.toPx()), Size(2.dp.toPx(), size.height - 12.dp.toPx()), CornerRadius(1.dp.toPx()))
@@ -869,7 +866,7 @@ private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayback, ac
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = bg * (if (isCurrent && !hovered) 0.6f else 1f)))
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.28f * dropTint))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.28f * dropTint.coerceIn(0f, 1f)))
                 .hoverable(interaction)
                 .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true }
                 .clickable { actions.open(e) }
@@ -914,10 +911,18 @@ private fun LibraryGridCard(r: SidebarRow.Item, playback: EntryPlayback, actions
     val hovered by interaction.collectIsHoveredAsState()
     val (isCurrent, isPlaying) = rememberEntryPlaying(e)
     var menu by remember { mutableStateOf(false) }
-    Box(modifier.alpha(if (r.hidden) 0.5f else 1f)) {
+    val (dropTarget, dropHover) = rememberEntryDrop(e)
+    val primary = MaterialTheme.colorScheme.primary
+    Box(
+        modifier.then(dropTarget)
+            .zIndex(dropHover)
+            .graphicsLayer { val sc = 1f + 0.1f * dropHover; scaleX = sc; scaleY = sc }
+            .alpha(if (r.hidden) 0.5f else 1f),
+    ) {
         Column(
             Modifier
                 .clip(RoundedCornerShape(14.dp))
+                .background(primary.copy(alpha = 0.22f * dropHover.coerceIn(0f, 1f)))
                 .hoverable(interaction)
                 .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true }
                 .clickable { actions.open(e) }
@@ -1052,18 +1057,34 @@ fun EqualizerBars(playing: Boolean, color: Color, modifier: Modifier = Modifier)
 }
 
 
+/**
+ * Makes a sidebar entry (row or grid card) a drop target for a carried queue track, when it is a playlist.
+ * Returns the modifier to apply and how strongly the entry is currently being hovered (0..1, springy).
+ */
+@Composable
+private fun rememberEntryDrop(e: LibraryEntry): Pair<Modifier, Float> {
+    val repo = koinInject<LibraryRepository>()
+    val yt = koinInject<YouTubeMusicService>()
+    val mod = if (e.isPlaylist) Modifier.trackDropTarget(e.key) { t -> dropTrackOnto(e, t, repo, yt) } else Modifier
+    val hover by animateFloatAsState(
+        if (TrackDrag.hoverKey == e.key) 1f else 0f,
+        androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 420f), label = "dropHover",
+    )
+    return mod to hover
+}
+
 /** Adds a carried queue track to a playlist row; returns the toast text. */
 private suspend fun dropTrackOnto(e: LibraryEntry, t: com.music.vivi.player.QueueTrack, repo: LibraryRepository, yt: YouTubeMusicService): String? =
     withContext(Dispatchers.IO) {
         when (e.kind) {
             EntryKind.LOCAL_PLAYLIST -> {
                 val added = repo.addToLocalPlaylist(e.id, t.videoId, t.title, t.artist, t.artworkUrl, (t.durationMs / 1000).takeIf { it > 0 }, t.localPath)
-                if (added) "Added to ${e.title}" else "Already in ${e.title}"
+                if (added) "Added ${t.title} to ${e.title}" else "${t.title} is already in ${e.title}"
             }
             EntryKind.YT_PLAYLIST -> {
                 if (t.localPath != null || t.videoId.startsWith("local:") || t.videoId.startsWith("offline:")) "Local files can't go into a YouTube playlist"
                 else runCatching { yt.addToPlaylist(e.id, t.videoId).getOrThrow() }
-                    .fold({ "Added to ${e.title}" }, { it.message ?: "Couldn't add to ${e.title}" })
+                    .fold({ "Added ${t.title} to ${e.title}" }, { it.message ?: "Couldn't add to ${e.title}" })
             }
             else -> null
         }
