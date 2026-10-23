@@ -179,7 +179,7 @@ private fun Banner(text: String, error: Boolean = false) {
 @Composable
 private fun Toolbar(state: TagManagerState) {
     val counts = remember(state.tracks, state.modified) { TagBrowser.counts(state.tracks, state.modified) }
-    Column(Modifier.fillMaxWidth().padding(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
             SearchField(state.query, { state.query = it }, Modifier.weight(1f))
             ConnectedButtonGroup(
@@ -236,10 +236,10 @@ private fun SearchField(value: String, onChange: (String) -> Unit, modifier: Mod
         VisageMotion.effectsDefault(), label = "searchBg",
     )
     Row(
-        modifier.height(56.dp).clip(RoundedCornerShape(28.dp)).background(bg).padding(horizontal = 18.dp),
+        modifier.height(ExpressiveSize.Small.height).clip(CircleShape).background(bg).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(Icons.Outlined.Search, null, Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(Icons.Outlined.Search, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Box(Modifier.weight(1f)) {
             if (value.isEmpty()) Text("Search title, artist, album, file name…", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
             BasicTextField(
