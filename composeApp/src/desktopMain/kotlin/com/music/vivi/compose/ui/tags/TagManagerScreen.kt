@@ -458,8 +458,10 @@ private fun TrackRow(
                     val down = awaitFirstDown(requireUnconsumed = false)
                     if (currentEvent.buttons.isSecondaryPressed) {
                         down.consume()
+                        // Open on release: a menu popped up on press is dismissed by the same click's release.
+                        val up = waitForUpOrCancellation()
+                        up?.consume()
                         menuFor = onContext()
-                        waitForUpOrCancellation()
                         return@awaitEachGesture
                     }
                     val up = waitForUpOrCancellation()
