@@ -509,85 +509,102 @@ private fun TrackRow(
 private fun StatusBar(state: TagManagerState) {
     val last by state.lastBatch.collectAsState()
     val show = state.busy || state.autoRunning || state.report != null || last != null
-    AnimatedVisibility(
-        show,
-        enter = slideInVertically(VisageMotion.spatialDefault()) { it } + fadeIn(),
-        exit = slideOutVertically(VisageMotion.spatialDefault()) { it } + fadeOut(),
-    ) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHighest,
-            tonalElevation = 3.dp,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp),
+    val prefs = koinInject<DesktopPrefs>()
+    val playing by com.music.vivi.compose.LocalPlaybackController.current.nowPlaying.collectAsState()
+    val pillStyle = remember { com.music.vivi.compose.ui.resolveMiniPlayerStyle(prefs) }
+    val mode = when {
+        state.busy -> 0
+        state.autoRunning -> 1
+        state.report != null -> 2
+        else -> 3
+    }
+    // The floating mini-player sits bottom-centre: split into two islands around it, or lift above it when too narrow.
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val pillW = minOf(720.dp, maxWidth - 48.dp)
+        val side = (maxWidth - 40.dp - pillW - 16.dp) / 2
+        val avoid = playing != null && pillStyle == com.music.vivi.compose.prefs.MiniPlayerStyle.FLOATING_PILL
+        val split = avoid && side >= 190.dp
+        val lift = if (avoid && !split) 92.dp else 0.dp
+        AnimatedVisibility(
+            show,
+            enter = slideInVertically(VisageMotion.spatialDefault()) { it } + fadeIn(),
+            exit = slideOutVertically(VisageMotion.spatialDefault()) { it } + fadeOut(),
         ) {
-            Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
-                AnimatedContent(
-                    targetState = when {
-                        state.busy -> 0
-                        state.autoRunning -> 1
-                        state.report != null -> 2
-                        else -> 3
-                    },
-                    transitionSpec = { fadeIn(VisageMotion.fadeInSpec()) togetherWith fadeOut(VisageMotion.fadeOutSpec()) },
-                    label = "tagStatus",
-                ) { mode ->
-                    when (mode) {
-                        0 -> ProgressLine("Writing tags… ${state.progressDone}/${state.progressTotal}", state.progressDone, state.progressTotal, null)
-                        1 -> ProgressLine("Looking up matches… ${state.autoDone}/${state.autoTotal}", state.autoDone, state.autoTotal) {
-                            ExpressiveButton("Stop", { state.cancelAutoTag() }, size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal)
+            var expanded by remember(state.report) { mutableStateOf(false) }
+            val rep = state.report
+            val r = rep
+            val head = when {
+                r == null -> "Last change: ${last?.entries?.size ?: 0} file(s) can be restored."
+                r.undo -> "Restored ${r.succeeded} file(s)" + if (r.failed.isNotEmpty()) " · ${r.failed.size} failed" else ""
+                r.results.isEmpty() -> "Nothing to change"
+                else -> "Updated ${r.succeeded} file(s)" + if (r.failed.isNotEmpty()) " · ${r.failed.size} failed" else ""
+            }
+            val actions: (@Composable RowScope.() -> Unit)? = when (mode) {
+                1 -> ({ ExpressiveButton("Stop", { state.cancelAutoTag() }, size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal) })
+                2 -> ({
+                    if (r != null && r.failed.isNotEmpty()) ExpressiveButton(if (expanded) "Hide details" else "Details", { expanded = !expanded }, size = ExpressiveSize.XSmall, style = ExpressiveStyle.Text)
+                    if (r != null && !r.undo && last != null) ExpressiveButton("Undo", { state.undo() }, size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal, leadingIcon = Icons.Outlined.Undo)
+                    IconButton(onClick = { state.dismissReport() }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Close, "Dismiss", Modifier.size(18.dp)) }
+                })
+                3 -> ({ ExpressiveButton("Undo", { state.undo() }, size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal, leadingIcon = Icons.Outlined.Undo) })
+                else -> null
+            }
+            val body: @Composable () -> Unit = {
+                when (mode) {
+                    0 -> Text("Writing tags… ${state.progressDone}/${state.progressTotal}", style = MaterialTheme.typography.bodyMedium)
+                    1 -> Text("Looking up matches… ${state.autoDone}/${state.autoTotal}", style = MaterialTheme.typography.bodyMedium)
+                    else -> Text(head, style = MaterialTheme.typography.bodyMedium, fontWeight = if (mode == 2) FontWeight.SemiBold else null)
+                }
+            }
+            val progress: @Composable () -> Unit = {
+                if (mode <= 1) {
+                    val done = if (mode == 0) state.progressDone else state.autoDone
+                    val total = if (mode == 0) state.progressTotal else state.autoTotal
+                    val p by animateFloatAsState(if (total == 0) 0f else done.toFloat() / total, VisageMotion.glide(), label = "tagProgress")
+                    LinearProgressIndicator({ p }, Modifier.fillMaxWidth().padding(top = 8.dp).height(4.dp).clip(CircleShape))
+                }
+            }
+            val details: @Composable () -> Unit = {
+                AnimatedVisibility(mode == 2 && expanded && r != null, enter = expandVertically(VisageMotion.spatialDefault()) + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                    Column(Modifier.fillMaxWidth().padding(top = 8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        r?.failed?.take(6)?.forEach {
+                            Text("${File(it.item.path).name}: ${it.error ?: "failed"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         }
-                        2 -> ReportLine(state)
-                        else -> Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("Last change: ${last?.entries?.size ?: 0} file(s) can be restored.", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-                            ExpressiveButton("Undo", { state.undo() }, size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal, leadingIcon = Icons.Outlined.Undo)
+                        if ((r?.failed?.size ?: 0) > 6) Text("…and ${(r?.failed?.size ?: 0) - 6} more", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+            if (split) {
+                Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 10.dp), verticalAlignment = Alignment.Bottom) {
+                    Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, tonalElevation = 3.dp, modifier = Modifier.weight(1f)) {
+                        Column(Modifier.padding(horizontal = 18.dp, vertical = 14.dp)) { body(); progress(); details() }
+                    }
+                    Spacer(Modifier.width(pillW + 16.dp))
+                    Box(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                        if (actions != null) Surface(shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest, tonalElevation = 3.dp) {
+                            Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) { actions() }
                         }
+                    }
+                }
+            } else {
+                Surface(
+                    shape = RoundedCornerShape(24.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest,
+                    tonalElevation = 3.dp,
+                    modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 10.dp, bottom = 10.dp + lift),
+                ) {
+                    Column(Modifier.padding(horizontal = 18.dp, vertical = 12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Box(Modifier.weight(1f)) { body() }
+                            actions?.invoke(this)
+                        }
+                        progress(); details()
                     }
                 }
             }
         }
     }
 }
-
-@Composable
-private fun ProgressLine(text: String, done: Int, total: Int, trailing: (@Composable RowScope.() -> Unit)?) {
-    val p by animateFloatAsState(if (total == 0) 0f else done.toFloat() / total, VisageMotion.glide(), label = "tagProgress")
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(text, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
-            trailing?.invoke(this)
-        }
-        LinearProgressIndicator({ p }, Modifier.fillMaxWidth().height(4.dp).clip(CircleShape))
-    }
-}
-
-@Composable
-private fun ReportLine(state: TagManagerState) {
-    val r = state.report ?: return
-    var expanded by remember(r) { mutableStateOf(false) }
-    val last by state.lastBatch.collectAsState()
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val head = when {
-                r.undo -> "Restored ${r.succeeded} file(s)" + if (r.failed.isNotEmpty()) " · ${r.failed.size} failed" else ""
-                r.results.isEmpty() -> "Nothing to change"
-                else -> "Updated ${r.succeeded} file(s)" + if (r.failed.isNotEmpty()) " · ${r.failed.size} failed" else ""
-            }
-            Text(head, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
-            if (r.failed.isNotEmpty()) ExpressiveButton(if (expanded) "Hide details" else "Details", { expanded = !expanded }, size = ExpressiveSize.XSmall, style = ExpressiveStyle.Text)
-            if (!r.undo && last != null) ExpressiveButton("Undo", { state.undo() }, size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal, leadingIcon = Icons.Outlined.Undo)
-            IconButton(onClick = { state.dismissReport() }, Modifier.size(32.dp)) { Icon(Icons.Outlined.Close, "Dismiss", Modifier.size(18.dp)) }
-        }
-        AnimatedVisibility(expanded, enter = expandVertically(VisageMotion.spatialDefault()) + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-            Column(Modifier.fillMaxWidth().height(120.dp).let { it }, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                r.failed.take(6).forEach {
-                    Text("${File(it.item.path).name}: ${it.error ?: "failed"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                }
-                if (r.failed.size > 6) Text("…and ${r.failed.size - 6} more", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-        }
-    }
-}
-
 
 @Composable
 private fun TrackContextMenu(tracks: List<TagTrack>, onDismiss: () -> Unit) {
