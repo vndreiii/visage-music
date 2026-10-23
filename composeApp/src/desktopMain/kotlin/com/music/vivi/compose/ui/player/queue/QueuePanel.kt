@@ -49,6 +49,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.input.pointer.positionChange
 import kotlinx.coroutines.withTimeoutOrNull
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -876,15 +877,15 @@ private fun UpcomingRow(
             }
             if (!lifted) return@awaitEachGesture
             drag.start(pos)
-            var last = currentEvent.changes.firstOrNull { it.id == down.id }?.position ?: down.position
             try {
                 while (true) {
                     // Initial pass: consume before the row's own click sees the release, so letting go never plays the track.
                     val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
                     val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
                     if (!ch.pressed) { ch.consume(); break }
-                    drag.move(ch.position.y - last.y)
-                    last = ch.position
+                    // positionChange, not position deltas: the row moves under the pointer as it is dragged, so its local
+                    // coordinates shift by the same amount and a plain difference would only count part of the motion.
+                    drag.move(ch.positionChange().y)
                     ch.consume()
                 }
                 settleScope.launch { drag.finish()?.let { (f, t) -> onDropNow(f, t) } }
