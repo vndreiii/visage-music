@@ -336,12 +336,9 @@ class UpdateService internal constructor(
     }
 
     private fun spawnWindowsInstaller(msi: File, exe: File): Boolean = runCatching {
-        fun q(path: String) = "'" + path.replace("'", "''") + "'"
-        val pid = ProcessHandle.current().pid()
-        val script = "Wait-Process -Id $pid -ErrorAction SilentlyContinue; " +
-            "Start-Process msiexec -ArgumentList '/i',${q(msi.absolutePath)},'/passive','/norestart' -Wait; " +
-            "Start-Process ${q(exe.absolutePath)}"
-        ProcessBuilder("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-Command", script)
+        val logDir = File(com.music.vivi.nativelib.AppPaths.cache(), "updates").apply { mkdirs() }
+        val script = windowsInstallScript(ProcessHandle.current().pid(), msi, exe, logDir)
+        ProcessBuilder("powershell", "-NoProfile", "-WindowStyle", "Hidden", "-ExecutionPolicy", "Bypass", "-Command", script)
             .redirectOutput(ProcessBuilder.Redirect.DISCARD)
             .redirectError(ProcessBuilder.Redirect.DISCARD)
             .start()
@@ -406,4 +403,35 @@ class UpdateService internal constructor(
             )
         }
     }
+}
+
+/**
+ * The PowerShell run by the update helper once VIsage has exited. The MSI is a major upgrade: it removes the old
+ * version and then installs the new one, so if the install half fails the program is simply gone. Hence:
+ *  - leftovers of the old install (the embedded browser's helper processes, yt-dlp) are stopped first, they hold
+ *    files open and make the install fail;
+ *  - msiexec writes a verbose log next to the downloaded MSI (`msi-install.log`);
+ *  - if the exe is not there afterwards, the install is run once more, and if it still is not there the MSI is opened
+ *    with its normal window so the user sees the real error and can finish by hand;
+ *  - what happened is appended to `update-helper.log`.
+ */
+internal fun windowsInstallScript(pid: Long, msi: File, exe: File, logDir: File): String {
+    fun q(path: String) = "'" + path.replace("'", "''") + "'"
+    val msiQ = q(msi.absolutePath)
+    val exeQ = q(exe.absolutePath)
+    val dirQ = q((exe.parentFile ?: exe).absolutePath)
+    val helperLog = q(File(logDir, "update-helper.log").absolutePath)
+    val msiLog = q(File(logDir, "msi-install.log").absolutePath)
+    return listOf(
+        "\$ErrorActionPreference = 'Continue'",
+        "function Log(\$m) { Add-Content -Path $helperLog -Value ((Get-Date -Format s) + ' ' + \$m) }",
+        "Log 'waiting for VIsage (pid $pid) to exit'",
+        "Wait-Process -Id $pid -ErrorAction SilentlyContinue",
+        "Get-Process | Where-Object { \$_.Path -and \$_.Path.StartsWith($dirQ, [StringComparison]::OrdinalIgnoreCase) } | Stop-Process -Force -ErrorAction SilentlyContinue",
+        "Start-Sleep -Seconds 1",
+        "\$p = Start-Process msiexec -ArgumentList '/i',$msiQ,'/passive','/norestart','/l*v',$msiLog -Wait -PassThru",
+        "Log ('msiexec exit code ' + \$p.ExitCode)",
+        "if (-not (Test-Path $exeQ)) { Log 'VIsage is missing after the install, trying again'; Start-Sleep -Seconds 2; \$p = Start-Process msiexec -ArgumentList '/i',$msiQ,'/passive','/norestart','/l*v',$msiLog -Wait -PassThru; Log ('retry exit code ' + \$p.ExitCode) }",
+        "if (Test-Path $exeQ) { Log 'starting VIsage'; Start-Process $exeQ } else { Log 'still missing, opening the installer'; Start-Process $msiQ }",
+    ).joinToString("; ")
 }
