@@ -400,6 +400,8 @@ fun FrameWindowScope.AppScaffold(
               modifier = Modifier.align(Alignment.BottomStart).padding(start = 32.dp, bottom = 32.dp + miniBarInset),
           )
       }
+      // A queue row dragged out of the queue hangs from the pointer above everything, to be dropped on a playlist.
+      com.music.vivi.compose.ui.dnd.TrackDragOverlay()
     }
     }
 }

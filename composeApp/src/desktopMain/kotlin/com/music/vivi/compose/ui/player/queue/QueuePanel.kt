@@ -49,6 +49,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import com.music.vivi.compose.ui.dnd.TrackDrag
 import kotlin.math.roundToInt
 import androidx.compose.ui.input.pointer.positionChange
 import kotlinx.coroutines.withTimeoutOrNull
@@ -440,6 +443,7 @@ private fun QueuePanelBody(
                 Box(Modifier.weight(1f)) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().smoothWheelScroll(listState)
+                        .onGloballyPositioned { drag.windowOrigin = it.positionInWindow() }
                         .queueReorder(drag, listState, maxIndex = { shown.coerceAtMost(upcoming.size) - 1 }, trackAt = { upcoming.getOrNull(it) }) { f, t ->
                             controller.moveQueueItem(dropBase + f, dropBase + t)
                         },
@@ -772,6 +776,10 @@ internal class QueueDragState(private val list: androidx.compose.foundation.lazy
     /** Height of the lifted row; the rows it passes slide by this much so they make room live. */
     var itemHeight by mutableFloatStateOf(0f)
     var pointerY by mutableFloatStateOf(0f)
+    /** The list's top-left in window coordinates, for turning pointer positions into window ones. */
+    var windowOrigin by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
+    /** Pulled out sideways: the row is then carried app-wide (see TrackDrag) instead of reordered. */
+    var detached by mutableStateOf(false)
     private var downY = 0f
     private var startCentre = 0f
     private var settleTop by mutableStateOf<Float?>(null)
@@ -797,6 +805,7 @@ internal class QueueDragState(private val list: androidx.compose.foundation.lazy
     /** Re-derives the target slot from where the lifted row's centre now is. */
     fun update(maxIndex: Int) {
         if (!active || settling) return
+        if (detached) { to = from; return }
         val items = list.layoutInfo.visibleItemsInfo.filter { it.index <= maxIndex }
         if (items.isEmpty()) return
         val centre = startCentre + (pointerY - downY)
@@ -804,9 +813,12 @@ internal class QueueDragState(private val list: androidx.compose.foundation.lazy
             ?: if (centre < items.first().offset) items.first() else items.last()).index
     }
 
+    /** Ends a carry-away without moving anything. */
+    fun reset() { from = -1; to = -1; settleTop = null; ghost = null; settling = false; detached = false }
+
     /** Called every frame while dragging: scrolls the list when the pointer rests near its top or bottom edge. */
     fun autoScroll(edge: Float, maxIndex: Int) {
-        if (!active || settling) return
+        if (!active || settling || detached) return
         val info = list.layoutInfo
         val top = info.viewportStartOffset + edge
         val bottom = info.viewportEndOffset - edge
@@ -841,7 +853,7 @@ internal class QueueDragState(private val list: androidx.compose.foundation.lazy
         try {
             androidx.compose.animation.core.animate(start, target, animationSpec = VisageMotion.spatialFast()) { v, _ -> settleTop = v }
         } finally {
-            from = -1; to = -1; settleTop = null; ghost = null; settling = false
+            from = -1; to = -1; settleTop = null; ghost = null; settling = false; detached = false
         }
         return result
     }
@@ -860,6 +872,7 @@ internal fun Modifier.queueReorder(
     val handleSlop = 3.dp.toPx()
     val handleZone = 56.dp.toPx()
     val edge = 72.dp.toPx()
+    val margin = 14.dp.toPx()
     coroutineScope {
         val scope = this
         launch {
@@ -902,9 +915,23 @@ internal fun Modifier.queueReorder(
                 ch.consume()
                 if (!ch.pressed) break
                 drag.pointerY = ch.position.y
+                // Pulling sideways out of the list carries a copy of the row across the app instead of reordering.
+                val outside = ch.position.x < -margin || ch.position.x > size.width + margin
+                if (outside && !drag.detached) {
+                    drag.detached = true
+                    drag.ghost?.let { TrackDrag.begin(it, drag.windowOrigin + ch.position) }
+                } else if (!outside && drag.detached) {
+                    drag.detached = false
+                    TrackDrag.cancel()
+                }
+                if (drag.detached) TrackDrag.moveTo(drag.windowOrigin + ch.position)
                 drag.update(maxIndex())
             }
-            scope.launch { drag.finish()?.let { (f, t) -> onDrop(f, t) } }
+            if (drag.detached) {
+                scope.launch { TrackDrag.release(); drag.reset() }
+            } else {
+                scope.launch { drag.finish()?.let { (f, t) -> onDrop(f, t) } }
+            }
         }
     }
 }
@@ -913,6 +940,7 @@ internal fun Modifier.queueReorder(
 @Composable
 private fun DragGhost(drag: QueueDragState) {
     val track = drag.ghost ?: return
+    if (drag.detached) return
     val bg = MaterialTheme.colorScheme.surfaceContainerHighest
     Box(
         Modifier
@@ -969,7 +997,7 @@ private fun UpcomingRow(
             .fillMaxWidth()
             .zIndex(if (dragging) 1f else 0f)
             // The carried row is drawn by DragGhost; its own slot just stays empty so the gap reads as the drop target.
-            .graphicsLayer { if (dragging) alpha = 0f else translationY = shift }
+            .graphicsLayer { if (dragging && !drag.detached) alpha = 0f else translationY = if (dragging) 0f else shift }
             .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true },
     ) {
         QueueSongRow(
