@@ -363,9 +363,13 @@ private fun LibraryPanel(
             open = { e ->
                 when (e.kind) {
                     EntryKind.LIKED -> navController.navigate(Routes.onlinePlaylist("LM")) { launchSingleTop = true }
-                    EntryKind.DOWNLOADS ->
-                        if (navController is androidx.navigation.NavHostController) navigateMain(navController, Routes.LIBRARY)
+                    EntryKind.DOWNLOADS -> {
+                        // Land on the Offline tab, not the Library's home.
+                        com.music.vivi.compose.ui.library.LibraryNavigator.showOffline()
+                        if (navController.currentDestination?.route == Routes.LIBRARY) Unit
+                        else if (navController is androidx.navigation.NavHostController) navigateMain(navController, Routes.LIBRARY)
                         else navController.navigate(Routes.LIBRARY) { launchSingleTop = true }
+                    }
                     EntryKind.YT_PLAYLIST -> navController.navigate(Routes.onlinePlaylist(e.id)) { launchSingleTop = true }
                     EntryKind.LOCAL_PLAYLIST -> navController.navigate(Routes.localPlaylist(e.id)) { launchSingleTop = true }
                     EntryKind.ALBUM -> navController.navigate(Routes.album(e.id)) { launchSingleTop = true }

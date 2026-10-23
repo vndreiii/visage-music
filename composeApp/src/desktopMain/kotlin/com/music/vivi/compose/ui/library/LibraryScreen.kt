@@ -123,6 +123,14 @@ object LibraryNavigator {
     fun reset() {
         _resets.tryEmit(Unit)
     }
+
+    /** A tab the Library should show as soon as it is on screen (set before navigating to it, cleared once applied). */
+    internal val requestedTab = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    /** Show the Offline tab (downloads), e.g. from the sidebar's "Downloaded" entry. */
+    fun showOffline() {
+        requestedTab.value = "Offline"
+    }
 }
 
 /** What the Library is currently drilled into (shown as a track list with Play all / Shuffle). */
@@ -405,6 +413,15 @@ fun LibraryScreen(navController: NavController) {
     val localError by cache.localError.collectAsState()
 
     var homeResetTick by remember { mutableStateOf(0) }
+    LaunchedEffect(Unit) {
+        LibraryNavigator.requestedTab.collect { name ->
+            val requested = name?.let { n -> LibraryTab.entries.firstOrNull { it.name == n } } ?: return@collect
+            tab = requested
+            openCollection = null
+            query = ""
+            LibraryNavigator.requestedTab.value = null
+        }
+    }
     LaunchedEffect(Unit) {
         LibraryNavigator.resets.collect {
             tab = LibraryTab.Home
