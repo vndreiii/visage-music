@@ -190,6 +190,9 @@ private fun runApp() {
                 onCloseRequest = closeApp,
                 state = windowState,
                 undecorated = true,
+                // Windows has no compositor to round an undecorated window, so it showed white corners;
+                // a transparent window lets the Compose-clipped rounded shape show through.
+                transparent = com.music.vivi.nativelib.HostOs.isWindows,
                 title = "VIsage",
                 icon = windowIcon,
             ) {

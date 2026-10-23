@@ -260,14 +260,25 @@ fun FrameWindowScope.VisageTopBar(
                     ) {
                         windowState.isMinimized = true
                     }
-                    val maximized = windowState.placement == WindowPlacement.Maximized
+                    val manualMax = com.music.vivi.nativelib.HostOs.isWindows
+                    // Reading size/position makes this recompose when the window is moved or resized.
+                    @Suppress("UNUSED_VARIABLE") val geometry = windowState.size to windowState.position
+                    val maximized = if (manualMax) {
+                        com.music.vivi.compose.WindowMaximize.isMaximized(window)
+                    } else {
+                        windowState.placement == WindowPlacement.Maximized
+                    }
                     WindowCaptionButton(
                         icon = if (maximized) Icons.Rounded.FilterNone else Icons.Rounded.CropSquare,
                         description = if (maximized) "Restore" else "Maximize",
                         iconSize = if (maximized) 16.dp else 18.dp,
                     ) {
-                        windowState.placement =
-                            if (maximized) WindowPlacement.Floating else WindowPlacement.Maximized
+                        if (manualMax) {
+                            com.music.vivi.compose.WindowMaximize.toggle(window, windowState)
+                        } else {
+                            windowState.placement =
+                                if (maximized) WindowPlacement.Floating else WindowPlacement.Maximized
+                        }
                     }
                     WindowCaptionButton(
                         icon = Icons.Rounded.Close,
