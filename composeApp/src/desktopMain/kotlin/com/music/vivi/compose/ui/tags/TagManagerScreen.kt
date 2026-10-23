@@ -56,6 +56,9 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Undo
 import androidx.compose.material3.Checkbox
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.PointerButton
 import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -430,6 +433,7 @@ private fun GroupHeader(h: TagBrowser.Row.Header, modifier: Modifier) {
     }
 }
 
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 private fun TrackRow(
     track: TagTrack,
@@ -453,15 +457,15 @@ private fun TrackRow(
             .fillMaxWidth()
             .clip(RoundedCornerShape(radius))
             .background(bg)
+            .onPointerEvent(PointerEventType.Release) { e ->
+                // Opens on release: a popup shown on press is dismissed by the same click's release.
+                if (e.button == PointerButton.Secondary) menuFor = onContext()
+            }
             .pointerInput(track.id) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    if (currentEvent.buttons.isSecondaryPressed) {
-                        down.consume()
-                        // Open on release: a menu popped up on press is dismissed by the same click's release.
-                        val up = waitForUpOrCancellation()
-                        up?.consume()
-                        menuFor = onContext()
+                    if (currentEvent.buttons.isSecondaryPressed || currentEvent.button == PointerButton.Secondary) {
+                        waitForUpOrCancellation()
                         return@awaitEachGesture
                     }
                     val up = waitForUpOrCancellation()
