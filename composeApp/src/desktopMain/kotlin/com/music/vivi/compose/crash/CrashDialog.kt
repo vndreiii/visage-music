@@ -156,6 +156,11 @@ fun CrashPanel(
         }
         Text(report.explanation, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
+        Text(
+            "The log includes the songs you played and searched for. Look it over before you share it; your home folder is already hidden.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         ConnectedButtonGroup(
             options = listOf(Detail.Error to "Error details", Detail.Log to "Log"),
             selected = detail,
@@ -170,7 +175,7 @@ fun CrashPanel(
             val scroll = rememberScrollState()
             SelectionContainer {
                 Text(
-                    if (detail == Detail.Error) "${report.exceptionSummary}\n\n${report.stackTrace.trimEnd()}" else logText.ifBlank { "(log is empty)" },
+                    if (detail == Detail.Error) com.music.vivi.compose.crash.AppLog.redact("${report.exceptionSummary}\n\n${report.stackTrace.trimEnd()}") else logText.ifBlank { "(log is empty)" },
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
                     lineHeight = 15.sp,

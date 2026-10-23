@@ -34,6 +34,11 @@ object AppLog {
         System.setErr(PrintStream(Tee(System.err, writer, stderr = true), true, Charsets.UTF_8))
     }
 
+    private val home: String? = System.getProperty("user.home")?.takeIf { it.length > 1 }
+
+    /** Replaces the home folder (which carries the OS username) with `~` so logs and reports can be shared. */
+    fun redact(text: String): String = home?.let { text.replace(it, "~") } ?: text
+
     fun logDir(): File = File(com.music.vivi.nativelib.AppPaths.state(), "logs")
 
     /** The most recent [lines] log lines, oldest first. */
@@ -70,7 +75,7 @@ object AppLog {
         }
 
         private fun flushLine() {
-            val text = (if (stderr) "E " else "  ") + line
+            val text = redact((if (stderr) "E " else "  ") + line)
             line.setLength(0)
             if (tail.size >= MAX_LINES) tail.removeFirst()
             tail.addLast(text)

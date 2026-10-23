@@ -149,11 +149,11 @@ object CrashReporter {
         appendLine("Java: ${System.getProperty("java.version")} (${System.getProperty("java.vendor")})")
         appendLine("OS: ${System.getProperty("os.name")} ${System.getProperty("os.version")} ${System.getProperty("os.arch")}")
         appendLine("Session: ${System.getenv("XDG_SESSION_TYPE") ?: "?"} / ${System.getenv("XDG_CURRENT_DESKTOP") ?: "?"}")
-        appendLine("Log file: ${AppLog.logFile ?: "-"}")
+        appendLine("Log file: ${AppLog.logFile?.let { AppLog.redact(it.path) } ?: "-"}")
         appendLine()
         appendLine("--- Error ---")
-        appendLine(report.exceptionSummary)
-        appendLine(report.stackTrace.trimEnd())
+        appendLine(AppLog.redact(report.exceptionSummary))
+        appendLine(AppLog.redact(report.stackTrace.trimEnd()))
         appendLine()
         appendLine("--- Last log lines ---")
         appendLine(AppLog.snapshot(logLines))
@@ -171,14 +171,14 @@ object CrashReporter {
             appendLine()
             appendLine("**Error**")
             appendLine("```")
-            appendLine(report.exceptionSummary)
-            appendLine(report.stackTrace.lines().take(12).joinToString("\n"))
+            appendLine(AppLog.redact(report.exceptionSummary))
+            appendLine(AppLog.redact(report.stackTrace.lines().take(12).joinToString("\n")))
             appendLine("```")
             appendLine()
             appendLine("_Full report copied to clipboard; paste it below._")
         }.take(1800)
         fun enc(s: String) = URLEncoder.encode(s, Charsets.UTF_8)
-        return "$ISSUES_URL?title=${enc("[crash] " + report.exceptionSummary.take(90))}&body=${enc(body)}"
+        return "$ISSUES_URL?title=${enc("[crash] " + AppLog.redact(report.exceptionSummary).take(90))}&body=${enc(body)}"
     }
 
     fun openInBrowser(url: String) {

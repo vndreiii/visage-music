@@ -88,7 +88,7 @@ fun DiagnosticsScreen(navController: NavController) {
             "Session" to "${System.getenv("XDG_SESSION_TYPE") ?: "?"} / ${System.getenv("XDG_CURRENT_DESKTOP") ?: "?"}",
             "Native helpers" to (NativeHelpers.version()?.let { "loaded (v$it)" } ?: "not loaded — using JVM fallbacks"),
             "Canvas lookup" to if (NativeCanvas.available) "native (Rust)" else "Kotlin fallback",
-            "Log file" to (AppLog.logFile?.absolutePath ?: "—"),
+            "Log file" to (AppLog.logFile?.absolutePath?.let(AppLog::redact) ?: "—"),
         )
     }
     val systemText = remember(system) { system.joinToString("\n") { "${it.first}: ${it.second}" } }
