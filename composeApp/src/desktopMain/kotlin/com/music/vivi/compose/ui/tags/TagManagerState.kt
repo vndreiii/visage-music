@@ -299,7 +299,7 @@ class TagManagerState(
                 }
             }
             busy = false
-            runBatch(items) { proposals = null }
+            runBatch(items) { proposals = null; select(TagSelection(emptySet(), null)) }
         }
     }
 
