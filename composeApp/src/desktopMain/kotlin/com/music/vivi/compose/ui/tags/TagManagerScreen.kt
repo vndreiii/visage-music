@@ -56,6 +56,7 @@ import androidx.compose.material.icons.outlined.Image
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Undo
 import androidx.compose.material3.Checkbox
+import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -321,6 +322,10 @@ private fun TrackBrowser(state: TagManagerState, modifier: Modifier) {
                                 modified = row.track.id in state.modified,
                                 onClick = { shift, ctrl -> state.select(state.selection.click(row.track.id, order, shift, ctrl)) },
                                 onToggle = { state.select(state.selection.toggle(row.track.id)) },
+                                onContext = {
+                                    if (row.track.id !in state.selection.ids) state.select(TagSelection(setOf(row.track.id), row.track.id))
+                                    state.selectedTracks.ifEmpty { listOf(row.track) }
+                                },
                                 modifier = Modifier.animateItem(),
                             )
                         }
@@ -433,9 +438,11 @@ private fun TrackRow(
     modified: Boolean,
     onClick: (shift: Boolean, ctrl: Boolean) -> Unit,
     onToggle: () -> Unit,
+    onContext: () -> List<TagTrack>,
     modifier: Modifier = Modifier,
 ) {
     val health = remember(track) { TagHealth.of(track) }
+    var menuFor by remember { mutableStateOf<List<TagTrack>?>(null) }
     val bg by animateColorAsState(
         if (selected) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainerLow,
         VisageMotion.effectsDefault(), label = "rowBg",
@@ -448,7 +455,13 @@ private fun TrackRow(
             .background(bg)
             .pointerInput(track.id) {
                 awaitEachGesture {
-                    awaitFirstDown(requireUnconsumed = false)
+                    val down = awaitFirstDown(requireUnconsumed = false)
+                    if (currentEvent.buttons.isSecondaryPressed) {
+                        down.consume()
+                        menuFor = onContext()
+                        waitForUpOrCancellation()
+                        return@awaitEachGesture
+                    }
                     val up = waitForUpOrCancellation()
                     if (up != null) {
                         val m = currentEvent.keyboardModifiers
@@ -459,6 +472,7 @@ private fun TrackRow(
             .padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        menuFor?.let { TrackContextMenu(it) { menuFor = null } }
         Checkbox(selected, { onToggle() }, Modifier.size(48.dp))
         Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp))) {
             CoverImage(track.coverPath?.takeIf { !it.startsWith("opus-lazy://") && it != "embedded" }?.let { File(it) }, seed = track.id, modifier = Modifier.fillMaxSize())
@@ -570,6 +584,68 @@ private fun ReportLine(state: TagManagerState) {
                 }
                 if (r.failed.size > 6) Text("…and ${r.failed.size - 6} more", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
+        }
+    }
+}
+
+
+@Composable
+private fun TrackContextMenu(tracks: List<TagTrack>, onDismiss: () -> Unit) {
+    val controller = com.music.vivi.compose.LocalPlaybackController.current
+    val scope = rememberCoroutineScope()
+    val many = tracks.size > 1
+    fun queue(t: TagTrack) = com.music.vivi.player.QueueTrack(
+        videoId = "local:${t.id}",
+        title = t.tags.value(TagField.Title).ifBlank { t.stem },
+        artist = t.tags.value(TagField.Artist),
+        artworkUrl = t.coverPath?.takeIf { !it.startsWith("opus-lazy://") && it != "embedded" }?.let { File(it).toURI().toString() },
+        localPath = t.path,
+        durationMs = (t.durationSec ?: 0L) * 1000L,
+        album = t.tags.value(TagField.Album).ifBlank { null },
+    )
+    val suffix = if (many) " (${tracks.size})" else ""
+    androidx.compose.material3.DropdownMenu(expanded = true, onDismissRequest = onDismiss) {
+        androidx.compose.material3.DropdownMenuItem(
+            text = { Text("Play$suffix") },
+            onClick = { onDismiss(); scope.launch(kotlinx.coroutines.Dispatchers.IO) { controller.playLocalQueue(tracks.map(::queue), 0) } },
+        )
+        androidx.compose.material3.DropdownMenuItem(
+            text = { Text("Play next$suffix") },
+            onClick = { onDismiss(); tracks.asReversed().forEach { controller.playNext(queue(it)) } },
+        )
+        androidx.compose.material3.DropdownMenuItem(
+            text = { Text("Add to queue$suffix") },
+            onClick = { onDismiss(); tracks.forEach { controller.addToQueue(queue(it)) } },
+        )
+        androidx.compose.material3.HorizontalDivider()
+        androidx.compose.material3.DropdownMenuItem(
+            text = { Text("Open containing folder") },
+            onClick = { onDismiss(); revealInFileManager(tracks.first().path) },
+        )
+        androidx.compose.material3.DropdownMenuItem(
+            text = { Text("Copy path") },
+            onClick = {
+                onDismiss()
+                java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(java.awt.datatransfer.StringSelection(tracks.joinToString("\n") { it.path }), null)
+            },
+        )
+    }
+}
+
+private fun revealInFileManager(path: String) {
+    runCatching {
+        val f = File(path)
+        if (com.music.vivi.nativelib.HostOs.isWindows) {
+            ProcessBuilder("explorer", "/select,", f.absolutePath).start()
+        } else {
+            val ok = runCatching {
+                ProcessBuilder(
+                    "dbus-send", "--session", "--dest=org.freedesktop.FileManager1", "--type=method_call",
+                    "/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems",
+                    "array:string:${f.toURI()}", "string:",
+                ).start().waitFor() == 0
+            }.getOrDefault(false)
+            if (!ok) ProcessBuilder("xdg-open", f.parent ?: "/").start()
         }
     }
 }
