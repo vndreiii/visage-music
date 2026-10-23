@@ -131,6 +131,7 @@ fun main() {
         com.music.vivi.player.video.MusicVideoResolver.purge()
     }
     AppLog.install()
+    com.music.vivi.player.StallWatchdog.startUiWatch()
     CrashReporter.install()
     // No libmpv on this system: offer to download one before the window opens (Linux only; Windows ships it).
     if (!com.music.vivi.compose.libmpv.LibmpvSetup.ensure()) return
