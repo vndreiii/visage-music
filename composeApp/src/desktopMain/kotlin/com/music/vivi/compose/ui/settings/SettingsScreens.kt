@@ -74,6 +74,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.draw.alpha
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -406,12 +407,16 @@ fun ThemeSettingsScreen(navController: NavController) {
                 onChecked = { prefs.setBoolean(PrefKeys.DynamicTheme, it) },
             )
             SettingsDivider()
-            val matugenOn = prefs.getBoolean(PrefKeys.MatugenTheme, false)
-            val matugenReady = MatugenColors.defaultFile.isFile
+            val matugenSupported = !com.music.vivi.nativelib.HostOs.isWindows
+            val matugenOn = matugenSupported && prefs.getBoolean(PrefKeys.MatugenTheme, false)
+            val matugenReady = matugenSupported && MatugenColors.defaultFile.isFile
             SwitchItem(
                 icon = Icons.Outlined.Wallpaper,
                 title = "Matugen wallpaper colors",
-                subtitle = if (matugenReady) {
+                enabled = matugenSupported,
+                subtitle = if (!matugenSupported) {
+                    "Linux only"
+                } else if (matugenReady) {
                     "Use ~/.cache/matugen/visage.colors"
                 } else {
                     "Run matugen with the visage template first"
@@ -1494,10 +1499,19 @@ internal fun SwitchItem(
     title: String,
     subtitle: String?,
     checked: Boolean,
+    enabled: Boolean = true,
     onChecked: (Boolean) -> Unit,
 ) {
     // Optimistic UI — don't wait for prefs listener round-trip.
     var local by remember(checked) { mutableStateOf(checked) }
+    if (!enabled) {
+        Box(Modifier.alpha(0.38f)) {
+            SettingsRowFrame(icon, title, subtitle, onClick = null) {
+                Switch(checked = false, onCheckedChange = null, enabled = false)
+            }
+        }
+        return
+    }
     SettingsRowFrame(icon, title, subtitle, onClick = { local = !local; onChecked(local) }) {
         Switch(checked = local, onCheckedChange = { local = it; onChecked(it) })
     }

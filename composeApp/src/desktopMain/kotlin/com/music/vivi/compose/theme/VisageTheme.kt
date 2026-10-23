@@ -51,7 +51,7 @@ fun DesktopPrefs.readThemeState(): VisageThemeState = VisageThemeState(
     pureBlack = getBoolean(PrefKeys.PureBlack, false),
     themeColorArgb = getInt(PrefKeys.SelectedThemeColor, DefaultThemeColorArgb),
     dynamicTheme = getBoolean(PrefKeys.DynamicTheme, true),
-    matugenTheme = getBoolean(PrefKeys.MatugenTheme, false),
+    matugenTheme = !com.music.vivi.nativelib.HostOs.isWindows && getBoolean(PrefKeys.MatugenTheme, false),
     paletteStyle = runCatching {
         M3PaletteStyle.valueOf(getString(PrefKeys.PaletteStyle, M3PaletteStyle.TONAL_SPOT.name))
     }.getOrDefault(M3PaletteStyle.TONAL_SPOT),
