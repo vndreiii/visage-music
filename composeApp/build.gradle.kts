@@ -105,10 +105,10 @@ val memoryArgs = listOf(
     "-XX:MaxHeapFreeRatio=30",
 )
 
-// Class-data sharing: the JVM writes a dynamic archive of the app's loaded classes on exit and maps it on the next
+// Class-data sharing: the JVM writes a dynamic archive of the app's loaded classes on exit (in app/, which every jpackage layout has; Windows has no lib/) and maps it on the next
 // start, which cuts class-loading time (a big part of a Compose app's cold start). Windows only: the per-user
 // install dir is writable, whereas /opt (deb/rpm) and the AppImage mount are not. A failed write only warns.
-val cdsArgs = if (isWindowsHost) listOf("-XX:+AutoCreateSharedArchive", "-XX:SharedArchiveFile=\$ROOTDIR/lib/visage.jsa") else emptyList()
+val cdsArgs = if (isWindowsHost) listOf("-XX:+AutoCreateSharedArchive", "-XX:SharedArchiveFile=\$APPDIR/visage.jsa", "-Dvisage.jsa=\$APPDIR/visage.jsa") else emptyList()
 
 // Linux-only JVM flags: the X11 toolkit package does not exist in the Windows JDK.
 val x11Opens = if (isWindowsHost) emptyList() else listOf("--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED")

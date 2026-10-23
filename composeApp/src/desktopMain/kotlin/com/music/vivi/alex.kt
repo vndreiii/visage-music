@@ -100,6 +100,7 @@ fun main() {
             toolkit.javaClass.getDeclaredField("awtAppClassName").apply { isAccessible = true }.set(toolkit, "visage")
         }
     }
+    com.music.vivi.compose.StartupSplash.showIfFirstStart()
     // Before any Jaudiotagger class loads (local scan is very chatty otherwise).
     System.setProperty("org.jaudiotagger.level", "OFF")
     runCatching {
@@ -196,6 +197,7 @@ private fun runApp() {
                 title = "VIsage",
                 icon = windowIcon,
             ) {
+                androidx.compose.runtime.LaunchedEffect(Unit) { com.music.vivi.compose.StartupSplash.close() }
                 App(
                     windowState = windowState,
                     onClose = closeApp,
