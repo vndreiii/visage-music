@@ -290,10 +290,7 @@ fun TrackActionsMenu(
                                     val videoId = track?.videoId
                                     if (!videoId.isNullOrBlank()) {
                                         val link = "https://music.youtube.com/watch?v=$videoId"
-                                        runCatching {
-                                            Toolkit.getDefaultToolkit().systemClipboard
-                                                .setContents(StringSelection(link), null)
-                                        }.onSuccess { toastMessage = "Copied successfully" }
+                                        if (com.music.vivi.compose.ui.component.SystemClipboard.copy(link)) toastMessage = "Copied successfully"
                                     }
                                     onDismiss()
                                 },

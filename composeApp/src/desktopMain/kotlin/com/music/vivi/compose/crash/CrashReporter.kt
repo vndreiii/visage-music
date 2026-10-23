@@ -160,7 +160,7 @@ object CrashReporter {
     }
 
     fun copyToClipboard(text: String) {
-        runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null) }
+        com.music.vivi.compose.ui.component.SystemClipboard.copy(text)
     }
 
     /** Short issue body (URLs can't carry a whole log); the full report is put on the clipboard. */

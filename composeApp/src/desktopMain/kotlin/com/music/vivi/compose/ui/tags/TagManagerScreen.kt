@@ -649,7 +649,7 @@ private fun TrackContextMenu(tracks: List<TagTrack>, onDismiss: () -> Unit) {
             text = { Text("Copy path") },
             onClick = {
                 onDismiss()
-                java.awt.Toolkit.getDefaultToolkit().systemClipboard.setContents(java.awt.datatransfer.StringSelection(tracks.joinToString("\n") { it.path }), null)
+                com.music.vivi.compose.ui.component.SystemClipboard.copy(tracks.joinToString("\n") { it.path })
             },
         )
     }
