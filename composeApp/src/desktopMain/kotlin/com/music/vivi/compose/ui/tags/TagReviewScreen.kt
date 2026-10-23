@@ -112,7 +112,16 @@ private fun ProposalCard(p: TrackProposal, track: TagTrack?, modifier: Modifier,
                     Text(track?.path.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
                 }
                 ExpressiveButton(if (p.skipped) "Skipped" else "Skip", { update { it.copy(skipped = !it.skipped) } }, size = ExpressiveSize.XSmall, style = if (p.skipped) ExpressiveStyle.Filled else ExpressiveStyle.Text, selected = if (p.skipped) true else null)
-                ExpressiveButton("Accept all", { update { it.copy(skipped = false, overrides = it.changes.associate { c -> c.field to true }, coverChoice = it.best?.candidate?.coverUrl != null) } }, size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal)
+                val allOn = !p.skipped && p.changes.isNotEmpty() && p.changes.all { p.accepted(it) } &&
+                    (p.best?.candidate?.coverUrl == null || p.acceptsCover())
+                ExpressiveButton(
+                    if (allOn) "Clear all" else "Accept all",
+                    {
+                        val on = !allOn
+                        update { it.copy(skipped = false, overrides = it.changes.associate { c -> c.field to on }, coverChoice = on && it.best?.candidate?.coverUrl != null) }
+                    },
+                    size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal,
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 p.options.forEachIndexed { i, o ->
