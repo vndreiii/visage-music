@@ -18,6 +18,10 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.animation.shrinkHorizontally
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -179,9 +183,17 @@ private fun Banner(text: String, error: Boolean = false) {
 @Composable
 private fun Toolbar(state: TagManagerState) {
     val counts = remember(state.tracks, state.modified) { TagBrowser.counts(state.tracks, state.modified) }
-    Column(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-            SearchField(state.query, { state.query = it }, Modifier.weight(1f))
+    val visible = remember(state.tracks, state.filter, state.query, state.modified) {
+        TagBrowser.filter(state.tracks, state.filter, state.query, state.modified)
+    }
+    val needy = remember(visible) { visible.filter { TagHealth.of(it).any } }
+    Column(Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        // The search field takes the height of the grouping selector, so the two sit flush in one row.
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(IntrinsicSize.Min),
+            verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            SearchField(state.query, { state.query = it }, Modifier.weight(1f).fillMaxHeight())
             ConnectedButtonGroup(
                 options = TagGrouping.entries.map { it to it.label },
                 selected = state.grouping,
@@ -190,40 +202,41 @@ private fun Toolbar(state: TagManagerState) {
                 modifier = Modifier.width(340.dp),
             )
         }
-        ChipsRow(
-            chips = TagFilter.entries.map { it to if (it == TagFilter.All) "All  ${counts[it]}" else "${it.label}  ${counts[it]}" },
-            currentValue = state.filter,
-            onValueUpdate = { state.filter = it ?: TagFilter.All },
-        )
-        Row(Modifier.fillMaxWidth().padding(horizontal = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            val visible = remember(state.tracks, state.filter, state.query, state.modified) {
-                TagBrowser.filter(state.tracks, state.filter, state.query, state.modified)
-            }
-            val allSelected = visible.isNotEmpty() && visible.all { it.id in state.selection.ids }
-            ExpressiveButton(
-                text = if (allSelected) "Clear selection" else "Select all (${visible.size})",
-                onClick = { if (allSelected) state.select(state.selection.clear()) else state.select(state.selection.selectAll(visible.map { it.id })) },
-                style = ExpressiveStyle.Tonal, size = ExpressiveSize.Small, enabled = visible.isNotEmpty(),
-            )
-            AnimatedVisibility(state.selection.ids.isNotEmpty(), enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
-                ExpressiveButton(
-                    text = "Auto-tag ${state.selection.ids.size}",
-                    onClick = { state.startAutoTag() }, size = ExpressiveSize.Small, enabled = !state.autoRunning && !state.busy,
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) {
+                ChipsRow(
+                    chips = TagFilter.entries.map { it to if (it == TagFilter.All) "All  ${counts[it]}" else "${it.label}  ${counts[it]}" },
+                    currentValue = state.filter,
+                    onValueUpdate = { state.filter = it ?: TagFilter.All },
                 )
             }
-            val needy = remember(visible) { visible.filter { TagHealth.of(it).any } }
-            AnimatedVisibility(state.selection.ids.isEmpty() && needy.isNotEmpty(), enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+            Row(Modifier.padding(end = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                val note = state.autoNote
+                AnimatedVisibility(note != null, enter = fadeIn(), exit = fadeOut()) {
+                    Text(note.orEmpty(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+                AnimatedVisibility(state.selection.ids.isNotEmpty(), enter = fadeIn() + expandHorizontally(), exit = fadeOut() + shrinkHorizontally()) {
+                    Text("${state.selection.ids.size} selected", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
+                }
+                val allSelected = visible.isNotEmpty() && visible.all { it.id in state.selection.ids }
                 ExpressiveButton(
-                    text = "Auto-tag ${needy.size} missing",
-                    onClick = { state.startAutoTag(needy) }, size = ExpressiveSize.Small, style = ExpressiveStyle.Tonal, enabled = !state.autoRunning && !state.busy,
+                    text = if (allSelected) "Clear selection" else "Select all (${visible.size})",
+                    onClick = { if (allSelected) state.select(state.selection.clear()) else state.select(state.selection.selectAll(visible.map { it.id })) },
+                    style = ExpressiveStyle.Tonal, size = ExpressiveSize.Small, enabled = visible.isNotEmpty(),
                 )
+                AnimatedVisibility(state.selection.ids.isNotEmpty(), enter = fadeIn() + expandHorizontally(), exit = fadeOut() + shrinkHorizontally()) {
+                    ExpressiveButton(
+                        text = "Auto-tag ${state.selection.ids.size}",
+                        onClick = { state.startAutoTag() }, size = ExpressiveSize.Small, enabled = !state.autoRunning && !state.busy,
+                    )
+                }
+                AnimatedVisibility(state.selection.ids.isEmpty() && needy.isNotEmpty(), enter = fadeIn() + expandHorizontally(), exit = fadeOut() + shrinkHorizontally()) {
+                    ExpressiveButton(
+                        text = "Auto-tag ${needy.size} missing",
+                        onClick = { state.startAutoTag(needy) }, size = ExpressiveSize.Small, style = ExpressiveStyle.Tonal, enabled = !state.autoRunning && !state.busy,
+                    )
+                }
             }
-            Spacer(Modifier.weight(1f))
-            val note = state.autoNote
-            AnimatedVisibility(note != null, enter = fadeIn(), exit = fadeOut()) {
-                Text(note.orEmpty(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            }
-            Text("${state.selection.ids.size} selected", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -236,7 +249,7 @@ private fun SearchField(value: String, onChange: (String) -> Unit, modifier: Mod
         VisageMotion.effectsDefault(), label = "searchBg",
     )
     Row(
-        modifier.height(ExpressiveSize.Small.height).clip(CircleShape).background(bg).padding(horizontal = 16.dp),
+        modifier.heightIn(min = 32.dp).clip(CircleShape).background(bg).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Icon(Icons.Outlined.Search, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -319,7 +332,8 @@ private fun TrackBrowser(state: TagManagerState, modifier: Modifier) {
 }
 
 /**
- * Press on a row and drag across others to select them all (hold Ctrl to add to the current selection). Near the top or
+ * Press on a row and drag across others to select them all; the rows are added to the current selection, or removed from
+ * it when the drag starts on a selected row. Near the top or
  * bottom edge the list scrolls on its own. A plain click is left to the row.
  */
 private fun Modifier.dragSelect(listState: LazyListState, rows: () -> List<TagBrowser.Row>, state: TagManagerState): Modifier =
@@ -332,6 +346,7 @@ private fun Modifier.dragSelect(listState: LazyListState, rows: () -> List<TagBr
         var startIndex = -1
         var base: Set<String> = emptySet()
         var anchorId: String? = null
+        var removing = false
 
         fun indexAt(y: Float): Int? =
             listState.layoutInfo.visibleItemsInfo.firstOrNull { y >= it.offset && y < it.offset + it.size + 2 }?.index
@@ -344,7 +359,7 @@ private fun Modifier.dragSelect(listState: LazyListState, rows: () -> List<TagBr
             val from = minOf(startIndex, current)
             val to = maxOf(startIndex, current)
             val ids = (from..to).mapNotNull { (list.getOrNull(it) as? TagBrowser.Row.Item)?.track?.id }
-            state.selection = TagSelection(base + ids, anchorId)
+            state.selection = TagSelection(if (removing) base - ids.toSet() else base + ids, anchorId)
         }
 
         coroutineScope {
@@ -376,8 +391,10 @@ private fun Modifier.dragSelect(listState: LazyListState, rows: () -> List<TagBr
                     lastY = change.position.y
                     if (!active && kotlin.math.abs(change.position.y - down.position.y) > slop) {
                         active = true
-                        val m = currentEvent.keyboardModifiers
-                        base = if (m.isCtrlPressed || m.isMetaPressed) state.selection.ids else emptySet()
+                        // Dragging always builds on what is selected: it adds the rows swept over, or, when it starts on a
+                        // selected row, takes them out again. A new drag therefore never throws the selection away.
+                        base = state.selection.ids
+                        removing = item.track.id in base
                     }
                     if (active) {
                         change.consume()
