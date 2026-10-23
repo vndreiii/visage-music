@@ -12,7 +12,23 @@ class SecretServiceBackend private constructor(
     override val description: String,
 ) : SecretBackend {
 
-    override fun get(service: String, account: String): String? = try {
+    // Windows Credential Manager caps one entry at ~1280 characters; the Linux services have no such limit.
+    private val chunkChars = if (System.getProperty("os.name").startsWith("Windows", ignoreCase = true)) 900 else Int.MAX_VALUE
+
+    private fun chunked(service: String) = ChunkedSecrets(
+        chunkChars,
+        rawGet = { account -> rawGet(service, account) },
+        rawPut = { account, value -> rawPut(service, account, value) },
+        rawDelete = { account -> rawDelete(service, account) },
+    )
+
+    override fun get(service: String, account: String): String? = chunked(service).get(account)
+
+    override fun put(service: String, account: String, value: String) = chunked(service).put(account, value)
+
+    override fun delete(service: String, account: String) = chunked(service).delete(account)
+
+    private fun rawGet(service: String, account: String): String? = try {
         keyring.getPassword(service, account)
     } catch (_: PasswordAccessException) {
         // java-keyring reports a missing entry this way (and some denied accesses; both mean "nothing usable").
@@ -21,7 +37,7 @@ class SecretServiceBackend private constructor(
         throw SecretBackendException("keyring read failed: ${describe(e)}", e)
     }
 
-    override fun put(service: String, account: String, value: String) {
+    private fun rawPut(service: String, account: String, value: String) {
         try {
             keyring.setPassword(service, account, value)
         } catch (e: Exception) {
@@ -29,7 +45,7 @@ class SecretServiceBackend private constructor(
         }
     }
 
-    override fun delete(service: String, account: String) {
+    private fun rawDelete(service: String, account: String) {
         try {
             keyring.deletePassword(service, account)
         } catch (_: PasswordAccessException) {

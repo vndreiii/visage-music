@@ -886,24 +886,52 @@ class DefaultPlaybackController(
                     generation = generation,
                     dualCrossfade = dualCrossfade,
                 )
-            } catch (t: Throwable) {
-                // A resolved URL can still be refused by the CDN (403 / expired). Try the
-                // next source once before giving up, instead of failing the whole track.
-                if (t is kotlinx.coroutines.CancellationException && t !is kotlinx.coroutines.TimeoutCancellationException) throw t
+            } catch (first: Throwable) {
+                // A resolved URL can still be refused by the CDN (403 / expired / an error page instead of audio).
+                // Work through the remaining sources one by one before giving up on the track.
+                if (first is kotlinx.coroutines.CancellationException && first !is kotlinx.coroutines.TimeoutCancellationException) throw first
                 if (generation != loadGeneration.get()) return
-                println("Stream ${resolved.source} failed for $videoId (${t.message}); trying another source")
-                val alternate = withContext(Dispatchers.IO) {
-                    StreamResolver.resolve(videoId, settings = streamSettings(), skipSources = setOf(resolved.source))
+                val tried = linkedSetOf(resolved.source)
+                var failure: Throwable = first
+                var played = false
+                for (attempt in 1..MAX_SOURCE_RETRIES) {
+                    println("Stream ${resolved.source} failed for $videoId (${failure.message}); trying another source")
+                    val alternate = try {
+                        withContext(Dispatchers.IO) {
+                            StreamResolver.resolve(videoId, settings = streamSettings(), skipSources = tried.toSet())
+                        }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        failure = e // no source left to try
+                        break
+                    }
+                    if (generation != loadGeneration.get()) return
+                    resolved = alternate.copy(nowPlaying = mergeWithQueued(alternate.nowPlaying, queued))
+                    tried += resolved.source
+                    streams.onBecameCurrent(videoId, resolved)
+                    try {
+                        startDecodedPlayback(
+                            url = resolved.streamUrl,
+                            httpHeaders = resolved.httpHeaders,
+                            generation = generation,
+                            dualCrossfade = false,
+                        )
+                        played = true
+                        break
+                    } catch (t: Throwable) {
+                        if (t is kotlinx.coroutines.CancellationException && t !is kotlinx.coroutines.TimeoutCancellationException) throw t
+                        if (generation != loadGeneration.get()) return
+                        failure = t
+                    }
                 }
-                if (generation != loadGeneration.get()) return
-                resolved = alternate.copy(nowPlaying = mergeWithQueued(alternate.nowPlaying, queued))
-                streams.onBecameCurrent(videoId, resolved)
-                startDecodedPlayback(
-                    url = resolved.streamUrl,
-                    httpHeaders = resolved.httpHeaders,
-                    generation = generation,
-                    dualCrossfade = false,
-                )
+                if (!played) {
+                    throw SourcesFailedException(
+                        "Couldn't play this song: YouTube refused every stream (${tried.joinToString()}). Try again later or pick another song.",
+                        "${tried.size} sources failed (${tried.joinToString()}); last error: ${failure.message}",
+                        failure,
+                    )
+                }
             }
         } catch (t: kotlinx.coroutines.TimeoutCancellationException) {
             if (generation == loadGeneration.get()) failPlayback("Audio did not become ready. Try playing again.")
@@ -928,7 +956,8 @@ class DefaultPlaybackController(
                     c.message?.let { append(": ").append(it) }
                 }
             }
-            failPlayback(detail)
+            // A clean sentence for the player; the full chain of causes goes to the log.
+            failPlayback((t as? SourcesFailedException)?.message ?: detail)
             println("play failed: $detail")
             t.printStackTrace(System.out)
         }
@@ -1520,6 +1549,9 @@ class DefaultPlaybackController(
 
         private const val MAX_GET_QUEUE = 20
 
+        /** Other sources tried after the first one fails to play (Saavn, NewPipe, yt-dlp and the InnerTube clients are all candidates). */
+        private const val MAX_SOURCE_RETRIES = 4
+
         fun create(
             applyStoredSession: Boolean = true,
             favorites: FavoriteStore? = null,
@@ -1534,3 +1566,6 @@ class DefaultPlaybackController(
             )
     }
 }
+
+/** Every stream source for a track was tried and refused; [message] is shown to the user, [logDetail] goes to the log. */
+private class SourcesFailedException(message: String, val logDetail: String, cause: Throwable?) : RuntimeException(message, cause)
