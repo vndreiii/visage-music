@@ -44,7 +44,13 @@ import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 /** Somewhere a carried track can be dropped, e.g. a playlist row in the library sidebar. */
-class TrackDropTarget(val key: String, val coords: LayoutCoordinates, val accept: suspend (QueueTrack) -> String?)
+class TrackDropTarget(
+    val key: String,
+    val coords: LayoutCoordinates,
+    /** Whether this target can take the track at all (e.g. a local file cannot go into a YouTube playlist). */
+    val accepts: (QueueTrack) -> Boolean,
+    val accept: suspend (QueueTrack) -> String?,
+)
 
 /**
  * App-wide "carrying a track" state. The queue starts it when a row is dragged out sideways; [TrackDragOverlay]
@@ -56,6 +62,9 @@ object TrackDrag {
     /** Pointer in window coordinates. */
     var pointer by mutableStateOf(Offset.Zero)
     var hoverKey by mutableStateOf<String?>(null)
+        private set
+    /** The hovered target would refuse this track: shown as a red tint with no growth, and the drop explains why. */
+    var hoverRejected by mutableStateOf(false)
         private set
     /** Set once released: the card flies to this point (a target's centre) and shrinks away. */
     var landingAt by mutableStateOf<Offset?>(null)
@@ -78,14 +87,16 @@ object TrackDrag {
     fun moveTo(p: Offset) {
         if (track == null || releasing) return
         pointer = p
-        hoverKey = hit(p)?.key
+        val h = hit(p)
+        hoverKey = h?.key
+        hoverRejected = h != null && !h.accepts(track!!)
     }
 
     private fun hit(p: Offset): TrackDropTarget? =
         targets.values.firstOrNull { it.coords.isAttached && it.coords.boundsInWindow().contains(p) }
 
     /** Gives the card back (pointer re-entered the queue). */
-    fun cancel() { track = null; hoverKey = null; releasing = false; landingAt = null }
+    fun cancel() { track = null; hoverKey = null; hoverRejected = false; releasing = false; landingAt = null }
 
     /** Lets go: drops on the hovered target if any, otherwise the card just fades. Returns when the card is gone. */
     suspend fun release() {
@@ -93,21 +104,23 @@ object TrackDrag {
         val target = hit(pointer)
         releasing = true
         if (target != null) {
-            landingAt = target.coords.boundsInWindow().center
+            // A refused drop does not fly in; the toast says why.
+            if (target.accepts(t)) landingAt = target.coords.boundsInWindow().center
             message = runCatching { target.accept(t) }.getOrElse { it.message ?: "Couldn't add" }
         }
         // The overlay animates itself out; it clears the state through [finishRelease].
     }
 
-    fun finishRelease() { track = null; hoverKey = null; releasing = false; landingAt = null }
+    fun finishRelease() { track = null; hoverKey = null; hoverRejected = false; releasing = false; landingAt = null }
 }
 
 /** Marks this layout as a drop target for carried tracks. [accept] returns the toast text (null = nothing to say). */
 @Composable
-fun Modifier.trackDropTarget(key: String, accept: suspend (QueueTrack) -> String?): Modifier {
+fun Modifier.trackDropTarget(key: String, accepts: (QueueTrack) -> Boolean = { true }, accept: suspend (QueueTrack) -> String?): Modifier {
     DisposableEffect(key) { onDispose { TrackDrag.unregister(key) } }
     val latest by androidx.compose.runtime.rememberUpdatedState(accept)
-    return onGloballyPositioned { TrackDrag.register(TrackDropTarget(key, it) { t -> latest(t) }) }
+    val latestAccepts by androidx.compose.runtime.rememberUpdatedState(accepts)
+    return onGloballyPositioned { TrackDrag.register(TrackDropTarget(key, it, { t -> latestAccepts(t) }) { t -> latest(t) }) }
 }
 
 /**

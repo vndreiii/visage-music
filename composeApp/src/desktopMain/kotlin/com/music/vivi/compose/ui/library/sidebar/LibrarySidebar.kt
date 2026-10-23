@@ -866,7 +866,7 @@ private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayback, ac
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = bg * (if (isCurrent && !hovered) 0.6f else 1f)))
-                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.28f * dropTint.coerceIn(0f, 1f)))
+                .background((if (TrackDrag.hoverRejected && TrackDrag.hoverKey == e.key) MaterialTheme.colorScheme.error.copy(alpha = 0.25f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.28f * dropTint.coerceIn(0f, 1f))))
                 .hoverable(interaction)
                 .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true }
                 .clickable { actions.open(e) }
@@ -922,7 +922,7 @@ private fun LibraryGridCard(r: SidebarRow.Item, playback: EntryPlayback, actions
         Column(
             Modifier
                 .clip(RoundedCornerShape(14.dp))
-                .background(primary.copy(alpha = 0.22f * dropHover.coerceIn(0f, 1f)))
+                .background(if (TrackDrag.hoverRejected && TrackDrag.hoverKey == e.key) MaterialTheme.colorScheme.error.copy(alpha = 0.22f) else primary.copy(alpha = 0.22f * dropHover.coerceIn(0f, 1f)))
                 .hoverable(interaction)
                 .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true }
                 .clickable { actions.open(e) }
@@ -1065,13 +1065,23 @@ fun EqualizerBars(playing: Boolean, color: Color, modifier: Modifier = Modifier)
 private fun rememberEntryDrop(e: LibraryEntry): Pair<Modifier, Float> {
     val repo = koinInject<LibraryRepository>()
     val yt = koinInject<YouTubeMusicService>()
-    val mod = if (e.isPlaylist) Modifier.trackDropTarget(e.key) { t -> dropTrackOnto(e, t, repo, yt) } else Modifier
+    val mod = if (e.isPlaylist) Modifier.trackDropTarget(e.key, accepts = { t -> canDropOnto(e, t) }) { t -> dropTrackOnto(e, t, repo, yt) } else Modifier
     val hover by animateFloatAsState(
-        if (TrackDrag.hoverKey == e.key) 1f else 0f,
+        if (TrackDrag.hoverKey == e.key && !TrackDrag.hoverRejected) 1f else 0f,
         androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 420f), label = "dropHover",
     )
     return mod to hover
 }
+
+/** A track that is a local file (or a download of one) can only go into your own playlists, not YouTube Music ones. */
+private fun isLocalFile(t: com.music.vivi.player.QueueTrack) = t.videoId.startsWith("local:") || (t.localPath != null && !t.videoId.startsWith("offline:"))
+
+private fun canDropOnto(e: LibraryEntry, t: com.music.vivi.player.QueueTrack): Boolean =
+    when (e.kind) {
+        EntryKind.LOCAL_PLAYLIST -> true
+        EntryKind.YT_PLAYLIST -> !isLocalFile(t)
+        else -> false
+    }
 
 /** Adds a carried queue track to a playlist row; returns the toast text. */
 private suspend fun dropTrackOnto(e: LibraryEntry, t: com.music.vivi.player.QueueTrack, repo: LibraryRepository, yt: YouTubeMusicService): String? =
@@ -1082,8 +1092,9 @@ private suspend fun dropTrackOnto(e: LibraryEntry, t: com.music.vivi.player.Queu
                 if (added) "Added ${t.title} to ${e.title}" else "${t.title} is already in ${e.title}"
             }
             EntryKind.YT_PLAYLIST -> {
-                if (t.localPath != null || t.videoId.startsWith("local:") || t.videoId.startsWith("offline:")) "Local files can't go into a YouTube playlist"
-                else runCatching { yt.addToPlaylist(e.id, t.videoId).getOrThrow() }
+                if (isLocalFile(t)) "${t.title} is a local file, so it can't go into the YouTube Music playlist ${e.title}"
+                // A downloaded YouTube track is queued as offline:<id>; YouTube only knows the bare id.
+                else runCatching { yt.addToPlaylist(e.id, t.videoId.removePrefix("offline:")).getOrThrow() }
                     .fold({ "Added ${t.title} to ${e.title}" }, { it.message ?: "Couldn't add to ${e.title}" })
             }
             else -> null
