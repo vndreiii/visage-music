@@ -22,7 +22,19 @@ suspend fun fetchLyrics(
     durationMs: Long,
     album: String? = null,
     videoId: String? = null,
-): Result<String> {
+): Result<String> = fetchLyricsWithSource(provider, title, artist, durationMs, album, videoId).map { it.text }
+
+/** Lyrics text plus the provider that actually answered (may differ from the requested one). */
+data class FetchedLyrics(val provider: LyricsProvider, val text: String)
+
+suspend fun fetchLyricsWithSource(
+    provider: LyricsProvider,
+    title: String,
+    artist: String,
+    durationMs: Long,
+    album: String? = null,
+    videoId: String? = null,
+): Result<FetchedLyrics> {
     var last: Result<String>? = null
     // The chosen provider first, then the others. A provider that is down (HTTP 503) or has no
     // match must not leave the player without lyrics while another one has them.
@@ -32,10 +44,10 @@ suspend fun fetchLyrics(
         } catch (e: TimeoutCancellationException) {
             Result.failure(e)
         }
-        if (result.getOrNull()?.isNotBlank() == true) return result
+        result.getOrNull()?.takeIf { it.isNotBlank() }?.let { return Result.success(FetchedLyrics(candidate, it)) }
         last = result
     }
-    return last ?: Result.failure(IllegalStateException("no lyrics provider available"))
+    return last?.map { FetchedLyrics(provider, it) } ?: Result.failure(IllegalStateException("no lyrics provider available"))
 }
 
 private const val PROVIDER_TIMEOUT_MS = 8_000L

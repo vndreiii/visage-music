@@ -52,6 +52,20 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.offset
+import androidx.compose.material.icons.filled.DragHandle
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.zIndex
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
@@ -79,6 +93,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
@@ -411,6 +426,7 @@ private fun QueuePanelBody(
                     else -> queuePlaceholderCount(upcoming.size, shown, SkeletonCount)
                 }
 
+                val drag = remember(listState) { QueueDragState(listState) }
                 LazyColumn(
                     modifier = Modifier.weight(1f).smoothWheelScroll(listState),
                     state = listState,
@@ -427,17 +443,21 @@ private fun QueuePanelBody(
                     }
                     itemsIndexed(upcoming.take(shown), key = { i, t -> "${t.videoId}-$i" }) { i, track ->
                         val animate = remember { revealing }
+                        val base = queueIndex + 1
                         RevealRow(animate) {
-                            QueueSongRow(
-                                title = track.title.ifBlank { track.videoId },
-                                subtitle = track.artist.ifBlank { "Queued track" },
-                                artworkUrl = track.artworkUrl,
-                                active = false,
-                                onClick = {
+                            UpcomingRow(
+                                track = track,
+                                position = i,
+                                count = upcoming.size,
+                                drag = drag,
+                                onPlay = {
                                     scope.launch(Dispatchers.IO) {
-                                        controller.playQueue(queueTracks, queueIndex + 1 + i)
+                                        controller.playQueue(queueTracks, base + i)
                                     }
                                 },
+                                onMove = { to -> controller.moveQueueItem(base + i, base + to) },
+                                onRemove = { controller.removeFromQueue(base + i) },
+                                onDrop = { from, to -> controller.moveQueueItem(base + from, base + to) },
                             )
                         }
                     }
@@ -625,6 +645,7 @@ private fun QueueSongRow(
     artworkUrl: String?,
     active: Boolean,
     onClick: () -> Unit,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     Surface(
         onClick = onClick,
@@ -667,6 +688,7 @@ private fun QueueSongRow(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        trailing?.invoke()
         }
     }
 }
@@ -717,3 +739,127 @@ private fun QueueSkeletonRow(index: Int) {
 /** Reveal state can lag a shrinking queue by a composition frame. */
 internal fun queuePlaceholderCount(upcomingSize: Int, shown: Int, maximum: Int): Int =
     (upcomingSize - shown).coerceIn(0, maximum)
+
+
+/** Drag-to-reorder state for the upcoming list; indexes are positions within the upcoming tracks. */
+internal class QueueDragState(private val list: androidx.compose.foundation.lazy.LazyListState) {
+    var from by mutableIntStateOf(-1)
+    var to by mutableIntStateOf(-1)
+    var dy by mutableFloatStateOf(0f)
+    val active get() = from >= 0
+
+    fun start(index: Int) { from = index; to = index; dy = 0f }
+
+    fun move(delta: Float) {
+        if (!active) return
+        dy += delta
+        val info = list.layoutInfo
+        val me = info.visibleItemsInfo.firstOrNull { it.index == from } ?: return
+        val centre = me.offset + me.size / 2f + dy
+        // Edge auto-scroll: keep the row under the pointer while the list moves beneath it.
+        val edge = 56f
+        val scroll = when {
+            centre < info.viewportStartOffset + edge -> -14f
+            centre > info.viewportEndOffset - edge -> 14f
+            else -> 0f
+        }
+        if (scroll != 0f) dy += list.dispatchRawDelta(scroll)
+        val c = me.offset + me.size / 2f + dy
+        info.visibleItemsInfo.firstOrNull { c >= it.offset && c < it.offset + it.size && it.key.toString().isNotEmpty() }
+            ?.let { to = it.index }
+    }
+
+    /** Returns (from,to) when a reorder should be applied, then resets. */
+    fun finish(): Pair<Int, Int>? {
+        val result = if (active && to >= 0 && to != from) from to to else null
+        from = -1; to = -1; dy = 0f
+        return result
+    }
+}
+
+/** Upcoming row: right-click menu, drag handle, long-press drag, drop indicator. */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+private fun UpcomingRow(
+    track: com.music.vivi.player.QueueTrack,
+    position: Int,
+    count: Int,
+    drag: QueueDragState,
+    onPlay: () -> Unit,
+    onMove: (Int) -> Unit,
+    onRemove: () -> Unit,
+    onDrop: (Int, Int) -> Unit,
+) {
+    var menu by remember { mutableStateOf(false) }
+    val dragging = drag.from == position
+    val accent = MaterialTheme.colorScheme.primary
+    val dropAbove = drag.active && !dragging && drag.to == position && drag.to < drag.from
+    val dropBelow = drag.active && !dragging && drag.to == position && drag.to > drag.from
+    val pos by rememberUpdatedState(position)
+    val onDropNow by rememberUpdatedState(onDrop)
+
+    fun Modifier.reorder(immediate: Boolean): Modifier = pointerInput(immediate) {
+        val start = { _: androidx.compose.ui.geometry.Offset -> drag.start(pos) }
+        val end = { drag.finish()?.let { (f, t) -> onDropNow(f, t) }; Unit }
+        val cancel = { drag.finish(); Unit }
+        val onMove = { change: androidx.compose.ui.input.pointer.PointerInputChange, amount: androidx.compose.ui.geometry.Offset ->
+            change.consume(); drag.move(amount.y)
+        }
+        if (immediate) detectDragGestures(onDragStart = start, onDragEnd = end, onDragCancel = cancel, onDrag = onMove)
+        else detectDragGesturesAfterLongPress(onDragStart = start, onDragEnd = end, onDragCancel = cancel, onDrag = onMove)
+    }
+
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .zIndex(if (dragging) 1f else 0f)
+            .graphicsLayer {
+                if (dragging) {
+                    translationY = drag.dy
+                    scaleX = 1.02f; scaleY = 1.02f
+                    alpha = 0.92f
+                    shadowElevation = 12.dp.toPx()
+                    shape = RoundedCornerShape(12.dp)
+                    clip = false
+                }
+            }
+            .then(if (dragging) Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp)) else Modifier)
+            .drawWithContent {
+                drawContent()
+                val y = if (dropAbove) 0f else size.height
+                if (dropAbove || dropBelow) drawRoundRect(accent, androidx.compose.ui.geometry.Offset(8.dp.toPx(), y - 1.5.dp.toPx()), androidx.compose.ui.geometry.Size(size.width - 16.dp.toPx(), 3.dp.toPx()), androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
+            }
+            .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true }
+            .reorder(immediate = false),
+    ) {
+        QueueSongRow(
+            title = track.title.ifBlank { track.videoId },
+            subtitle = track.artist.ifBlank { "Queued track" },
+            artworkUrl = track.artworkUrl,
+            active = false,
+            onClick = onPlay,
+            trailing = {
+                Icon(
+                    Icons.Filled.DragHandle,
+                    contentDescription = "Drag to reorder",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 8.dp).size(22.dp).reorder(immediate = true),
+                )
+            },
+        )
+        DropdownMenu(
+            expanded = menu,
+            onDismissRequest = { menu = false },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            fun act(run: () -> Unit) = { menu = false; run() }
+            DropdownMenuItem(text = { Text("Play now") }, onClick = act(onPlay))
+            if (position > 0) DropdownMenuItem(text = { Text("Play next") }, onClick = act { onMove(0) })
+            if (position > 0) DropdownMenuItem(text = { Text("Move up") }, onClick = act { onMove(position - 1) })
+            if (position < count - 1) DropdownMenuItem(text = { Text("Move down") }, onClick = act { onMove(position + 1) })
+            if (position < count - 1) DropdownMenuItem(text = { Text("Move to bottom") }, onClick = act { onMove(count - 1) })
+            DropdownMenuItem(text = { Text("Remove from queue") }, onClick = act(onRemove))
+        }
+    }
+}

@@ -205,6 +205,11 @@ class LyricsTimeline private constructor(
 class PositionInterpolator(
     private val snapThresholdMs: Float = 450f,
     private val correctionTauMs: Float = 140f,
+    /**
+     * Longest the clock runs ahead of the last report. Reports come every ~100-200ms while audio
+     * plays, so silence longer than this means a stall (buffering): hold instead of drifting ahead.
+     */
+    private val maxExtrapolateMs: Float = Float.MAX_VALUE,
 ) {
     private var anchorPos = 0f
     private var anchorNanos = 0L
@@ -238,6 +243,6 @@ class PositionInterpolator(
     fun estimate(nowNanos: Long): Float {
         val elapsedMs = ((nowNanos - anchorNanos) / 1_000_000f).coerceAtLeast(0f)
         val decay = exp(-elapsedMs / correctionTauMs)
-        return anchorPos + (if (playing) elapsedMs else 0f) + correction * decay
+        return anchorPos + (if (playing) elapsedMs.coerceAtMost(maxExtrapolateMs) else 0f) + correction * decay
     }
 }

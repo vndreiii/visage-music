@@ -449,6 +449,26 @@ class DefaultPlaybackController(
         }
     }
 
+    override fun moveQueueItem(from: Int, to: Int) {
+        scope.launch {
+            playMutex.withLock {
+                val edit = moveQueueEntry(_queueTracks.value, _queueIndex.value, from, to) ?: return@withLock
+                setQueueLocked(edit.tracks, edit.currentIndex)
+            }
+            schedulePrefetchAfterCurrent()
+        }
+    }
+
+    override fun removeFromQueue(index: Int) {
+        scope.launch {
+            playMutex.withLock {
+                val edit = removeQueueEntry(_queueTracks.value, _queueIndex.value, index) ?: return@withLock
+                setQueueLocked(edit.tracks, edit.currentIndex)
+            }
+            schedulePrefetchAfterCurrent()
+        }
+    }
+
     override fun addToQueue(track: QueueTrack) {
         if (track.videoId.isBlank()) return
         scope.launch {
