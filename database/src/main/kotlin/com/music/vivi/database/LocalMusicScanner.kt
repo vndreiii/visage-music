@@ -216,6 +216,9 @@ class LocalMusicScanner(
         }
     }
 
+    /** Collapses credits from older scans (which split collaborations) to the single tagged artist, and drops artists left with nothing. */
+    fun normalizeArtistCredits() = repo.resetArtistCredits()
+
     /** Drops indexed tracks that are not under any of [configured]; they come from folders the user removed or changed. */
     fun pruneOutside(configured: List<File>): Int {
         val bases = configured.flatMap { f ->
@@ -251,7 +254,9 @@ class LocalMusicScanner(
         val albumId = stableId("album", file.parentFile.canonicalPath, album)
         val trackId = stableId("track", file.absolutePath)
         val existing = repo.trackByPath(file.absolutePath)
-        val credits = (t.artists.ifEmpty { listOf(artist) }).map { stableId("artist", it) to it }
+        // One credit: the artist exactly as tagged. A collaboration ("Ado, Hatsune Miku") stays its own artist
+        // and is not split into, or merged with, the individual artists.
+        val credits = listOf(artistId to artist)
         repo.inTransaction {
             upsertArtist(artistId, artist)
             upsertArtist(albumArtistId, albumArtist)

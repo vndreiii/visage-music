@@ -58,15 +58,12 @@ fun NavController.openArtistByName(name: String) {
     navigate(if (id != null) Routes.artist(id) else Routes.artistInfo(name))
 }
 
-/** Local tracks credited to [name] (split credits, so "A, B" appears on both A's and B's pages). */
+/** Local tracks whose artist tag is [name] (ignoring case and accents). A collaboration is its own artist and is not included. */
 private fun tracksFor(repo: LocalMusicRepository, name: String): List<Local_track> {
-    val byId = LinkedHashMap<String, Local_track>()
     val key = ArtistNames.normalize(name)
-    repo.allArtists().filter { ArtistNames.normalize(it.name) == key }.forEach { a ->
-        (repo.tracksCreditedTo(a.id).ifEmpty { repo.tracksForArtist(a.id) }).forEach { byId.putIfAbsent(it.id, it) }
-    }
-    repo.allTracks().filter { ArtistNames.credited(it.artist_name, name) }.forEach { byId.putIfAbsent(it.id, it) }
-    return byId.values.sortedWith(compareByDescending<Local_track> { it.play_count }.thenBy { it.title.lowercase() })
+    return repo.allTracks()
+        .filter { ArtistNames.normalize(it.artist_name) == key }
+        .sortedWith(compareByDescending<Local_track> { it.play_count }.thenBy { it.title.lowercase() })
 }
 
 /**

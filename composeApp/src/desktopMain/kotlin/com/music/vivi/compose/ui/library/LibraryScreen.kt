@@ -433,7 +433,7 @@ fun LibraryScreen(navController: NavController) {
             collectionTracks = withContext(Dispatchers.IO) {
                 when (open) {
                     is OpenCollection.Album -> localRepo.tracksForAlbum(open.id)
-                    is OpenCollection.Artist -> localRepo.tracksCreditedTo(open.id).ifEmpty { localRepo.tracksForArtist(open.id) }
+                    is OpenCollection.Artist -> localRepo.tracksForArtist(open.id)
                     is OpenCollection.Genre -> localRepo.tracksByGenre(open.name)
                     is OpenCollection.Year -> localRepo.tracksByYear(open.year)
                     is OpenCollection.Composer -> localRepo.tracksByComposer(open.name)

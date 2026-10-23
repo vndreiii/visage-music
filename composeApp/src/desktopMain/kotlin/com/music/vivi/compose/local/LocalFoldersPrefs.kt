@@ -88,8 +88,10 @@ class LocalLibraryBootstrap(
 
     fun maybeAutoScan() {
         scope.launch {
-            runCatching { scanner.pruneOutside(LocalFoldersPrefs.folders(prefs).map { File(it) }) }
-                .onFailure { println("Local index cleanup failed: ${it.message}") }
+            runCatching {
+                scanner.pruneOutside(LocalFoldersPrefs.folders(prefs).map { File(it) })
+                scanner.normalizeArtistCredits()
+            }.onFailure { println("Local index cleanup failed: ${it.message}") }
         }
         if (!prefs.getBoolean(PrefKeys.LocalAutoScanOnStartup, false)) return
         scanNow()
