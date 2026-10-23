@@ -11,6 +11,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntRect
 import androidx.compose.ui.unit.IntSize
@@ -28,6 +29,12 @@ object MainPane {
         private set
 
     fun update(rect: Rect) { if (bounds != rect) bounds = rect }
+
+    /**
+     * True while the floating mini-player is showing on a page other than Home. Toasts then sit in the gap beside
+     * it (left of the pill) rather than above it, matching the Tag Manager's split status bar.
+     */
+    var splitAroundPill by mutableStateOf(false)
 }
 
 /** Records this layout's window bounds as the main pane. Apply once, in AppScaffold. */
@@ -59,6 +66,10 @@ class MainPanePopupPositionProvider(
     private val bottomGapPx: Int = 0,
     private val belowAnchor: Boolean = false,
     private val gapPx: Int = 0,
+    /** Window-pixel width the floating pill is capped at, and its side margin; used to find the gap beside it. */
+    private val pillMaxPx: Int = 0,
+    private val pillMarginPx: Int = 0,
+    private val splitAroundPill: Boolean = false,
 ) : PopupPositionProvider {
     override fun calculatePosition(
         anchorBounds: IntRect,
@@ -66,6 +77,17 @@ class MainPanePopupPositionProvider(
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize,
     ): IntOffset {
+        if (splitAroundPill && pane != null && !belowAnchor && pillMaxPx > 0) {
+            val pillW = minOf(pillMaxPx.toFloat(), pane.width - 2 * pillMarginPx)
+            val gapRight = pane.center.x - pillW / 2f
+            val gapW = gapRight - pane.left
+            if (gapW >= popupContentSize.width + 2 * pillMarginPx) {
+                val x = (pane.left + gapW / 2f - popupContentSize.width / 2f).roundToInt()
+                val y = (pane.bottom - pillMarginPx - popupContentSize.height).roundToInt()
+                    .coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0))
+                return IntOffset(x, y)
+            }
+        }
         val paneCenter = pane?.center?.x ?: anchorBounds.center.x.toFloat()
         val x = (paneCenter - popupContentSize.width / 2f).roundToInt()
             .coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0))
@@ -83,7 +105,13 @@ class MainPanePopupPositionProvider(
 @Composable
 fun rememberToastPositionProvider(bottomGapPx: Int = 0, belowAnchor: Boolean = false, gapPx: Int = 0): PopupPositionProvider {
     val pane = MainPane.bounds
-    return remember(pane, bottomGapPx, belowAnchor, gapPx) {
-        MainPanePopupPositionProvider(pane, bottomGapPx, belowAnchor, gapPx)
+    val split = MainPane.splitAroundPill
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    return remember(pane, bottomGapPx, belowAnchor, gapPx, split, density) {
+        MainPanePopupPositionProvider(
+            pane, bottomGapPx, belowAnchor, gapPx,
+            pillMaxPx = with(density) { 720.dp.roundToPx() }, pillMarginPx = with(density) { 24.dp.roundToPx() },
+            splitAroundPill = split,
+        )
     }
 }

@@ -1,5 +1,6 @@
 package com.music.vivi.compose.navigation
 
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.layout.layout
 import kotlin.math.roundToInt
 import androidx.compose.foundation.background
@@ -225,6 +226,12 @@ fun FrameWindowScope.AppScaffold(
     val miniAtRoot = glassOn && !onNowPlaying && resolveMiniPlayerStyle(prefs) == MiniPlayerStyle.FULL_WIDTH_BAR
     val bandColor = MaterialTheme.colorScheme.background
     val miniStyle = resolveMiniPlayerStyle(prefs)
+    val nowPlayingForSplit by playbackController.nowPlaying.collectAsState()
+    androidx.compose.runtime.SideEffect {
+        com.music.vivi.compose.ui.component.MainPane.splitAroundPill =
+            nowPlayingForSplit != null && !onNowPlaying && !miniAtRoot && current != Routes.HOME &&
+                miniStyle == MiniPlayerStyle.FLOATING_PILL
+    }
     var miniBarHeightPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val miniBarInset = if (miniAtRoot) with(androidx.compose.ui.platform.LocalDensity.current) { miniBarHeightPx.toDp() } else 0.dp
     com.music.vivi.compose.ui.glass.ProvideGlass(glassState, scroll = backdropScroll) {
