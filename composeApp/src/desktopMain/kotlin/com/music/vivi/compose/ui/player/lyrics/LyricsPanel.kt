@@ -258,6 +258,8 @@ fun LyricsPanel(
                 clock = clock,
                 accent = accent,
                 onSeek = { controller.seekTo(it) },
+                // The delay pill sits at the bottom centre (16dp + ~48dp tall); Resume goes above it.
+                bottomInset = if (parsed.isSynced) 64.dp else 0.dp,
             )
         }
 
