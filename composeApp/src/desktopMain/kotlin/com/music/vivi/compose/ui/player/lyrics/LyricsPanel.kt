@@ -181,11 +181,11 @@ fun LyricsPanel(
         parsed = ParsedLyrics.Empty
         val cached = withContext(Dispatchers.IO) { runCatching { cache.get(track.videoId) }.getOrNull() }
         songDelayMs = cached?.offsetMs ?: 0
+        // Order: a .lrc next to the song, then tags embedded in the file, then the cache, then online providers.
         val localLyrics = withContext(Dispatchers.IO) {
-            val file = track.lyricsPath?.let { java.io.File(it) }
-                ?: track.localPath?.let { java.io.File(it).let { audio -> java.io.File(audio.parentFile, audio.nameWithoutExtension + ".lrc") } }
-            runCatching { file?.takeIf { it.isFile }?.readText() }.getOrNull()?.takeIf { it.isNotBlank() }
-                ?: track.embeddedLyrics?.takeIf { it.isNotBlank() }
+            val lrc = track.localPath?.let { LocalLrc.find(java.io.File(it), track.lyricsPath, track.title) }
+                ?: track.lyricsPath?.let { java.io.File(it) }?.takeIf { it.isFile }
+            lrc?.let(LocalLrc::read) ?: track.embeddedLyrics?.takeIf { it.isNotBlank() }
         }
         var fetched: FetchedLyrics? = null
         val cachedText = cached?.lyrics
