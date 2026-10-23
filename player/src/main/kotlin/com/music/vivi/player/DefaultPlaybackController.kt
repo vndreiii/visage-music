@@ -250,6 +250,14 @@ class DefaultPlaybackController(
             while (true) {
                 delay(350)
                 runCatching {
+                    if (_state.value == PlaybackState.Loading &&
+                        System.currentTimeMillis() - trackStartedAtMs > 10_000L
+                    ) {
+                        StallWatchdog.dump(
+                            "track change stuck in Loading for ${System.currentTimeMillis() - trackStartedAtMs}ms " +
+                                "(gen=${loadGeneration.get()}, track=${_nowPlaying.value?.videoId})",
+                        )
+                    }
                     val wantsPlaying = _state.value == PlaybackState.Playing &&
                         !pauseRequested.get() &&
                         volumeFadeJob?.isActive != true

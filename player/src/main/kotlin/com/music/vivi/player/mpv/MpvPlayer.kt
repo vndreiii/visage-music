@@ -5,6 +5,10 @@ import kotlinx.coroutines.withTimeout
 import com.sun.jna.Pointer
 import com.sun.jna.StringArray
 import com.sun.jna.ptr.DoubleByReference
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.concurrent.thread
@@ -27,6 +31,40 @@ class MpvPlayer(
     @Volatile private var ready = CompletableDeferred<Unit>()
     private val eventThread: Thread
 
+    /**
+     * Every libmpv command is synchronous: it waits for mpv's core thread, which can be wedged for a
+     * long time (stalled CDN read, audio device stuck). Callers (often the UI thread) must never wait
+     * on that, so commands run here, in order, and callers either fire-and-forget or wait with a bound.
+     */
+    private val commands = Executors.newSingleThreadExecutor { r ->
+        Thread(r, "mpv-cmd-${System.identityHashCode(this)}").apply { isDaemon = true }
+    }
+    @Volatile private var lastPaused = false
+
+    private fun fire(what: String, block: () -> Unit) {
+        runCatching {
+            commands.execute {
+                try {
+                    block()
+                } catch (t: Throwable) {
+                    System.err.println("mpv $what failed: ${t.javaClass.simpleName}: ${t.message}")
+                }
+            }
+        }
+    }
+
+    private fun <T> await(what: String, timeoutMs: Long, block: () -> T): T {
+        val f = commands.submit<T> { block() }
+        try {
+            return f.get(timeoutMs, TimeUnit.MILLISECONDS)
+        } catch (e: TimeoutException) {
+            println("[play-trace ${java.time.LocalTime.now()}] mpv $what timed out after ${timeoutMs}ms — core is not responding")
+            throw IllegalStateException("mpv $what timed out", e)
+        } catch (e: ExecutionException) {
+            throw e.cause ?: e
+        }
+    }
+
     init {
         check(lib.mpv_set_option_string(handle, "vid", "no") == 0) { "set vid=no failed" }
         check(lib.mpv_set_option_string(handle, "terminal", "no") == 0)
@@ -35,6 +73,8 @@ class MpvPlayer(
         runCatching { lib.mpv_set_option_string(handle, "ytdl", "no") }
         runCatching { lib.mpv_set_option_string(handle, "demuxer-max-bytes", "64MiB") }
         runCatching { lib.mpv_set_option_string(handle, "cache", "yes") }
+        // Default is 60s; a stalled CDN connection would otherwise wedge the core (and every command) that long.
+        runCatching { lib.mpv_set_option_string(handle, "network-timeout", "15") }
         check(lib.mpv_initialize(handle) == 0) {
             "mpv_initialize failed: ${lib.mpv_error_string(-1)}"
         }
@@ -94,6 +134,10 @@ class MpvPlayer(
         ready.cancel()
         ready = CompletableDeferred()
         lastEndError.set(null)
+        await("load", 10_000) { loadBlocking(url, httpHeaders) }
+    }
+
+    private fun loadBlocking(url: String, httpHeaders: Map<String, String>) {
         if (httpHeaders.isNotEmpty()) {
             val ua = httpHeaders.entries.firstOrNull { it.key.equals("User-Agent", ignoreCase = true) }?.value
             if (ua != null) lib.mpv_set_property_string(handle, "user-agent", ua)
@@ -129,7 +173,7 @@ class MpvPlayer(
     }
 
     override fun play() {
-        command("set", "pause", "no")
+        fire("play") { command("set", "pause", "no") }
         onState(State.Playing)
     }
 
@@ -139,12 +183,12 @@ class MpvPlayer(
 
     override fun pause() {
         println("[play-trace ${java.time.LocalTime.now()}] mpv.pause() from ${who()}")
-        command("set", "pause", "yes")
+        fire("pause") { command("set", "pause", "yes") }
         onState(State.Paused)
     }
 
     override fun stop() {
-        command("stop")
+        fire("stop") { command("stop") }
         onState(State.Idle)
     }
 
@@ -152,24 +196,31 @@ class MpvPlayer(
     override fun halt() {
         println("[play-trace ${java.time.LocalTime.now()}] mpv.halt() from ${who()}")
         ready.cancel()
-        runCatching { lib.mpv_command(handle, StringArray(arrayOf("stop"))) }
-        runCatching { lib.mpv_set_property_string(handle, "pause", "yes") }
+        fire("halt") {
+            runCatching { lib.mpv_command(handle, StringArray(arrayOf("stop"))) }
+            runCatching { lib.mpv_set_property_string(handle, "pause", "yes") }
+        }
         // Keep user volume — do not reset
     }
 
     /** mpv volume is 0–100 (can go higher; we clamp in the controller). */
     override fun setVolume(percent: Int) {
         val v = percent.coerceIn(0, 150)
-        runCatching { lib.mpv_set_property_string(handle, "volume", v.toString()) }
+        fire("volume") { lib.mpv_set_property_string(handle, "volume", v.toString()) }
     }
 
     override fun seek(positionSec: Double) {
-        command("seek", positionSec.toString(), "absolute")
+        fire("seek") { command("seek", positionSec.toString(), "absolute") }
     }
 
-    override fun isPaused(): Boolean {
-        val flag = com.sun.jna.ptr.IntByReference()
-        return lib.mpv_get_property(handle, "pause", MpvLib.MPV_FORMAT_FLAG, flag) == 0 && flag.value != 0
+    override fun isPaused(): Boolean = try {
+        await("isPaused", 500) {
+            val flag = com.sun.jna.ptr.IntByReference()
+            (lib.mpv_get_property(handle, "pause", MpvLib.MPV_FORMAT_FLAG, flag) == 0 && flag.value != 0)
+                .also { lastPaused = it }
+        }
+    } catch (_: IllegalStateException) {
+        lastPaused
     }
 
     fun lastErrorMessage(): String? = lastEndError.get()
@@ -200,6 +251,8 @@ class MpvPlayer(
     override fun close() {
         running.set(false)
         ready.cancel()
+        commands.shutdown()
+        runCatching { commands.awaitTermination(2, TimeUnit.SECONDS) }
         // The poller must finish using the native handle before it is destroyed.
         if (Thread.currentThread() != eventThread) eventThread.join()
         runCatching { lib.mpv_terminate_destroy(handle) }
