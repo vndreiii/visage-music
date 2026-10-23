@@ -500,7 +500,9 @@ fun LibraryScreen(navController: NavController) {
             query = query,
             onQuery = { query = it; openCollection = null },
             placeholder = "Search your library — songs, artists, albums",
-            modifier = Modifier.padding(start = 8.dp, end = 12.dp, bottom = 12.dp).widthIn(max = 460.dp),
+            height = 48.dp,
+            // Same left edge as the first tab chip (4dp row inset + 20dp chip gutter), right edge with the Refresh label.
+            modifier = Modifier.padding(start = 24.dp, end = 24.dp, bottom = 12.dp),
         )
         if (refreshing || scanProgress.running) {
             LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))

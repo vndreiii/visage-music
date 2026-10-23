@@ -690,11 +690,12 @@ internal fun SearchField(
     onQuery: (String) -> Unit,
     modifier: Modifier = Modifier,
     placeholder: String = "Search your library",
+    height: androidx.compose.ui.unit.Dp = 40.dp,
 ) {
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        modifier = modifier.fillMaxWidth().height(40.dp),
+        modifier = modifier.fillMaxWidth().height(height),
     ) {
         Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Search, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
