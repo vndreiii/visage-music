@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -387,6 +388,8 @@ fun LibraryScreen(navController: NavController) {
     val downloadStatus by downloads.status.collectAsState()
     
     var tab by rememberSaveable { mutableStateOf(LibraryTab.Home) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val words = remember(query) { searchWords(query) }
     var openCollection by remember { mutableStateOf<OpenCollection?>(null) }
     var collectionTracks by remember { mutableStateOf(emptyList<Local_track>()) }
     var collectionLoading by remember { mutableStateOf(false) }
@@ -493,6 +496,12 @@ fun LibraryScreen(navController: NavController) {
                 style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Text,
             )
         }
+        com.music.vivi.compose.ui.library.sidebar.SearchField(
+            query = query,
+            onQuery = { query = it; openCollection = null },
+            placeholder = "Search your library — songs, artists, albums",
+            modifier = Modifier.padding(start = 8.dp, end = 12.dp, bottom = 12.dp).widthIn(max = 460.dp),
+        )
         if (refreshing || scanProgress.running) {
             LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
         }
@@ -536,8 +545,11 @@ fun LibraryScreen(navController: NavController) {
             transitionSpec = { fadeIn(com.music.vivi.compose.ui.motion.VisageMotion.fadeInSpec()) togetherWith fadeOut(com.music.vivi.compose.ui.motion.VisageMotion.fadeOutSpec()) },
             label = "libraryTab",
             modifier = Modifier.weight(1f),
-        ) { selectedTab ->
-        tabStates.SaveableStateProvider(selectedTab) {
+        ) { shownTab ->
+        // Typing on a tab that is not itself a list of songs searches your local files.
+        val searching = words.isNotEmpty() && shownTab in setOf(LibraryTab.Home, LibraryTab.Liked, LibraryTab.Offline, LibraryTab.Recent)
+        val selectedTab = if (searching) LibraryTab.Local else shownTab
+        tabStates.SaveableStateProvider(shownTab) {
         when {
             loading -> PageLoadingState("Opening your library")
             selectedTab == LibraryTab.Home -> LibraryHomeFeed(
@@ -585,30 +597,32 @@ fun LibraryScreen(navController: NavController) {
                 },
             )
             selectedTab == LibraryTab.Albums -> LocalAlbumsGrid(
-                albums = if (local.albums.isNotEmpty()) local.albums else emptyList(),
-                ytAlbums = ytData.albums,
+                albums = local.albums.filter { matchesAll(words, it.title, it.artist_name) },
+                ytAlbums = ytData.albums.filter { matchesAll(words, it.title, it.artists?.joinToString(" ") { a -> a.name }.orEmpty()) },
                 onLocalAlbum = ::openAlbum,
                 onYtAlbum = { onYtItem(it, emptyList()) },
             )
             selectedTab == LibraryTab.Artists -> LocalArtistsGrid(
-                artists = local.artists,
-                ytArtists = ytData.artists,
+                artists = local.artists.filter { matchesAll(words, it.name) },
+                ytArtists = ytData.artists.filter { matchesAll(words, it.title) },
                 onLocalArtist = ::openArtist,
                 onYtArtist = { onYtItem(it, emptyList()) },
             )
             selectedTab == LibraryTab.Playlists -> PlaylistsGrid(
-                playlists = ytData.playlists,
+                playlists = ytData.playlists.filter { matchesAll(words, it.title) },
                 onItem = { onYtItem(it, emptyList()) },
             )
             selectedTab == LibraryTab.Songs -> LikedList(
-                songs = ytData.songs,
+                songs = ytData.songs.filter { matchesAll(words, it.title, it.artists.joinToString(" ") { a -> a.name }, it.album?.name.orEmpty()) },
                 playingId = playingId,
                 isPlaying = isPlaying,
                 onItemClick = onYtItem,
                 emptyMessage = "No songs in library yet",
             )
             selectedTab == LibraryTab.Local -> LocalTrackList(
-                tracks = local.tracks,
+                tracks = if (words.isEmpty()) local.tracks else local.tracks.filter {
+                    matchesAll(words, it.title, it.artist_name, it.album_title.orEmpty(), it.genre.orEmpty())
+                },
                 playingId = playingId,
                 isPlaying = isPlaying,
                 onPlay = playLocalTracks,
@@ -625,6 +639,17 @@ fun LibraryScreen(navController: NavController) {
     }
     }
     }
+}
+
+/** Lower-cased words of a search query (letters and digits only). */
+private fun searchWords(query: String): List<String> =
+    query.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotBlank() }
+
+/** True when every query word appears in at least one of [fields]; an empty query matches everything. */
+private fun matchesAll(words: List<String>, vararg fields: String): Boolean {
+    if (words.isEmpty()) return true
+    val hay = fields.joinToString(" ").lowercase()
+    return words.all { it in hay }
 }
 
 @Composable
