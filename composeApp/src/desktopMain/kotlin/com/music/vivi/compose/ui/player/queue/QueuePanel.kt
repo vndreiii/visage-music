@@ -49,6 +49,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
@@ -446,7 +447,8 @@ private fun QueuePanelBody(
                     itemsIndexed(upcoming.take(shown), key = { i, t -> "${t.videoId}-$i" }) { i, track ->
                         val animate = remember { revealing }
                         val base = queueIndex + 1
-                        RevealRow(animate) {
+                        // The lifted row must sit above its neighbours: zIndex has to be on the lazy item's own root.
+                        RevealRow(animate, Modifier.zIndex(if (drag.from == i) 1f else 0f)) {
                             UpcomingRow(
                                 track = track,
                                 position = i,
@@ -703,13 +705,13 @@ private const val SkeletonCount = 6
 
 /** Fades + lifts a freshly spawned row into place; rows that were already there skip the motion. */
 @Composable
-private fun RevealRow(animate: Boolean, content: @Composable () -> Unit) {
+private fun RevealRow(animate: Boolean, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val progress = remember { Animatable(if (animate) 0f else 1f) }
     LaunchedEffect(Unit) {
         if (animate) progress.animateTo(1f, VisageMotion.settle())
     }
     Box(
-        Modifier.graphicsLayer {
+        modifier.graphicsLayer {
             alpha = progress.value
             translationY = (1f - progress.value) * 14.dp.toPx()
         },
@@ -752,9 +754,14 @@ internal class QueueDragState(private val list: androidx.compose.foundation.lazy
     var from by mutableIntStateOf(-1)
     var to by mutableIntStateOf(-1)
     var dy by mutableFloatStateOf(0f)
+    /** Height of the lifted row; the rows it passes slide by this much so they make room live. */
+    var itemHeight by mutableFloatStateOf(0f)
     val active get() = from >= 0
 
-    fun start(index: Int) { from = index; to = index; dy = 0f }
+    fun start(index: Int) {
+        from = index; to = index; dy = 0f
+        itemHeight = list.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }?.size?.toFloat() ?: 0f
+    }
 
     fun move(delta: Float) {
         if (!active) return
@@ -799,8 +806,14 @@ private fun UpcomingRow(
     var menu by remember { mutableStateOf(false) }
     val dragging = drag.from == position
     val accent = MaterialTheme.colorScheme.primary
-    val dropAbove = drag.active && !dragging && drag.to == position && drag.to < drag.from
-    val dropBelow = drag.active && !dragging && drag.to == position && drag.to > drag.from
+    // Rows between the lifted row's start and its current slot slide out of the way as it moves.
+    val shiftTarget = when {
+        !drag.active || dragging -> 0f
+        drag.from < drag.to && position > drag.from && position <= drag.to -> -drag.itemHeight
+        drag.from > drag.to && position >= drag.to && position < drag.from -> drag.itemHeight
+        else -> 0f
+    }
+    val shift by animateFloatAsState(shiftTarget, VisageMotion.spatialFast(), label = "queueShift")
     val pos by rememberUpdatedState(position)
     val onDropNow by rememberUpdatedState(onDrop)
 
@@ -827,14 +840,9 @@ private fun UpcomingRow(
                     shadowElevation = 12.dp.toPx()
                     shape = RoundedCornerShape(12.dp)
                     clip = false
-                }
+                } else translationY = shift
             }
             .then(if (dragging) Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp)) else Modifier)
-            .drawWithContent {
-                drawContent()
-                val y = if (dropAbove) 0f else size.height
-                if (dropAbove || dropBelow) drawRoundRect(accent, androidx.compose.ui.geometry.Offset(8.dp.toPx(), y - 1.5.dp.toPx()), androidx.compose.ui.geometry.Size(size.width - 16.dp.toPx(), 3.dp.toPx()), androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
-            }
             .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true }
             .reorder(immediate = false),
     ) {
