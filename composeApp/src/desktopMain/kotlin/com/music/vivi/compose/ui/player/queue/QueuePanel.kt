@@ -777,7 +777,15 @@ internal class QueueDragState(private val list: androidx.compose.foundation.lazy
     var settling by mutableStateOf(false)
 
     /** How far the lifted row is drawn from its layout slot. The list scrolling under it is part of this. */
-    val dy: Float get() = settleDy ?: (pointerY - downY + scrolled)
+    val dy: Float get() = settleDy ?: run {
+        val raw = pointerY - downY + scrolled
+        // The pointer may leave the list while auto-scrolling; the row stays inside it instead of clipping away.
+        val info = list.layoutInfo
+        val me = info.visibleItemsInfo.firstOrNull { it.index == from } ?: return@run raw
+        val minTop = info.viewportStartOffset.toFloat()
+        val maxTop = (info.viewportEndOffset - me.size).toFloat().coerceAtLeast(minTop)
+        (me.offset + raw).coerceIn(minTop, maxTop) - me.offset
+    }
 
     fun begin(index: Int, offset: Int, size: Int, y: Float) {
         from = index; to = index; itemHeight = size.toFloat()
