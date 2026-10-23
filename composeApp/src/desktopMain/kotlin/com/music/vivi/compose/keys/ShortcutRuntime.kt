@@ -250,6 +250,14 @@ internal class ShortcutRunner(
 
     private fun leave(): Boolean {
         if (ShortcutUi.cheatSheetVisible) { ShortcutUi.cheatSheetVisible = false; return true }
+        // Tag Manager: Escape drops the selection first; only a second press does the usual thing.
+        if (route == Routes.TAG_MANAGER) {
+            val tags = com.music.vivi.compose.ui.tags.TagManagerHost.state
+            if (tags != null && tags.selection.ids.isNotEmpty()) {
+                tags.select(com.music.vivi.compose.ui.tags.TagSelection(emptySet(), null))
+                return true
+            }
+        }
         if (route == Routes.NOW_PLAYING_FULLSCREEN) {
             WindowFullscreen.exit(window)
             nav.popBackStack()
