@@ -819,7 +819,18 @@ class DefaultPlaybackController(
             mpris?.updatePlaybackState(PlaybackState.Loading)
         }
         try {
-            val queued = _queueTracks.value.firstOrNull { it.videoId == videoId }
+            val inQueue = _queueTracks.value.firstOrNull { it.videoId == videoId }
+            // A local/offline song queued by id only (e.g. from a "Jump back in" shelf) has no path yet: look the
+            // file up instead of asking YouTube about an id that is not a video.
+            val queued = if (inQueue?.localPath.isNullOrBlank() && (videoId.startsWith("local:") || videoId.startsWith("offline:"))) {
+                val file = withContext(Dispatchers.IO) { fileTrackResolver(videoId) }
+                if (file?.localPath.isNullOrBlank()) {
+                    failPlayback("This file is no longer in your library. Rescan its folder or download it again.")
+                    return
+                }
+                _queueTracks.value = _queueTracks.value.map { if (it.videoId == videoId) file!! else it }
+                file
+            } else inQueue
             val localPath = queued?.localPath
             if (!localPath.isNullOrBlank()) {
                 loadAndPlayLocal(

@@ -33,6 +33,7 @@ class LocalPlaybackTest {
     private suspend fun fixture(
         crossfade: Boolean = false,
         filler: suspend (Set<String>) -> List<QueueTrack> = { emptyList() },
+        resolver: suspend (String) -> QueueTrack? = { null },
         block: suspend (DefaultPlaybackController, List<FakeEngine>, List<QueueTrack>) -> Unit) {
         val directory = Files.createTempDirectory("vivi-playback-test").toFile()
         val tracks = (0..2).map { i ->
@@ -46,6 +47,7 @@ class LocalPlaybackTest {
             enableMpris = false,
             engineFactory = { state, _, _ -> FakeEngine(state).also { engines += it } },
             fileQueueFiller = filler,
+            fileTrackResolver = resolver,
         )
         try { block(controller, engines, tracks) } finally { controller.release(); directory.deleteRecursively() }
     }
@@ -97,6 +99,17 @@ class LocalPlaybackTest {
             controller.next()
             eventually { controller.queueIds.value.size == tracks.size + extra.size && controller.queueIndex.value == tracks.size }
             assertEquals(tracks.map { it.videoId }.toSet(), excluded)
+        }
+    }
+
+    @Test fun `a local song queued by id alone is resolved to its file, not streamed`() = runBlocking {
+        lateinit var full: QueueTrack
+        fixture(resolver = { id -> full.takeIf { it.videoId == id } }) { controller, engines, tracks ->
+            full = tracks[0]
+            controller.playQueue(listOf(QueueTrack("local:0", title = "Track 0")), 0)
+            eventually { controller.state.value == PlaybackState.Playing }
+            assertEquals(tracks[0].localPath, engines[0].loaded)
+            assertEquals(tracks[0].localPath, controller.queueTracks.value[0].localPath)
         }
     }
 
