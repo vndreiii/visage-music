@@ -148,6 +148,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.zIndex
 import com.music.vivi.compose.ui.dnd.trackDropTarget
 import com.music.vivi.compose.ui.dnd.TrackDrag
@@ -866,7 +867,7 @@ private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayback, ac
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = bg * (if (isCurrent && !hovered) 0.6f else 1f)))
-                .background((if (TrackDrag.hoverRejected && TrackDrag.hoverKey == e.key) MaterialTheme.colorScheme.error.copy(alpha = 0.25f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.28f * dropTint.coerceIn(0f, 1f))))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.28f * dropTint.coerceIn(0f, 1f)))
                 .hoverable(interaction)
                 .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true }
                 .clickable { actions.open(e) }
@@ -922,7 +923,7 @@ private fun LibraryGridCard(r: SidebarRow.Item, playback: EntryPlayback, actions
         Column(
             Modifier
                 .clip(RoundedCornerShape(14.dp))
-                .background(if (TrackDrag.hoverRejected && TrackDrag.hoverKey == e.key) MaterialTheme.colorScheme.error.copy(alpha = 0.22f) else primary.copy(alpha = 0.22f * dropHover.coerceIn(0f, 1f)))
+                .background(primary.copy(alpha = 0.22f * dropHover.coerceIn(0f, 1f)))
                 .hoverable(interaction)
                 .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true }
                 .clickable { actions.open(e) }
@@ -1070,7 +1071,17 @@ private fun rememberEntryDrop(e: LibraryEntry): Pair<Modifier, Float> {
         if (TrackDrag.hoverKey == e.key && !TrackDrag.hoverRejected) 1f else 0f,
         androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 420f), label = "dropHover",
     )
-    return mod to hover
+    // A refusing target is covered in red (drawn over the cover art, not behind it).
+    val refused by animateFloatAsState(
+        if (TrackDrag.hoverKey == e.key && TrackDrag.hoverRejected) 1f else 0f,
+        VisageMotion.effectsDefault(), label = "dropRefused",
+    )
+    val red = MaterialTheme.colorScheme.error
+    val overlay = Modifier.drawWithContent {
+        drawContent()
+        if (refused > 0.001f) drawRoundRect(red.copy(alpha = 0.62f * refused), cornerRadius = CornerRadius(14.dp.toPx()))
+    }
+    return mod.then(overlay) to hover
 }
 
 /** A track that is a local file (or a download of one) can only go into your own playlists, not YouTube Music ones. */

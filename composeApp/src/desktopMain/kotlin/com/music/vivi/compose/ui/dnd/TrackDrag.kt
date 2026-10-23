@@ -185,7 +185,7 @@ fun TrackDragOverlay(modifier: Modifier = Modifier) {
                         shape = RoundedCornerShape(14.dp)
                         clip = false
                     }
-                    .background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(14.dp)),
+                    .background(if (TrackDrag.hoverRejected) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(14.dp)),
             ) {
                 Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(44.dp).clip(RoundedCornerShape(8.dp))) {
