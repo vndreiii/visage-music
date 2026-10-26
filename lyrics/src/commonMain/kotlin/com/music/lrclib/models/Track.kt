@@ -24,6 +24,23 @@ internal fun List<Track>.bestMatchingFor(duration: Int): Track? {
         ?.takeIf { abs(it.duration.toInt() - duration) <= 2 }
 }
 
+/**
+ * Keeps only candidates that are plausibly the requested song. Duration alone cannot tell two
+ * songs with the same title apart (a 203s cover or namesake sits inside the ±5s window of a 205s
+ * track), so names must agree before duration picks between versions.
+ */
+internal fun List<Track>.plausibleFor(trackName: String, artistName: String): List<Track> {
+    val title = trackName.trim().lowercase()
+    val artist = artistName.trim().lowercase()
+    return filter { track ->
+        val titleOk = calculateSimilarity(title, track.trackName.trim().lowercase()) >= 0.6
+        val artistOk = artist.isEmpty() || track.artistName.lowercase()
+            .split(Regex("""\s*(?:,|&|\band\b|\bx\b|\bfeat\.?|\bft\.?|\bwith\b)\s*"""))
+            .any { calculateSimilarity(artist, it.trim()) >= 0.6 }
+        titleOk && artistOk
+    }
+}
+
 // Relaxed matching with ±5 seconds tolerance
 internal fun List<Track>.bestMatchingForRelaxed(duration: Int): Track? {
     if (isEmpty()) return null
@@ -58,8 +75,12 @@ internal fun List<Track>.bestMatchingFor(
         return firstOrNull { it.syncedLyrics != null } ?: firstOrNull()
     }
 
-    // Use relaxed matching for duration-based search
-    return bestMatchingForRelaxed(duration)
+    // Use relaxed matching for duration-based search, among tracks that are really this song
+    return if (trackName != null && artistName != null) {
+        plausibleFor(trackName, artistName).bestMatchingForRelaxed(duration)
+    } else {
+        bestMatchingForRelaxed(duration)
+    }
 }
 
 private fun List<Track>.findBestMatch(trackName: String, artistName: String): Track? {
