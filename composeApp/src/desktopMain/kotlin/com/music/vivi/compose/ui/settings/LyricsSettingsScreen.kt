@@ -73,6 +73,9 @@ import com.music.vivi.compose.ui.player.lyrics.LyricsFont
 import com.music.vivi.compose.ui.player.lyrics.LyricsGapStyle
 import com.music.vivi.compose.ui.player.lyrics.LyricsList
 import com.music.vivi.compose.ui.player.lyrics.LyricsPreset
+import com.music.vivi.compose.ui.player.lyrics.LyricsScene
+import com.music.vivi.compose.ui.player.lyrics.Lyrics3DScene
+import com.music.vivi.compose.ui.player.lyrics.LyricsCutsScene
 import com.music.vivi.compose.ui.player.lyrics.LyricsTextCase
 import com.music.vivi.compose.ui.player.lyrics.LyricsTextStyle
 import com.music.vivi.compose.ui.player.lyrics.LyricsVisibility
@@ -222,6 +225,30 @@ fun LyricsSettingsScreen(navController: NavController) {
                     LiveSlider("Sync offset", live.syncOffsetMs.toFloat(), -1500f..1500f, 59, { "${it.toInt()} ms" }, { live = live.copy(syncOffsetMs = it.toInt()) }) { commit(live.copy(syncOffsetMs = it.toInt())) }
                 }
 
+                SettingsSection("Scenes & Cuts") {
+                    ChipChoiceRow(Icons.Outlined.AutoAwesome, "Scene mode", LyricsScene.entries.map { it to it.label }, live.scene) {
+                        commit(live.copy(scene = it))
+                    }
+                    if (live.scene != LyricsScene.NONE) {
+                        if (live.scene == LyricsScene.ROW) {
+                            SettingsDivider()
+                            LiveSlider("Close-up fade", live.sceneDissolve, 0.55f..0.95f, 16, { "${(it * 100).toInt()}%" }, { live = live.copy(sceneDissolve = it) }) {
+                                commit(live.copy(sceneDissolve = it))
+                            }
+                        }
+                        SettingsDivider()
+                        LiveSlider("Inertial overshoot", live.bounceAmp, 0f..2.5f, 25, { if (it <= 0f) "Off" else "${(it * 100).toInt()}%" }, { live = live.copy(bounceAmp = it) }) {
+                            commit(live.copy(bounceAmp = it))
+                        }
+                        LiveSlider("Bounce frequency", live.bounceFreq, 1.0f..4.0f, 15, { "${((it * 10).toInt()) / 10f} Hz" }, { live = live.copy(bounceFreq = it) }) {
+                            commit(live.copy(bounceFreq = it))
+                        }
+                        LiveSlider("Bounce decay (damping)", live.bounceDecay, 1.5f..8.0f, 13, { "${((it * 10).toInt()) / 10f}" }, { live = live.copy(bounceDecay = it) }) {
+                            commit(live.copy(bounceDecay = it))
+                        }
+                    }
+                }
+
                 SettingsSection("Instrumental break") {
                     ChipChoiceRow(Icons.Outlined.GraphicEq, "Indicator", LyricsGapStyle.entries.map { it to it.label }, live.gapStyle) {
                         commit(live.copy(gapStyle = it))
@@ -277,7 +304,17 @@ private fun LyricsPreview(cfg: LyricsConfig, modifier: Modifier = Modifier) {
             playerBackgroundStyle = prefs.enumPref(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT),
             corner = 24,
         )
-        LyricsList(timeline = timeline, cfg = cfg, clock = clock, accent = accent, onSeek = null, sizeScale = 0.62f)
+        when {
+            cfg.scene == LyricsScene.ROW && timeline.isSynced -> {
+                Lyrics3DScene(timeline = timeline, cfg = cfg, clock = clock, accent = accent, sizeScale = 0.62f)
+            }
+            cfg.scene == LyricsScene.CUTS -> {
+                LyricsCutsScene(timeline = timeline, cfg = cfg, clock = clock, accent = accent, palette = LocalArtworkPalette.current, sizeScale = 0.62f)
+            }
+            else -> {
+                LyricsList(timeline = timeline, cfg = cfg, clock = clock, accent = accent, onSeek = null, sizeScale = 0.62f)
+            }
+        }
     }
 }
 

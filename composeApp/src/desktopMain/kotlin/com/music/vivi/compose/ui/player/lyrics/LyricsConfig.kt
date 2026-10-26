@@ -20,7 +20,6 @@ enum class LyricsTextStyle(val label: String) {
 /** Motion personality of the active line / sung words. */
 enum class LyricsAnimation(val label: String) {
     APPLE("Apple"),
-    KARAOKE("Karaoke"),
     WAVE("Wave"),
     FADE("Fade"),
     SLIDE("Slide"),
@@ -41,6 +40,16 @@ enum class LyricsBackgroundMode(val label: String) {
     TINTED_SCRIM("Tinted scrim"),
     ANIMATED_GRADIENT("Animated gradient"),
     FOLLOW_PLAYER("Player background"),
+}
+
+/**
+ * Full-screen 3D scene modes. When active, the [Lyrics3DScene] renderer replaces the scrolling
+ * list: words exist in projected 3D space and a moving camera carries the viewer through them.
+ */
+enum class LyricsScene(val label: String) {
+    NONE("List"),
+    ROW("3D"),
+    CUTS("Cuts"),
 }
 
 enum class LyricsGapStyle(val label: String) {
@@ -131,7 +140,6 @@ data class AnimationSpec(
     companion object {
         fun of(a: LyricsAnimation): AnimationSpec = when (a) {
             LyricsAnimation.APPLE -> AnimationSpec(1.0f, 0.86f, 0.78f, 320f, SweepMode.SWEEP, 0.45f, 0f, 0f, 0f, 1f, 0.8f)
-            LyricsAnimation.KARAOKE -> AnimationSpec(1.04f, 0.94f, 0.82f, 420f, SweepMode.SWEEP, 0.12f, 0.05f, 0f, 0f, 0.5f, 1.3f)
             LyricsAnimation.WAVE -> AnimationSpec(1.02f, 0.92f, 0.75f, 380f, SweepMode.SWEEP, 0.3f, 0.24f, 0.04f, 0f, 0.6f, 0.9f)
             LyricsAnimation.FADE -> AnimationSpec(1.0f, 0.97f, 1.0f, 220f, SweepMode.FADE, 0f, 0f, 0f, 0f, 0.6f, 0.6f)
             LyricsAnimation.SLIDE -> AnimationSpec(1.0f, 0.95f, 0.9f, 300f, SweepMode.SWEEP, 0.3f, 0f, 0f, 0.55f, 0.5f, 0.7f)
@@ -174,6 +182,11 @@ data class LyricsConfig(
     val gapStyle: LyricsGapStyle = LyricsGapStyle.FILL_DOTS,
     val background: LyricsBackgroundMode = LyricsBackgroundMode.NONE,
     val backgroundIntensity: Float = 0.6f,
+    val scene: LyricsScene = LyricsScene.NONE,
+    val sceneDissolve: Float = 0.82f,
+    val bounceAmp: Float = 0.48f,
+    val bounceFreq: Float = 1.0f,
+    val bounceDecay: Float = 7.5f,
 ) {
     val spec: AnimationSpec get() = AnimationSpec.of(animation)
 
@@ -218,6 +231,14 @@ fun DesktopPrefs.lyricsConfig(): LyricsConfig {
         gapStyle = enumOr(PrefKeys.LyricsGapStyle, d.gapStyle),
         background = enumOr(PrefKeys.LyricsBackground, d.background),
         backgroundIntensity = getFloat(PrefKeys.LyricsBackgroundIntensity, d.backgroundIntensity).coerceIn(0f, 1f),
+        scene = when (val s = getString(PrefKeys.LyricsScene, d.scene.name)) {
+            "BOX", "THREE_D_BOX" -> LyricsScene.CUTS
+            else -> runCatching { LyricsScene.valueOf(s) }.getOrDefault(d.scene)
+        },
+        sceneDissolve = getFloat(PrefKeys.LyricsSceneDissolve, d.sceneDissolve).coerceIn(0.55f, 0.95f),
+        bounceAmp = getFloat(PrefKeys.LyricsBounceAmp, d.bounceAmp).coerceIn(0f, 3f),
+        bounceFreq = getFloat(PrefKeys.LyricsBounceFreq, d.bounceFreq).coerceIn(0.5f, 5f),
+        bounceDecay = getFloat(PrefKeys.LyricsBounceDecay, d.bounceDecay).coerceIn(1f, 10f),
     )
 }
 
@@ -248,15 +269,19 @@ fun DesktopPrefs.saveLyricsConfig(c: LyricsConfig) {
     setString(PrefKeys.LyricsGapStyle, c.gapStyle.name)
     setString(PrefKeys.LyricsBackground, c.background.name)
     setFloat(PrefKeys.LyricsBackgroundIntensity, c.backgroundIntensity)
+    setString(PrefKeys.LyricsScene, c.scene.name)
+    setFloat(PrefKeys.LyricsSceneDissolve, c.sceneDissolve)
+    setFloat(PrefKeys.LyricsBounceAmp, c.bounceAmp)
+    setFloat(PrefKeys.LyricsBounceFreq, c.bounceFreq)
+    setFloat(PrefKeys.LyricsBounceDecay, c.bounceDecay)
 }
 
 /** Quick picks: whole looks that overwrite the style knobs (provider/alignment/offset are kept). */
 enum class LyricsPreset(val label: String) {
     APPLE_MUSIC("Apple Music"),
-    KARAOKE("Karaoke"),
-    NEON("Neon outline"),
-    CINEMA("Cinema"),
     MINIMAL("Minimal"),
+    THREED("3D"),
+    CUTS("Cuts"),
     ;
 
     fun applyTo(base: LyricsConfig): LyricsConfig = when (this) {
@@ -264,30 +289,25 @@ enum class LyricsPreset(val label: String) {
             textStyle = LyricsTextStyle.FILLED, animation = LyricsAnimation.APPLE, font = LyricsFont.APP,
             weight = LyricsWeight.BOLD, fontSizeSp = 30f, lineSpacingDp = 14f, glow = 0.45f, blur = 0.6f,
             visibility = LyricsVisibility.FULL, fadeEdges = true, anchor = 0.5f, inactiveBrightness = 0.45f,
-            textCase = LyricsTextCase.ORIGINAL, background = LyricsBackgroundMode.NONE,
-        )
-        KARAOKE -> base.copy(
-            textStyle = LyricsTextStyle.GRADIENT, animation = LyricsAnimation.KARAOKE, weight = LyricsWeight.BOLD,
-            fontSizeSp = 32f, glow = 0.9f, blur = 0.25f, visibility = LyricsVisibility.FEW_5, fadeEdges = true,
-            anchor = 0.5f, inactiveBrightness = 0.5f, background = LyricsBackgroundMode.ANIMATED_GRADIENT,
-            backgroundIntensity = 0.55f,
-        )
-        NEON -> base.copy(
-            textStyle = LyricsTextStyle.HOLLOW, animation = LyricsAnimation.POP, font = LyricsFont.MANROPE,
-            weight = LyricsWeight.BOLD, fontSizeSp = 34f, glow = 1f, blur = 0.3f, textCase = LyricsTextCase.UPPER,
-            visibility = LyricsVisibility.FEW_3, inactiveBrightness = 0.55f, background = LyricsBackgroundMode.TINTED_SCRIM,
-            backgroundIntensity = 0.7f,
-        )
-        CINEMA -> base.copy(
-            textStyle = LyricsTextStyle.FILLED, animation = LyricsAnimation.FADE, font = LyricsFont.SERIF,
-            weight = LyricsWeight.MEDIUM, fontSizeSp = 30f, glow = 0.25f, blur = 0.2f, visibility = LyricsVisibility.CURRENT,
-            fadeEdges = true, anchor = 0.5f, background = LyricsBackgroundMode.BLURRED_COVER, backgroundIntensity = 0.7f,
+            textCase = LyricsTextCase.ORIGINAL, background = LyricsBackgroundMode.NONE, scene = LyricsScene.NONE,
         )
         MINIMAL -> base.copy(
             textStyle = LyricsTextStyle.FILLED, animation = LyricsAnimation.MINIMAL, font = LyricsFont.APP,
             weight = LyricsWeight.MEDIUM, fontSizeSp = 24f, lineSpacingDp = 8f, glow = 0f, blur = 0f,
             visibility = LyricsVisibility.FULL, fadeEdges = false, anchor = 0.5f, inactiveBrightness = 0.4f,
-            background = LyricsBackgroundMode.NONE,
+            background = LyricsBackgroundMode.NONE, scene = LyricsScene.NONE,
+        )
+        THREED -> base.copy(
+            textStyle = LyricsTextStyle.FILLED, animation = LyricsAnimation.APPLE, font = LyricsFont.APP,
+            weight = LyricsWeight.BOLD, fontSizeSp = 30f, lineSpacingDp = 14f, glow = 0.35f, blur = 0.6f,
+            visibility = LyricsVisibility.FULL, fadeEdges = true, anchor = 0.5f, inactiveBrightness = 0.45f,
+            textCase = LyricsTextCase.ORIGINAL, background = LyricsBackgroundMode.NONE, scene = LyricsScene.ROW,
+        )
+        CUTS -> base.copy(
+            textStyle = LyricsTextStyle.FILLED, animation = LyricsAnimation.APPLE, font = LyricsFont.APP,
+            weight = LyricsWeight.BOLD, fontSizeSp = 32f, lineSpacingDp = 14f, glow = 0.4f, blur = 0.5f,
+            visibility = LyricsVisibility.FULL, fadeEdges = true, anchor = 0.5f, inactiveBrightness = 0.45f,
+            textCase = LyricsTextCase.ORIGINAL, background = LyricsBackgroundMode.NONE, scene = LyricsScene.CUTS,
         )
     }
 }

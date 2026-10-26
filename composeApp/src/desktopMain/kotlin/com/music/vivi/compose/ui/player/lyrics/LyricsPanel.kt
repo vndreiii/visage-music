@@ -23,10 +23,12 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.outlined.FormatAlignRight
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.FormatAlignCenter
 import androidx.compose.material.icons.outlined.Lyrics
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -253,15 +255,35 @@ fun LyricsPanel(
             timeline.lines.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("No lyrics available", color = Color.White.copy(alpha = 0.5f))
             }
-            else -> LyricsList(
-                timeline = timeline,
-                cfg = cfg.copy(align = align),
-                clock = clock,
-                accent = accent,
-                onSeek = { controller.seekTo(it) },
-                // The delay pill sits at the bottom centre (16dp + ~48dp tall); Resume goes above it.
-                bottomInset = if (parsed.isSynced) 64.dp else 0.dp,
-            )
+            else -> when {
+                cfg.scene == LyricsScene.ROW && timeline.isSynced -> {
+                    Lyrics3DScene(
+                        timeline = timeline,
+                        cfg = cfg.copy(align = align),
+                        clock = clock,
+                        accent = accent,
+                    )
+                }
+                cfg.scene == LyricsScene.CUTS -> {
+                    LyricsCutsScene(
+                        timeline = timeline,
+                        cfg = cfg.copy(align = align),
+                        clock = clock,
+                        accent = accent,
+                        isPlaying = playbackState == PlaybackState.Playing,
+                        palette = LocalArtworkPalette.current,
+                    )
+                }
+                else -> LyricsList(
+                    timeline = timeline,
+                    cfg = cfg.copy(align = align),
+                    clock = clock,
+                    accent = accent,
+                    onSeek = { controller.seekTo(it) },
+                    // The delay pill sits at the bottom centre (16dp + ~48dp tall); Resume goes above it.
+                    bottomInset = if (parsed.isSynced) 64.dp else 0.dp,
+                )
+            }
         }
 
         Row(
@@ -284,6 +306,20 @@ fun LyricsPanel(
                 onSelect = { next ->
                     align = next
                     prefs.setString(PrefKeys.LyricsTextAlign, next.name)
+                },
+            )
+            LyricsSceneControl(
+                current = cfg.scene,
+                dissolve = cfg.sceneDissolve,
+                bounceAmp = cfg.bounceAmp,
+                onSelectScene = { next ->
+                    prefs.setString(PrefKeys.LyricsScene, next.name)
+                },
+                onChangeDissolve = { next ->
+                    prefs.setFloat(PrefKeys.LyricsSceneDissolve, next)
+                },
+                onChangeBounceAmp = { next ->
+                    prefs.setFloat(PrefKeys.LyricsBounceAmp, next)
                 },
             )
         }
@@ -587,4 +623,201 @@ private fun alignIcon(align: LyricsTextAlign): ImageVector = when (align) {
     LyricsTextAlign.LEFT -> Icons.AutoMirrored.Outlined.FormatAlignLeft
     LyricsTextAlign.CENTER -> Icons.Outlined.FormatAlignCenter
     LyricsTextAlign.RIGHT -> Icons.AutoMirrored.Outlined.FormatAlignRight
+}
+
+@Composable
+private fun LyricsSceneControl(
+    current: LyricsScene,
+    dissolve: Float,
+    bounceAmp: Float,
+    onSelectScene: (LyricsScene) -> Unit,
+    onChangeDissolve: (Float) -> Unit,
+    onChangeBounceAmp: (Float) -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+
+    IdleCollapseCluster(
+        collapsedContent = { expand ->
+            IconButton(onClick = expand) {
+                Surface(
+                    shape = CircleShape,
+                    color = if (current != LyricsScene.NONE) Color.White.copy(alpha = 0.22f) else Color.Transparent,
+                ) {
+                    Box(Modifier.padding(6.dp), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.AutoAwesome, "3D Scene Mode", tint = Color.White)
+                    }
+                }
+            }
+        },
+        expandedContent = { collapse ->
+            Box {
+                Row(
+                    Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Surface(
+                        onClick = { menuOpen = true },
+                        shape = RoundedCornerShape(999.dp),
+                        color = if (current != LyricsScene.NONE) Color.White.copy(alpha = 0.22f) else Color.Transparent,
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(Icons.Outlined.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Text(
+                                current.label,
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+
+                if (menuOpen) {
+                    Popup(
+                        alignment = Alignment.TopEnd,
+                        offset = androidx.compose.ui.unit.IntOffset(0, 48),
+                        onDismissRequest = {
+                            menuOpen = false
+                            collapse()
+                        },
+                        properties = PopupProperties(focusable = true),
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            tonalElevation = 8.dp,
+                            shadowElevation = 10.dp,
+                            modifier = Modifier.widthIn(min = 210.dp, max = 290.dp),
+                        ) {
+                            androidx.compose.foundation.layout.Column(
+                                Modifier.padding(vertical = 8.dp),
+                            ) {
+                                LyricsScene.entries.forEach { scene ->
+                                    Surface(
+                                        onClick = {
+                                            onSelectScene(scene)
+                                            if (scene == LyricsScene.NONE) {
+                                                menuOpen = false
+                                                collapse()
+                                            }
+                                        },
+                                        color = Color.Transparent,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Row(
+                                            Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 14.dp, vertical = 10.dp),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                        ) {
+                                            Text(
+                                                scene.label,
+                                                modifier = Modifier.weight(1f),
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = if (scene == current) FontWeight.SemiBold else FontWeight.Normal,
+                                            )
+                                            if (scene == current) {
+                                                Icon(
+                                                    Icons.Outlined.Check,
+                                                    contentDescription = null,
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (current != LyricsScene.NONE) {
+                                    androidx.compose.material3.HorizontalDivider(
+                                        Modifier.padding(vertical = 6.dp),
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    )
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text(
+                                            "Fade distance",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = {
+                                                    onChangeDissolve((dissolve - 0.05f).coerceIn(0.55f, 0.95f))
+                                                },
+                                                modifier = Modifier.size(28.dp),
+                                            ) {
+                                                Icon(Icons.Outlined.Remove, "Fade closer", modifier = Modifier.size(16.dp))
+                                            }
+                                            Text(
+                                                "${(dissolve * 100).toInt()}%",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 4.dp),
+                                            )
+                                            IconButton(
+                                                onClick = {
+                                                    onChangeDissolve((dissolve + 0.05f).coerceIn(0.55f, 0.95f))
+                                                },
+                                                modifier = Modifier.size(28.dp),
+                                            ) {
+                                                Icon(Icons.Outlined.Add, "Fade earlier", modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
+                                    Row(
+                                        Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 14.dp, vertical = 6.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                    ) {
+                                        Text(
+                                            "Inertial bounce",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        )
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(
+                                                onClick = {
+                                                    onChangeBounceAmp((bounceAmp - 0.20f).coerceIn(0f, 2.5f))
+                                                },
+                                                modifier = Modifier.size(28.dp),
+                                            ) {
+                                                Icon(Icons.Outlined.Remove, "Less bounce", modifier = Modifier.size(16.dp))
+                                            }
+                                            Text(
+                                                if (bounceAmp <= 0f) "Off" else "${(bounceAmp * 100).toInt()}%",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                modifier = Modifier.padding(horizontal = 4.dp),
+                                            )
+                                            IconButton(
+                                                onClick = {
+                                                    onChangeBounceAmp((bounceAmp + 0.20f).coerceIn(0f, 2.5f))
+                                                },
+                                                modifier = Modifier.size(28.dp),
+                                            ) {
+                                                Icon(Icons.Outlined.Add, "More bounce", modifier = Modifier.size(16.dp))
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    )
 }
