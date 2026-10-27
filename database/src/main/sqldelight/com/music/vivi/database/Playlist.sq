@@ -24,4 +24,9 @@ setTitle:
 UPDATE playlist SET title = ?, updated_ms = ? WHERE id = ?;
 
 setStats:
-UPDATE playlist SET song_count = ?, total_duration_sec = ?, thumbnail = COALESCE(?, thumbnail), updated_ms = ? WHERE id = ?;
+-- A cover the user picked is a file path (starts with '/'); the automatic one (first song's art) never replaces it.
+UPDATE playlist SET song_count = ?, total_duration_sec = ?,
+ thumbnail = CASE WHEN thumbnail LIKE '/%' THEN thumbnail ELSE COALESCE(?, thumbnail) END, updated_ms = ? WHERE id = ?;
+
+setDetails:
+UPDATE playlist SET title = ?, description = ?, thumbnail = ?, updated_ms = ? WHERE id = ?;

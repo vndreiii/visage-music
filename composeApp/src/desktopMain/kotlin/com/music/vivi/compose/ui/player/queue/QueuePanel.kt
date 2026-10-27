@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.player.queue
 
+import com.music.vivi.compose.ui.onboarding.tourAnchor
 import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.WheelLazyRow
@@ -150,11 +151,13 @@ fun AnimatedQueuePinnedRail(
             shrinkHorizontally(animationSpec = PinSizeSpring, shrinkTowards = if (fromStart) Alignment.Start else Alignment.End),
         modifier = modifier,
     ) {
-        QueuePinnedPanel(
-            onDismiss = onDismiss,
-            onSwitchMode = onExpandFullscreen,
-            mirrored = fromStart,
-        )
+        androidx.compose.foundation.layout.Box(Modifier.tourAnchor("queue.panel")) {
+            QueuePinnedPanel(
+                onDismiss = onDismiss,
+                onSwitchMode = onExpandFullscreen,
+                mirrored = fromStart,
+            )
+        }
     }
 }
 
@@ -202,7 +205,7 @@ fun BoxScope.AnimatedQueueBottomTray(
         ) {
             Box {
                 com.music.vivi.compose.ui.glass.GlassBackdrop(
-                    tint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                    tint = com.music.vivi.compose.ui.glass.panelGlassTint(0.5f),
                     modifier = Modifier.matchParentSize(),
                     shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                 )
@@ -238,7 +241,7 @@ fun QueuePinnedPanel(
         Box {
             // Blur setting on: frosted glass over the tinted page background.
             com.music.vivi.compose.ui.glass.GlassBackdrop(
-                tint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                tint = com.music.vivi.compose.ui.glass.panelGlassTint(0.45f),
                 modifier = Modifier.matchParentSize(),
                 shape = RoundedCornerShape(20.dp),
             )
@@ -298,6 +301,8 @@ private fun QueuePanelBody(
                 Icon(
                     if (pinned) Icons.Outlined.OpenInFull else Icons.Outlined.PushPin,
                     contentDescription = if (pinned) "Fullscreen queue" else "Pin queue to the right",
+                    // OpenInFull's arrows fill its whole box and read bigger than the Close X; 18dp matches them.
+                    modifier = Modifier.size(if (pinned) 18.dp else 24.dp),
                 )
             }
             IconButton(onClick = onDismiss) {
@@ -640,13 +645,15 @@ private fun ModeChip(
     active: Boolean = false,
     onClick: () -> Unit,
 ) {
+    // Real buttons: inactive ones are a seed-tinted container with an outline, the active one is solid primary, so
+    // all three stay distinct from the glass panel behind them in both light and dark themes.
     val container by androidx.compose.animation.animateColorAsState(
-        if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+        if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
         VisageMotion.settle(),
         label = "modeChipBg",
     )
     val content by androidx.compose.animation.animateColorAsState(
-        if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
         VisageMotion.settle(),
         label = "modeChipFg",
     )
@@ -655,6 +662,10 @@ private fun ModeChip(
         shape = RoundedCornerShape(14.dp),
         color = container,
         contentColor = content,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (active) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+        ),
         modifier = modifier.height(48.dp),
     ) {
         Row(

@@ -114,8 +114,8 @@ fun YouTubeHeroCard(
                 )
                 if (subtitle.isNotBlank()) {
                     Spacer(Modifier.height(2.dp))
-                    Text(
-                        subtitle,
+                    SubtitleLine(
+                        parts = subtitlePartsOf(item),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.78f),
                         maxLines = 1,

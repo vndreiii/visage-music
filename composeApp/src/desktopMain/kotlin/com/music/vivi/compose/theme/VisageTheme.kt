@@ -51,7 +51,9 @@ fun DesktopPrefs.readThemeState(): VisageThemeState = VisageThemeState(
     pureBlack = getBoolean(PrefKeys.PureBlack, false),
     themeColorArgb = getInt(PrefKeys.SelectedThemeColor, DefaultThemeColorArgb),
     dynamicTheme = getBoolean(PrefKeys.DynamicTheme, true),
-    matugenTheme = !com.music.vivi.nativelib.HostOs.isWindows && getBoolean(PrefKeys.MatugenTheme, false),
+    // Dynamic color wins if an old settings file has both on; the Settings switches keep them exclusive.
+    matugenTheme = !com.music.vivi.nativelib.HostOs.isWindows && getBoolean(PrefKeys.MatugenTheme, false) &&
+        !getBoolean(PrefKeys.DynamicTheme, true),
     paletteStyle = runCatching {
         M3PaletteStyle.valueOf(getString(PrefKeys.PaletteStyle, M3PaletteStyle.TONAL_SPOT.name))
     }.getOrDefault(M3PaletteStyle.TONAL_SPOT),
@@ -206,7 +208,7 @@ fun VisageTheme(
         } else {
             base
         }
-        if (theme.pureBlack && dark) applied.withPureBlack(true) else applied
+        (if (theme.pureBlack && dark) applied.withPureBlack(true) else applied).withAaaContrast(dark)
     }
 
     CompositionLocalProvider(LocalArtworkPalette provides artworkPalette) {
@@ -214,8 +216,10 @@ fun VisageTheme(
             colorScheme = scheme,
             shapes = VisageExpressiveShapes,
             typography = remember(theme.headingFont, theme.bodyFont) { visageTypography(theme.headingFont, theme.bodyFont) },
-            content = content,
-        )
+        ) {
+            val indication = remember(scheme.onSurface) { VisageIndication(scheme.onSurface) }
+            CompositionLocalProvider(androidx.compose.foundation.LocalIndication provides indication, content = content)
+        }
     }
 }
 

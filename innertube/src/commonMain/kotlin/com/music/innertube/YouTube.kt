@@ -589,11 +589,11 @@ object YouTube {
             ?: throw IllegalStateException("Playlist title not found for id=$playlistId (header=${header != null})")
 
         // Thumbnail is optional — fall back to empty string rather than crashing
-        val thumbnailUrl = header.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.lastOrNull()?.url
+        val thumbnailUrl = header?.thumbnail?.musicThumbnailRenderer?.thumbnail?.thumbnails?.lastOrNull()?.url
             ?: ""
 
         // shuffleEndpoint is NOT guaranteed — remove !! to avoid NPE
-        val shuffleEndpoint = header.buttons.lastOrNull()?.menuRenderer?.items?.firstOrNull()
+        val shuffleEndpoint = header?.buttons?.lastOrNull()?.menuRenderer?.items?.firstOrNull()
             ?.menuNavigationItemRenderer?.navigationEndpoint?.watchPlaylistEndpoint
 
         val sectionListContents = response.contents?.twoColumnBrowseResultsRenderer
@@ -625,17 +625,17 @@ object YouTube {
             playlist = PlaylistItem(
                 id = playlistId,
                 title = title,
-                author = header.straplineTextOne?.runs?.firstOrNull()?.let {
+                author = header?.straplineTextOne?.runs?.firstOrNull()?.let {
                     Artist(
                         name = it.text,
                         id = it.navigationEndpoint?.browseEndpoint?.browseId
                     )
                 },
-                songCountText = header.secondSubtitle?.runs?.firstOrNull()?.text,
+                songCountText = header?.secondSubtitle?.runs?.firstOrNull()?.text,
                 thumbnail = thumbnailUrl,
                 playEndpoint = null,
                 shuffleEndpoint = shuffleEndpoint,
-                radioEndpoint = header.buttons.getOrNull(2)?.menuRenderer?.items?.find {
+                radioEndpoint = header?.buttons?.getOrNull(2)?.menuRenderer?.items?.find {
                     it.menuNavigationItemRenderer?.icon?.iconType == "MIX"
                 }?.menuNavigationItemRenderer?.navigationEndpoint?.watchPlaylistEndpoint,
                 isEditable = editable,
@@ -953,12 +953,13 @@ object YouTube {
         )
     }
 
-    suspend fun getChartsPage(continuation: String? = null): Result<ChartsPage> = runCatching {
+    suspend fun getChartsPage(continuation: String? = null, country: String? = null): Result<ChartsPage> = runCatching {
         val response = innerTube.browse(
             client = WEB_REMIX,
             browseId = "FEmusic_charts",
             params = "ggMGCgQIgAQ%3D",
-            continuation = continuation
+            continuation = continuation,
+            country = country,
         ).body<BrowseResponse>()
 
         val sections = mutableListOf<ChartsPage.ChartSection>()
@@ -1175,6 +1176,12 @@ object YouTube {
             innerTube.likeVideo(WEB_REMIX, videoId)
         else
             innerTube.unlikeVideo(WEB_REMIX, videoId)
+    }
+
+    /** [likeVideo] without exposing the HTTP response type to callers. */
+    suspend fun setVideoLiked(videoId: String, like: Boolean): Result<Unit> = runCatching {
+        if (like) innerTube.likeVideo(WEB_REMIX, videoId) else innerTube.unlikeVideo(WEB_REMIX, videoId)
+        Unit
     }
 
     suspend fun likePlaylist(playlistId: String, like: Boolean) = runCatching {

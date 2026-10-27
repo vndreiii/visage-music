@@ -240,6 +240,8 @@ class InnerTube {
         params: String? = null,
         continuation: String? = null,
         setLogin: Boolean = false,
+        /** Two-letter region ("NL", "ZZ" for global) to browse as, instead of this device's own. */
+        country: String? = null,
     ) = withRetry {
         httpClient.post("browse") {
             ytClient(client, setLogin = setLogin || useLoginForBrowse)
@@ -252,7 +254,8 @@ class InnerTube {
                     ),
                     browseId = browseId,
                     params = params,
-                    continuation = continuation
+                    continuation = continuation,
+                    formData = country?.takeIf { it.isNotBlank() }?.let { BrowseBody.FormData(listOf(it)) },
                 )
             )
         }

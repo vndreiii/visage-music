@@ -1,5 +1,9 @@
 package com.music.vivi.compose.ui.album
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.PageHeaderTopPadding
+import com.music.vivi.compose.ui.component.PageInset
+import com.music.vivi.compose.ui.component.PageHeaderBottomPadding
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
@@ -143,10 +147,10 @@ fun OnlineAlbumScreen(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
                     .smoothWheelScroll(listState),
-                contentPadding = PaddingValues(bottom = 120.dp),
+                contentPadding = PaddingValues(bottom = MiniPlayerClearance),
             ) {
                 item(key = "toolbar") {
-                    com.music.vivi.compose.ui.component.VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = 16.dp, top = 8.dp))
+                    com.music.vivi.compose.ui.component.VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = PageInset, top = PageHeaderTopPadding, bottom = PageHeaderBottomPadding))
                 }
 
                 item(key = "header") {

@@ -19,6 +19,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.VolumeUp
 import androidx.compose.material.icons.outlined.CheckCircle
+import androidx.compose.material.icons.outlined.GraphicEq
+import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Headphones
 import androidx.compose.material.icons.outlined.Speaker
 import androidx.compose.material3.Icon
@@ -49,7 +51,7 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import com.music.vivi.compose.LocalPlaybackController
 import com.music.vivi.compose.audio.AudioOutputDevice
-import com.music.vivi.compose.audio.PipeWireAudio
+import com.music.vivi.compose.audio.AudioOutputs
 import com.music.vivi.compose.prefs.AudioQuality
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.PrefKeys
@@ -83,17 +85,26 @@ fun AudioOutputSheet(onDismiss: () -> Unit) {
         )
     }
 
+    var toast by remember { mutableStateOf<String?>(null) }
+    var backendLabel by remember { mutableStateOf<String?>(null) }
+
     fun reload() {
         scope.launch {
             loading = true
             error = null
-            devices = PipeWireAudio.listSinks()
-            if (devices.isEmpty()) error = "No PipeWire / Pulse sinks found (is pactl available?)"
+            val listing = AudioOutputs.listing()
+            devices = listing.devices
+            backendLabel = listing.backend?.label
+            // Say what was missing when a fallback had to be used, or when nothing worked.
+            listing.fatal?.let { error = it; toast = listing.problems.firstOrNull() ?: it }
+            if (listing.fatal == null && listing.problems.isNotEmpty()) toast = listing.problems.joinToString(" ")
+            if (devices.isEmpty() && error == null) error = "No audio outputs found"
             loading = false
         }
     }
 
     LaunchedEffect(Unit) { reload() }
+    com.music.vivi.compose.ui.component.VisageToast(message = toast, onDismiss = { toast = null }, durationMs = 6_000)
 
     val current = devices.firstOrNull { it.isDefault } ?: devices.firstOrNull()
 
@@ -230,8 +241,14 @@ fun AudioOutputSheet(onDismiss: () -> Unit) {
                     }
                 }
 
+                Spacer(Modifier.height(12.dp))
+                SignalPath(current)
+
                 Spacer(Modifier.height(16.dp))
-                Text("Outputs", style = MaterialTheme.typography.titleSmall)
+                Text(
+                    if (backendLabel != null) "Outputs · ${backendLabel}" else "Outputs",
+                    style = MaterialTheme.typography.titleSmall,
+                )
                 Spacer(Modifier.height(6.dp))
                 if (error != null) {
                     Text(error!!, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodyMedium)
@@ -240,7 +257,8 @@ fun AudioOutputSheet(onDismiss: () -> Unit) {
                     Surface(
                         onClick = {
                             scope.launch {
-                                if (PipeWireAudio.setDefaultSink(device.name)) reload()
+                                val failure = AudioOutputs.select(device.name, prefs)
+                                if (failure == null) reload() else toast = failure
                             }
                         },
                         shape = RoundedCornerShape(12.dp),
@@ -290,5 +308,61 @@ private fun sinkIcon(iconName: String?): ImageVector {
     return when {
         "headphone" in n || "headset" in n -> Icons.Outlined.Headphones
         else -> Icons.Outlined.Speaker
+    }
+}
+
+/** What is playing and what the output device runs at: one line each, refreshed while the sheet is open. */
+@androidx.compose.runtime.Composable
+private fun SignalPath(device: com.music.vivi.compose.audio.AudioOutputDevice?) {
+    var info by remember { mutableStateOf<com.music.vivi.player.mpv.AudioStreamInfo?>(null) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            info = com.music.vivi.player.mpv.MpvPlayer.streamInfo()
+            kotlinx.coroutines.delay(1_000)
+        }
+    }
+    val i = info
+    val khz = com.music.vivi.player.mpv.AudioStreamInfo.Companion::khz
+    val depth = com.music.vivi.player.mpv.AudioStreamInfo.Companion::depth
+    fun channels(c: String?) = when (c) { null -> null; "stereo" -> "2ch"; "mono" -> "1ch"; else -> c }
+    // "s32le 2ch 48000Hz" -> "48 kHz · 32-bit · 2ch"
+    val deviceLine = device?.sampleSpec?.let { spec ->
+        val rate = Regex("""(\d+)Hz""").find(spec)?.groupValues?.get(1)?.toIntOrNull()
+        val bits = Regex("""[su](\d+)""").find(spec)?.groupValues?.get(1)?.let { "$it-bit" }
+            ?: if (spec.startsWith("float")) "float32" else null
+        val ch = Regex("""(\d+)ch""").find(spec)?.groupValues?.get(1)?.let { "${it}ch" }
+        listOfNotNull(rate?.let(khz), bits, ch).joinToString(" · ")
+    }
+    val outRate = i?.outRate
+    Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (i == null) {
+                SignalRow(Icons.Outlined.MusicNote, "Nothing playing")
+            } else {
+                SignalRow(
+                    Icons.Outlined.MusicNote,
+                    listOfNotNull(
+                        i.codec?.uppercase(), khz(i.sourceRate), depth(i.sourceFormat), channels(i.sourceChannels),
+                        i.bitrateKbps?.let { "$it kbps" },
+                    ).joinToString(" · "),
+                )
+                if (outRate != null) {
+                    SignalRow(
+                        Icons.Outlined.GraphicEq,
+                        listOfNotNull(khz(outRate), depth(i.outFormat), channels(i.outChannels)).joinToString(" · "),
+                    )
+                }
+            }
+            if (!deviceLine.isNullOrBlank()) SignalRow(Icons.Outlined.Speaker, deviceLine)
+        }
+    }
+}
+
+@androidx.compose.runtime.Composable
+private fun SignalRow(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+        Spacer(Modifier.width(10.dp))
+        Text(text, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1, softWrap = false)
     }
 }

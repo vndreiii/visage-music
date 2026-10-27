@@ -1,5 +1,10 @@
 package com.music.vivi.compose.ui.playlist
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.edgeProgress
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.PageInset
+import com.music.vivi.compose.ui.component.DetailPageHeader
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 
 import androidx.compose.foundation.layout.Arrangement
@@ -102,18 +107,17 @@ fun AutoPlaylistScreen(
         }
         else -> {
             Column(modifier = Modifier.fillMaxSize()) {
-                com.music.vivi.compose.ui.component.VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = 16.dp, top = 8.dp))
-                
-                NavigationTitle(
+                DetailPageHeader(
                     title = if (type == "liked") "Liked Songs" else "Auto Playlist",
-                    modifier = Modifier.padding(bottom = 8.dp)
+                    onBack = { navController.navigateUp() },
                 )
 
                 val smoothScroll1 = androidx.compose.foundation.lazy.rememberLazyListState()
                 LazyColumn(
                     state = smoothScroll1,
-                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 120.dp),
+                    contentPadding = PaddingValues(start = PageInset, end = PageInset, bottom = MiniPlayerClearance),
                     modifier = Modifier.fillMaxWidth().weight(1f)
+                        .pageScrollEdge { smoothScroll1.edgeProgress() }
                         .smoothWheelScroll(smoothScroll1)
                 ) {
                     items(songs.orEmpty(), key = { it.id }) { song ->

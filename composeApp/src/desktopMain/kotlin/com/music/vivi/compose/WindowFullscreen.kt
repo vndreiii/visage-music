@@ -36,3 +36,28 @@ object WindowFullscreen {
         else enter(windowState)
     }
 }
+
+/**
+ * Windows only: leaving OS fullscreen re-creates the native peer, which drops the transparent
+ * background of the undecorated window. The Compose-clipped rounded corners then show a white
+ * fill instead of the desktop. Re-apply the transparent background to the window and its root
+ * components once the placement has settled.
+ */
+object WindowTransparency {
+    fun reapply(window: java.awt.Window) {
+        if (!com.music.vivi.nativelib.HostOs.isWindows) return
+        runCatching {
+            val clear = java.awt.Color(0, 0, 0, 0)
+            window.background = clear
+            if (window is javax.swing.RootPaneContainer) {
+                (window as? javax.swing.JComponent)?.isOpaque = false
+                (window.rootPane as? javax.swing.JComponent)?.isOpaque = false
+                (window.contentPane as? javax.swing.JComponent)?.apply {
+                    isOpaque = false
+                    background = clear
+                }
+            }
+            window.repaint()
+        }
+    }
+}

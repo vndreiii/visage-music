@@ -88,7 +88,7 @@ object XdgPortalFolderPicker {
             // Subscribe before opening; a fast portal response must not be lost.
             val handlePath = "/org/freedesktop/portal/desktop/request/${connection.uniqueName.removePrefix(":").replace('.', '_')}/$token"
             val future = CompletableFuture<List<File>>()
-            val handler = DBusSigHandler<PortalRequestResponse> { signal ->
+            val handler = DBusSigHandler<PortalRequest.Response> { signal ->
                 if (signal.path != handlePath) return@DBusSigHandler
                 if (signal.response.toInt() == 0) {
                     @Suppress("UNCHECKED_CAST")
@@ -98,13 +98,13 @@ object XdgPortalFolderPicker {
                     future.complete(emptyList())
                 }
             }
-            connection.addSigHandler(PortalRequestResponse::class.java, handler)
+            connection.addSigHandler(PortalRequest.Response::class.java, handler)
             try {
                 portal.OpenFile("", title, options)
                 future.get(120, TimeUnit.SECONDS)
             } finally {
                 runCatching {
-                    connection.removeSigHandler(PortalRequestResponse::class.java, handler)
+                    connection.removeSigHandler(PortalRequest.Response::class.java, handler)
                 }
             }
         } catch (e: Exception) {
@@ -164,16 +164,25 @@ interface PortalFileChooser : DBusInterface {
     fun OpenFile(
         parentWindow: String,
         title: String,
-        options: Map<String, Variant<*>>,
+        // Kotlin's `Map<K, out V>` becomes `? extends Variant<?>` in Java, which dbus-java turns into the broken signature
+        // `a{s}` (the bus then drops the connection: "Underlying transport returned -1"). It must be exactly a{sv}.
+        options: @JvmSuppressWildcards Map<String, Variant<*>>,
     ): ObjectPath
 }
 
-/** Must be a top-level public type — dbus-java reflects signal constructors. */
-class PortalRequestResponse @Throws(DBusException::class) constructor(
-    path: String,
-    val response: UInt32,
-    val results: Map<String, Variant<*>>,
-) : DBusSignal(path, response, results)
+/**
+ * The portal's request object. dbus-java wants a signal class to be a member of the interface that declares it
+ * (a top-level class gives "Signals must be declared as a member of a class implementing DBusInterface"), so
+ * `Response` lives inside this interface and its name is the D-Bus signal name.
+ */
+@DBusInterfaceName("org.freedesktop.portal.Request")
+interface PortalRequest : DBusInterface {
+    class Response @Throws(DBusException::class) constructor(
+        path: String,
+        val response: UInt32,
+        val results: Map<String, Variant<*>>,
+    ) : DBusSignal(path, response, results)
+}
 
 class PortalPattern(
     @JvmField @field:org.freedesktop.dbus.annotations.Position(0) val kind: UInt32,

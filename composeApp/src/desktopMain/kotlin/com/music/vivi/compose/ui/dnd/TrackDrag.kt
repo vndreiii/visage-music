@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.VisageToast
 import com.music.vivi.player.QueueTrack
+import com.music.vivi.player.toQueueTrack
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.roundToInt
@@ -82,6 +83,15 @@ object TrackDrag {
     var releasing by mutableStateOf(false)
         private set
     var message by mutableStateOf<String?>(null)
+
+    /**
+     * Set while the pointer is down on something that can be carried: when it went down (uptime ms) and how long it
+     * must be held. A shelf that pans on mouse drag checks it, so holding a song picks it up and does not pan.
+     */
+    var pressDownAt = -1L
+    var pressHoldMs = 0L
+    /** The press that is going on is a hold that will pick the item up rather than pan whatever scrolls under it. */
+    fun holdWinsAt(uptimeMs: Long): Boolean = pressDownAt >= 0 && uptimeMs - pressDownAt >= pressHoldMs
 
     private val targets = HashMap<String, TrackDropTarget>()
 
@@ -161,7 +171,7 @@ fun Modifier.trackDropTarget(key: String, accepts: (QueueTrack) -> Boolean = { t
  * from the pointer until release. Return null from [card] to opt out (e.g. pinned entries).
  */
 @Composable
-fun Modifier.carryOnDrag(card: () -> DragCard?): Modifier {
+fun Modifier.carryOnDrag(holdMs: Long = 0L, card: () -> DragCard?): Modifier {
     var origin by remember { mutableStateOf(Offset.Zero) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
     val latest by androidx.compose.runtime.rememberUpdatedState(card)
@@ -171,12 +181,18 @@ fun Modifier.carryOnDrag(card: () -> DragCard?): Modifier {
             val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
             if (currentEvent.buttons.isSecondaryPressed || TrackDrag.card != null) return@awaitEachGesture
             val c = latest() ?: return@awaitEachGesture
+            TrackDrag.pressDownAt = down.uptimeMillis; TrackDrag.pressHoldMs = holdMs
             while (true) {
                 val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
-                val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
-                if (!ch.pressed) return@awaitEachGesture
-                if ((ch.position - down.position).getDistance() > slop) break
+                val ch = ev.changes.firstOrNull { it.id == down.id } ?: run { TrackDrag.pressDownAt = -1L; return@awaitEachGesture }
+                if (!ch.pressed) { TrackDrag.pressDownAt = -1L; return@awaitEachGesture }
+                if ((ch.position - down.position).getDistance() > slop) {
+                    // A quick swipe or a jittery click is not a pickup: the item must be held first.
+                    if (ch.uptimeMillis - down.uptimeMillis < holdMs) { TrackDrag.pressDownAt = -1L; return@awaitEachGesture }
+                    break
+                }
             }
+            TrackDrag.pressDownAt = -1L
             TrackDrag.begin(c, origin + down.position)
             while (true) {
                 val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
@@ -268,3 +284,16 @@ fun TrackDragOverlay(modifier: Modifier = Modifier) {
         VisageToast(TrackDrag.message, onDismiss = { TrackDrag.message = null })
     }
 }
+
+
+/** What carrying a song from a page card or row shows; its payload is a [QueueTrack], so every track drop target takes it. */
+fun com.music.innertube.models.YTItem.dragCard(): DragCard? {
+    val song = this as? com.music.innertube.models.SongItem ?: return null
+    val q = song.toQueueTrack()
+    return DragCard(q.title.ifBlank { q.videoId }, q.artist, q.artworkUrl, q)
+}
+
+/** Hold a song for a moment, then drag it out to a drop target (the library sidebar, Liked Songs, Downloaded, ...). */
+@Composable
+fun Modifier.carrySong(item: com.music.innertube.models.YTItem): Modifier =
+    if (item is com.music.innertube.models.SongItem) carryOnDrag(holdMs = 220L) { item.dragCard() } else this

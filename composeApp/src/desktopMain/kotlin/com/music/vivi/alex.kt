@@ -52,6 +52,7 @@ val desktopModule = module {
         val library = get<LibraryRepository>()
         val fades = get<PlaybackFadeSettingsProvider>()
         get<DesktopPrefs>().let { prefs ->
+            com.music.vivi.compose.audio.AudioOutputs.restore(prefs)
             com.music.vivi.player.video.MusicVideoResolver.prefetchQuality = {
                 if (prefs.getBoolean(PrefKeys.PlayerVideoEnabled, false)) {
                     com.music.vivi.player.video.VideoQuality.parse(prefs.getString(PrefKeys.PlayerVideoQuality, "AUTO"))
@@ -63,6 +64,7 @@ val desktopModule = module {
             favorites = object : FavoriteStore {
                 override fun isLiked(videoId: String) = library.isLiked(videoId)
                 override fun setLiked(videoId: String, liked: Boolean) = library.setLiked(videoId, liked)
+                override val changes get() = library.likedChanges
             },
             fadeSettings = { fades.current() },
             fileTrackResolver = { id ->

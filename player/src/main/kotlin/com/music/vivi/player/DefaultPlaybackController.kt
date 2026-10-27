@@ -57,6 +57,7 @@ class DefaultPlaybackController(
     private val _durationMs = MutableStateFlow(0L)
     private val _isFavorite = MutableStateFlow(false)
     private val _lastError = MutableStateFlow<String?>(null)
+    private val _notice = MutableStateFlow<String?>(null)
     private val _queueTracks = MutableStateFlow<List<QueueTrack>>(emptyList())
     private val _queueIds = MutableStateFlow<List<String>>(emptyList())
     private val _queueIndex = MutableStateFlow(-1)
@@ -72,6 +73,10 @@ class DefaultPlaybackController(
     override val durationMs: StateFlow<Long> = _durationMs.asStateFlow()
     override val isFavorite: StateFlow<Boolean> = _isFavorite.asStateFlow()
     override val lastError: StateFlow<String?> = _lastError.asStateFlow()
+    override val notice: StateFlow<String?> = _notice.asStateFlow()
+    override fun clearNotice() {
+        _notice.value = null
+    }
     override val queueIds: StateFlow<List<String>> = _queueIds.asStateFlow()
     override val queueTracks: StateFlow<List<QueueTrack>> = _queueTracks.asStateFlow()
     override val queueIndex: StateFlow<Int> = _queueIndex.asStateFlow()
@@ -243,6 +248,10 @@ class DefaultPlaybackController(
             mpris?.updatePlaybackState(PlaybackState.Idle)
         }
         startPauseWatchdog()
+        // Any change to the likes (another heart, a drag onto Liked Songs, a library sync) re-reads the current heart.
+        favorites?.changes?.let { flow ->
+            scope.launch { flow.collect { _nowPlaying.value?.videoId?.let { refreshFavorite(it) } } }
+        }
     }
 
     /**
@@ -812,6 +821,7 @@ class DefaultPlaybackController(
         videoId: String,
         generation: Int = loadGeneration.get(),
         dualCrossfade: Boolean = false,
+        refreshed: Boolean = false,
     ) {
         if (generation != loadGeneration.get()) return
         if (!dualCrossfade) {
@@ -956,10 +966,16 @@ class DefaultPlaybackController(
                     c.message?.let { append(": ").append(it) }
                 }
             }
-            // A clean sentence for the player; the full chain of causes goes to the log.
-            failPlayback((t as? SourcesFailedException)?.message ?: detail)
+            // The full chain of causes goes to the log only; the player never shows raw exception text.
             println("play failed: $detail")
             t.printStackTrace(System.out)
+            if (!refreshed) {
+                // One re-fetch of the stream, bypassing the cache, before giving up on this song.
+                streams.drop(videoId)
+                loadAndPlay(videoId, generation, dualCrossfade, refreshed = true)
+                return
+            }
+            skipUnplayable(generation)
         }
     }
 
@@ -1094,6 +1110,15 @@ class DefaultPlaybackController(
         _lastError.value = message
         _state.value = PlaybackState.Error
         mpris?.updatePlaybackState(PlaybackState.Error)
+    }
+
+    /** A song that will not load (after one re-fetch) is skipped instead of parking the player in an error state. */
+    private fun skipUnplayable(generation: Int) {
+        if (generation != loadGeneration.get()) return
+        _notice.value = "Couldn't load that song, skipped it"
+        val q = _queueIds.value
+        val i = desiredIndex.get().takeIf { it >= 0 } ?: _queueIndex.value
+        if (i + 1 < q.size || _repeatMode.value == RepeatMode.All) next() else stop()
     }
 
     private class CancellationLike : RuntimeException()
@@ -1522,15 +1547,18 @@ class DefaultPlaybackController(
 
     override suspend fun toggleFavorite() {
         val id = _nowPlaying.value?.videoId ?: return
-        val next = !_isFavorite.value
+        setLiked(id, !_isFavorite.value)
+    }
+
+    override suspend fun setLiked(videoId: String, like: Boolean) {
         withContext(Dispatchers.IO) {
-            if (!id.startsWith("local:")) YouTube.likeVideo(id.removePrefix("offline:"), next).getOrThrow()
-            favorites?.setLiked(id.removePrefix("offline:"), next)
+            if (!videoId.startsWith("local:")) YouTube.likeVideo(videoId.removePrefix("offline:"), like).getOrThrow()
+            favorites?.setLiked(videoId.removePrefix("offline:"), like)
         }
-        if (_nowPlaying.value?.videoId != id) return
-        _isFavorite.value = next
-        mpris?.updateFavorite(next)
-        mpris?.updateNowPlaying(_nowPlaying.value, artFileUrl, next)
+        if (_nowPlaying.value?.videoId != videoId) return
+        _isFavorite.value = like
+        mpris?.updateFavorite(like)
+        mpris?.updateNowPlaying(_nowPlaying.value, artFileUrl, like)
     }
 
     override fun release() {

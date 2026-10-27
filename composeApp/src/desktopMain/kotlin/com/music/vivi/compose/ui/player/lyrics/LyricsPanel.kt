@@ -20,6 +20,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material.icons.outlined.Vibration
+import androidx.compose.material.icons.outlined.HourglassEmpty
+import androidx.compose.material.icons.outlined.BlurOn
+import androidx.compose.material.icons.outlined.ContentCut
+import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.automirrored.outlined.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.outlined.FormatAlignRight
 import androidx.compose.material.icons.outlined.Add
@@ -231,7 +239,7 @@ fun LyricsPanel(
     val clock = rememberLyricsClock(controller.positionMs, playbackState == PlaybackState.Playing, cfg.syncOffsetMs - songDelayMs)
     val accent = lyricsAccent(cfg.accent)
     val bgStyle = remember(prefsTick) {
-        runCatching { PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name)) }
+        runCatching { PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle.name)) }
             .getOrDefault(PlayerBackgroundStyle.GRADIENT)
     }
 
@@ -311,12 +319,16 @@ fun LyricsPanel(
             LyricsSceneControl(
                 current = cfg.scene,
                 dissolve = cfg.sceneDissolve,
+                lingerSec = cfg.sceneLingerSec,
                 bounceAmp = cfg.bounceAmp,
                 onSelectScene = { next ->
                     prefs.setString(PrefKeys.LyricsScene, next.name)
                 },
                 onChangeDissolve = { next ->
                     prefs.setFloat(PrefKeys.LyricsSceneDissolve, next)
+                },
+                onChangeLinger = { next ->
+                    prefs.setFloat(PrefKeys.LyricsSceneLinger, next)
                 },
                 onChangeBounceAmp = { next ->
                     prefs.setFloat(PrefKeys.LyricsBounceAmp, next)
@@ -629,8 +641,10 @@ private fun alignIcon(align: LyricsTextAlign): ImageVector = when (align) {
 private fun LyricsSceneControl(
     current: LyricsScene,
     dissolve: Float,
+    lingerSec: Float,
     bounceAmp: Float,
     onSelectScene: (LyricsScene) -> Unit,
+    onChangeLinger: (Float) -> Unit,
     onChangeDissolve: (Float) -> Unit,
     onChangeBounceAmp: (Float) -> Unit,
 ) {
@@ -659,7 +673,8 @@ private fun LyricsSceneControl(
                     Surface(
                         onClick = { menuOpen = true },
                         shape = RoundedCornerShape(999.dp),
-                        color = if (current != LyricsScene.NONE) Color.White.copy(alpha = 0.22f) else Color.Transparent,
+                        // No fill: the cluster pill around it already is the highlight.
+                        color = Color.Transparent,
                     ) {
                         Row(
                             Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -688,45 +703,49 @@ private fun LyricsSceneControl(
                         properties = PopupProperties(focusable = true),
                     ) {
                         Surface(
-                            shape = RoundedCornerShape(16.dp),
+                            shape = RoundedCornerShape(24.dp),
                             color = MaterialTheme.colorScheme.surfaceContainerHigh,
                             tonalElevation = 8.dp,
-                            shadowElevation = 10.dp,
-                            modifier = Modifier.widthIn(min = 210.dp, max = 290.dp),
+                            shadowElevation = 12.dp,
+                            modifier = Modifier.width(340.dp),
                         ) {
                             androidx.compose.foundation.layout.Column(
-                                Modifier.padding(vertical = 8.dp),
+                                Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(14.dp),
                             ) {
-                                LyricsScene.entries.forEach { scene ->
-                                    Surface(
-                                        onClick = {
-                                            onSelectScene(scene)
-                                            if (scene == LyricsScene.NONE) {
-                                                menuOpen = false
-                                                collapse()
-                                            }
-                                        },
-                                        color = Color.Transparent,
-                                        modifier = Modifier.fillMaxWidth(),
-                                    ) {
-                                        Row(
-                                            Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 14.dp, vertical = 10.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                Text(
+                                    "Lyric style",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                // One tile per style, with its icon; the chosen one is filled.
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    LyricsScene.entries.forEach { scene ->
+                                        val selected = scene == current
+                                        Surface(
+                                            onClick = {
+                                                onSelectScene(scene)
+                                                if (scene == LyricsScene.NONE) {
+                                                    menuOpen = false
+                                                    collapse()
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                            contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.weight(1f),
                                         ) {
-                                            Text(
-                                                scene.label,
-                                                modifier = Modifier.weight(1f),
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = if (scene == current) FontWeight.SemiBold else FontWeight.Normal,
-                                            )
-                                            if (scene == current) {
-                                                Icon(
-                                                    Icons.Outlined.Check,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary,
+                                            androidx.compose.foundation.layout.Column(
+                                                Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                            ) {
+                                                Icon(sceneIcon(scene), null, modifier = Modifier.size(24.dp))
+                                                Text(
+                                                    scene.label,
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                                                 )
                                             }
                                         }
@@ -735,83 +754,28 @@ private fun LyricsSceneControl(
 
                                 if (current != LyricsScene.NONE) {
                                     androidx.compose.material3.HorizontalDivider(
-                                        Modifier.padding(vertical = 6.dp),
                                         color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                                     )
-                                    Row(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                    ) {
-                                        Text(
-                                            "Fade distance",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    if (current == LyricsScene.ROW) {
+                                        SceneStepper(
+                                            icon = Icons.Outlined.BlurOn, label = "Fade distance",
+                                            value = "${(dissolve * 100).toInt()}%",
+                                            onMinus = { onChangeDissolve((dissolve - 0.05f).coerceIn(0.55f, 0.95f)) },
+                                            onPlus = { onChangeDissolve((dissolve + 0.05f).coerceIn(0.55f, 0.95f)) },
                                         )
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            IconButton(
-                                                onClick = {
-                                                    onChangeDissolve((dissolve - 0.05f).coerceIn(0.55f, 0.95f))
-                                                },
-                                                modifier = Modifier.size(28.dp),
-                                            ) {
-                                                Icon(Icons.Outlined.Remove, "Fade closer", modifier = Modifier.size(16.dp))
-                                            }
-                                            Text(
-                                                "${(dissolve * 100).toInt()}%",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 4.dp),
-                                            )
-                                            IconButton(
-                                                onClick = {
-                                                    onChangeDissolve((dissolve + 0.05f).coerceIn(0.55f, 0.95f))
-                                                },
-                                                modifier = Modifier.size(28.dp),
-                                            ) {
-                                                Icon(Icons.Outlined.Add, "Fade earlier", modifier = Modifier.size(16.dp))
-                                            }
-                                        }
-                                    }
-                                    Row(
-                                        Modifier
-                                            .fillMaxWidth()
-                                            .padding(horizontal = 14.dp, vertical = 6.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                    ) {
-                                        Text(
-                                            "Inertial bounce",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        SceneStepper(
+                                            icon = Icons.Outlined.HourglassEmpty, label = "Linger time",
+                                            value = "${((lingerSec * 10).toInt()) / 10f} s",
+                                            onMinus = { onChangeLinger((lingerSec - 0.5f).coerceIn(0.5f, 8f)) },
+                                            onPlus = { onChangeLinger((lingerSec + 0.5f).coerceIn(0.5f, 8f)) },
                                         )
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            IconButton(
-                                                onClick = {
-                                                    onChangeBounceAmp((bounceAmp - 0.20f).coerceIn(0f, 2.5f))
-                                                },
-                                                modifier = Modifier.size(28.dp),
-                                            ) {
-                                                Icon(Icons.Outlined.Remove, "Less bounce", modifier = Modifier.size(16.dp))
-                                            }
-                                            Text(
-                                                if (bounceAmp <= 0f) "Off" else "${(bounceAmp * 100).toInt()}%",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 4.dp),
-                                            )
-                                            IconButton(
-                                                onClick = {
-                                                    onChangeBounceAmp((bounceAmp + 0.20f).coerceIn(0f, 2.5f))
-                                                },
-                                                modifier = Modifier.size(28.dp),
-                                            ) {
-                                                Icon(Icons.Outlined.Add, "More bounce", modifier = Modifier.size(16.dp))
-                                            }
-                                        }
                                     }
+                                    SceneStepper(
+                                        icon = Icons.Outlined.Vibration, label = "Inertial bounce",
+                                        value = if (bounceAmp <= 0f) "Off" else "${(bounceAmp * 100).toInt()}%",
+                                        onMinus = { onChangeBounceAmp((bounceAmp - 0.20f).coerceIn(0f, 2.5f)) },
+                                        onPlus = { onChangeBounceAmp((bounceAmp + 0.20f).coerceIn(0f, 2.5f)) },
+                                    )
                                 }
                             }
                         }
@@ -820,4 +784,38 @@ private fun LyricsSceneControl(
             }
         },
     )
+}
+
+
+private fun sceneIcon(scene: LyricsScene): ImageVector = when (scene) {
+    LyricsScene.NONE -> Icons.AutoMirrored.Outlined.FormatListBulleted
+    LyricsScene.ROW -> Icons.Outlined.ViewInAr
+    LyricsScene.CUTS -> Icons.Outlined.ContentCut
+}
+
+/** One tunable value: icon and label on the left, a pill with − value + on the right. */
+@Composable
+private fun SceneStepper(icon: ImageVector, label: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onMinus, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Outlined.Remove, "Less", modifier = Modifier.size(16.dp))
+                }
+                Text(
+                    value,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.widthIn(min = 44.dp),
+                )
+                IconButton(onClick = onPlus, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Outlined.Add, "More", modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+    }
 }

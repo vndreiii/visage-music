@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.artist
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
 import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -80,7 +81,28 @@ fun ArtistInfoScreen(name: String, navController: NavController) {
     val lookup by rememberArtistLookup(name)
     val info = lookup.info
     var tracks by remember(name) { mutableStateOf<List<Local_track>?>(null) }
-    LaunchedEffect(name) { tracks = withContext(Dispatchers.IO) { tracksFor(repo, name) } }
+    LaunchedEffect(name) {
+        val local = withContext(Dispatchers.IO) { tracksFor(repo, name) }
+        tracks = local
+        // No local files by this name: it is a YouTube Music artist we only know by name, so find and open the real
+        // artist page (with their songs, albums and videos) instead of an empty library page.
+        if (local.isEmpty()) {
+            val hit = withContext(Dispatchers.IO) {
+                com.music.innertube.YouTube.search(name, com.music.innertube.YouTube.SearchFilter.FILTER_ARTIST)
+                    .getOrNull()?.items.orEmpty()
+                    .filterIsInstance<com.music.innertube.models.ArtistItem>()
+                    .let { artists -> artists.firstOrNull { it.title.equals(name, ignoreCase = true) } ?: artists.firstOrNull() }
+            }
+            if (hit != null) {
+                ArtistIdRegistry.remember(name, hit.id)
+                runCatching {
+                    navController.navigate(Routes.artist(hit.id)) {
+                        popUpTo(Routes.ARTIST_INFO) { inclusive = true }
+                    }
+                }
+            }
+        }
+    }
     val list = tracks.orEmpty()
     val ytId = remember(name) { ArtistIdRegistry.idFor(name) }
 
@@ -92,7 +114,7 @@ fun ArtistInfoScreen(name: String, navController: NavController) {
     LazyColumn(
         state = state,
         modifier = Modifier.fillMaxSize().smoothWheelScroll(state),
-        contentPadding = PaddingValues(bottom = 100.dp),
+        contentPadding = PaddingValues(bottom = MiniPlayerClearance),
     ) {
         item(key = "toolbar") { ArtistBackBar { navController.navigateUp() } }
         item(key = "header") {

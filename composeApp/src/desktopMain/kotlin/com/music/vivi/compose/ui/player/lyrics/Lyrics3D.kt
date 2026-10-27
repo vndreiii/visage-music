@@ -141,8 +141,11 @@ internal fun Lyrics3DScene(
                     else min(350f, max(220f, (e.endMs - e.startMs) * 0.35f))
                 } else 650f
 
-                val isPast = pos > e.endMs
-                val exitProgress = if (isPast) ((pos - e.endMs) / exitDur).coerceIn(0f, 1f) else 0f
+                // A line is not gone the moment its last word is sung: songs don't clear the page that fast, so it
+                // lingers for a moment before the exit starts.
+                val exitStartMs = e.endMs + cfg.sceneLingerSec.coerceIn(0.5f, 8f) * 1000f
+                val isPast = pos > exitStartMs
+                val exitProgress = if (isPast) ((pos - exitStartMs) / exitDur).coerceIn(0f, 1f) else 0f
                 if (exitProgress >= 1f) continue // Fully dissolved
 
                 val exitEase = smooth01(exitProgress)

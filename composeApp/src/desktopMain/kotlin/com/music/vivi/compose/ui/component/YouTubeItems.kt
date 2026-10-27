@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import com.music.vivi.compose.ui.dnd.carrySong
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -23,18 +24,25 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.music.innertube.models.AlbumItem
+import com.music.innertube.models.Artist
 import com.music.innertube.models.ArtistItem
 import com.music.innertube.models.PlaylistItem
 import com.music.innertube.models.SongItem
@@ -42,8 +50,104 @@ import com.music.innertube.models.YTItem
 import com.music.vivi.compose.LocalPlaybackController
 import com.music.vivi.player.PlaybackState
 
-private fun joinByBullet(vararg parts: String?): String? =
-    parts.filterNot { it.isNullOrBlank() }.joinToString(" • ").ifBlank { null }
+/**
+ * Set by a screen (Home) to make artist names in its item subtitles open the artist page.
+ * Null elsewhere, so names stay plain text there.
+ */
+val LocalArtistClick = compositionLocalOf<((String) -> Unit)?> { null }
+
+/** Same, for names YouTube gave no id for (opens a search for the name instead). */
+val LocalArtistNameClick = compositionLocalOf<((String) -> Unit)?> { null }
+
+/** One piece of a subtitle line: plain text, or artist names (linked when they carry an id). */
+internal sealed interface SubtitlePart {
+    data class Plain(val text: String?) : SubtitlePart
+    /** [linkNames]: a credited name with no artist id may fall back to a search; playlist owners ("Auto playlist", "YouTube Music") must not. */
+    data class Artists(val artists: List<Artist>?, val linkNames: Boolean = true) : SubtitlePart
+}
+
+/** Subtitle pieces for a grid/list/hero item, in display order. */
+internal fun subtitlePartsOf(item: YTItem): List<SubtitlePart> = when (item) {
+    is SongItem -> listOf(SubtitlePart.Artists(item.artists), SubtitlePart.Plain(item.album?.name))
+    is AlbumItem -> listOf(SubtitlePart.Plain("Album"), SubtitlePart.Artists(item.artists), SubtitlePart.Plain(item.year?.toString()))
+    is ArtistItem -> listOf(SubtitlePart.Plain(item.subtext))
+    is PlaylistItem -> listOf(SubtitlePart.Artists(listOfNotNull(item.author), linkNames = false), SubtitlePart.Plain(item.songCountText))
+}
+
+private fun buildSubtitle(
+    parts: List<SubtitlePart>,
+    onArtistClick: ((String) -> Unit)?,
+    onNameClick: ((String) -> Unit)?,
+): AnnotatedString =
+    buildAnnotatedString {
+        var wrote = false
+        fun separate() {
+            if (wrote) append(" • ")
+            wrote = true
+        }
+        parts.forEach { part ->
+            when (part) {
+                is SubtitlePart.Plain -> if (!part.text.isNullOrBlank()) {
+                    separate()
+                    append(part.text)
+                }
+                is SubtitlePart.Artists -> {
+                    val named = part.artists.orEmpty().filter { it.name.isNotBlank() }
+                    if (named.isNotEmpty()) {
+                        separate()
+                        named.forEachIndexed { i, artist ->
+                            if (i > 0) append(", ")
+                            val id = artist.id
+                            // Every credited name is a link: the artist page when there is an id, else a search.
+                            val action: (() -> Unit)? = when {
+                                id != null && onArtistClick != null -> ({ onArtistClick(id) })
+                                onNameClick != null && part.linkNames -> ({ onNameClick(artist.name) })
+                                else -> null
+                            }
+                            if (action != null) {
+                                pushLink(
+                                    LinkAnnotation.Clickable(
+                                        tag = id ?: artist.name,
+                                        linkInteractionListener = { action() },
+                                    ),
+                                )
+                                append(artist.name)
+                                pop()
+                            } else {
+                                append(artist.name)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+/** Subtitle line whose artist names are clickable when [LocalArtistClick] is provided. */
+@Composable
+internal fun SubtitleLine(
+    parts: List<SubtitlePart>,
+    style: TextStyle,
+    color: Color,
+    maxLines: Int,
+    overflow: TextOverflow,
+    modifier: Modifier = Modifier,
+    textAlign: TextAlign? = null,
+) {
+    val onArtistClick = LocalArtistClick.current
+    val onNameClick = LocalArtistNameClick.current
+    val text = remember(parts, onArtistClick, onNameClick) { buildSubtitle(parts, onArtistClick, onNameClick) }
+    if (text.isEmpty()) return
+    Text(
+        text = text,
+        style = style,
+        color = color,
+        maxLines = maxLines,
+        overflow = overflow,
+        textAlign = textAlign,
+        modifier = modifier,
+    )
+}
 
 @Composable
 fun YouTubeGridItem(
@@ -62,7 +166,9 @@ fun YouTubeGridItem(
         onClick = onClick,
         shape = RoundedCornerShape(InteractionCornerRadius),
         color = Color.Transparent,
-        modifier = if (fillWidth) modifier.fillMaxWidth() else modifier.width(GridThumbnailHeight + 16.dp),
+        // 16:9 covers keep the shelf's cover height, so they are wider instead of a tiny letterbox in a square cell.
+        modifier = (if (fillWidth) modifier.fillMaxWidth() else modifier.width(GridThumbnailHeight * thumbnailRatio.coerceAtLeast(1f) + 16.dp))
+            .carrySong(item),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
@@ -115,23 +221,15 @@ fun YouTubeGridItem(
                     .fillMaxWidth()
                     .visageMarquee(),
             )
-            val subtitle = when (item) {
-                is SongItem -> joinByBullet(item.artists.joinToString { it.name }, item.album?.name)
-                is AlbumItem -> joinByBullet("Album", item.artists?.joinToString { it.name }, item.year?.toString())
-                is ArtistItem -> item.subtext
-                is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
-            }
-            if (subtitle != null) {
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.secondary,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = if (item is ArtistItem) TextAlign.Center else TextAlign.Start,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            SubtitleLine(
+                parts = subtitlePartsOf(item),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.secondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                textAlign = if (item is ArtistItem) TextAlign.Center else TextAlign.Start,
+                modifier = Modifier.fillMaxWidth(),
+            )
         }
     }
 }
@@ -157,7 +255,8 @@ fun YouTubeListItem(
         modifier = modifier
             .padding(horizontal = 8.dp)
             .fillMaxWidth()
-            .height(ListItemHeight),
+            .height(ListItemHeight)
+            .carrySong(item),
     ) {
         Row(
             modifier = Modifier
@@ -197,22 +296,14 @@ fun YouTubeListItem(
                     overflow = TextOverflow.Clip,
                     modifier = Modifier.visageMarquee(),
                 )
-                val subtitle = when (item) {
-                    is SongItem -> joinByBullet(item.artists.joinToString { it.name }, item.album?.name)
-                    is AlbumItem -> joinByBullet("Album", item.artists?.joinToString { it.name }, item.year?.toString())
-                    is ArtistItem -> item.subtext
-                    is PlaylistItem -> joinByBullet(item.author?.name, item.songCountText)
-                }
-                if (subtitle != null) {
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.secondary,
-                        maxLines = 1,
-                        overflow = TextOverflow.Clip,
-                        modifier = Modifier.visageMarquee(),
-                    )
-                }
+                SubtitleLine(
+                    parts = subtitlePartsOf(item),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.secondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
+                )
             }
         }
     }

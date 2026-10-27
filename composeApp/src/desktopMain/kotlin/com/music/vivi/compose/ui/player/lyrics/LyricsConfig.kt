@@ -48,7 +48,7 @@ enum class LyricsBackgroundMode(val label: String) {
  */
 enum class LyricsScene(val label: String) {
     NONE("List"),
-    ROW("3D"),
+    ROW("Tunnel"),
     CUTS("Cuts"),
 }
 
@@ -184,6 +184,10 @@ data class LyricsConfig(
     val backgroundIntensity: Float = 0.6f,
     val scene: LyricsScene = LyricsScene.NONE,
     val sceneDissolve: Float = 0.82f,
+    /** Tunnel: seconds a line stays after its last word before it starts to dissolve. */
+    val sceneLingerSec: Float = 3.0f,
+    /** Cuts: the rings cut gaps into the lettering and slide the slices; off keeps the text whole. */
+    val cutsSliceText: Boolean = true,
     val bounceAmp: Float = 0.48f,
     val bounceFreq: Float = 1.0f,
     val bounceDecay: Float = 7.5f,
@@ -236,6 +240,8 @@ fun DesktopPrefs.lyricsConfig(): LyricsConfig {
             else -> runCatching { LyricsScene.valueOf(s) }.getOrDefault(d.scene)
         },
         sceneDissolve = getFloat(PrefKeys.LyricsSceneDissolve, d.sceneDissolve).coerceIn(0.55f, 0.95f),
+        sceneLingerSec = getFloat(PrefKeys.LyricsSceneLinger, d.sceneLingerSec).coerceIn(0.5f, 8f),
+        cutsSliceText = getBoolean(PrefKeys.LyricsCutsSlice, d.cutsSliceText),
         bounceAmp = getFloat(PrefKeys.LyricsBounceAmp, d.bounceAmp).coerceIn(0f, 3f),
         bounceFreq = getFloat(PrefKeys.LyricsBounceFreq, d.bounceFreq).coerceIn(0.5f, 5f),
         bounceDecay = getFloat(PrefKeys.LyricsBounceDecay, d.bounceDecay).coerceIn(1f, 10f),
@@ -271,6 +277,8 @@ fun DesktopPrefs.saveLyricsConfig(c: LyricsConfig) {
     setFloat(PrefKeys.LyricsBackgroundIntensity, c.backgroundIntensity)
     setString(PrefKeys.LyricsScene, c.scene.name)
     setFloat(PrefKeys.LyricsSceneDissolve, c.sceneDissolve)
+    setFloat(PrefKeys.LyricsSceneLinger, c.sceneLingerSec)
+    setBoolean(PrefKeys.LyricsCutsSlice, c.cutsSliceText)
     setFloat(PrefKeys.LyricsBounceAmp, c.bounceAmp)
     setFloat(PrefKeys.LyricsBounceFreq, c.bounceFreq)
     setFloat(PrefKeys.LyricsBounceDecay, c.bounceDecay)

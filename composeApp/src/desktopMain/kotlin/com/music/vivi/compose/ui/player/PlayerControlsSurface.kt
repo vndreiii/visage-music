@@ -18,17 +18,20 @@ import dev.chrisbanes.haze.hazeChild
 fun Modifier.playerControlsSurface(framed: Boolean): Modifier {
     if (!framed) return this
     val shape = RoundedCornerShape(28.dp)
+    // On a light theme the washed page is pale, so the card gets a firmer dark scrim and white ink (see [FramedInk]).
+    val scrim = if (com.music.vivi.compose.theme.isLightTheme()) 0.55f else 0.22f
     val haze = LocalHazeState.current
     return if (haze != null && glassActive()) {
         clip(shape)
             .hazeChild(haze) {
                 blurRadius = 32.dp
-                tints = listOf(HazeTint(Color.Black.copy(alpha = 0.22f)))
+                tints = listOf(HazeTint(Color.Black.copy(alpha = scrim)))
                 noiseFactor = 0.03f
             }
             .background(Color.White.copy(alpha = 0.04f), shape)
             .padding(20.dp)
     } else {
-        background(Color.Black.copy(alpha = .28f), shape).padding(20.dp)
+        background(Color.Black.copy(alpha = maxOf(.28f, scrim)), shape).padding(20.dp)
     }
 }
+

@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.library
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
 import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -104,7 +105,7 @@ internal fun LibraryHomeFeed(
 
     LazyColumn(
         state = state,
-        contentPadding = PaddingValues(bottom = 128.dp),
+        contentPadding = PaddingValues(bottom = MiniPlayerClearance),
         modifier = Modifier.fillMaxSize().smoothWheelScroll(state),
     ) {
         item(key = "local-header") {

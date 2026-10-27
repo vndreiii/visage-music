@@ -1,5 +1,9 @@
 package com.music.vivi.compose.ui.playlist
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.PageHeaderTopPadding
+import com.music.vivi.compose.ui.component.PageInset
+import com.music.vivi.compose.ui.component.PageHeaderBottomPadding
 import com.music.vivi.compose.ui.expressive.VisageTextField
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.WheelLazyRow
@@ -155,13 +159,13 @@ fun OnlinePlaylistScreen(
                 modifier = Modifier.fillMaxSize()
                     .smoothWheelScroll(listState),
                 // Mini player floats over the list — keep last tracks reachable.
-                contentPadding = PaddingValues(bottom = 120.dp),
+                contentPadding = PaddingValues(bottom = MiniPlayerClearance),
             ) {
                 item(key = "toolbar") {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                            .padding(start = PageInset, end = PageInset, top = PageHeaderTopPadding, bottom = PageHeaderBottomPadding),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         com.music.vivi.compose.ui.component.VisageBackButton(onClick = { navController.navigateUp() })

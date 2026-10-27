@@ -89,12 +89,17 @@ fun PlayerBackgroundLayer(
     val prefs = org.koin.compose.koinInject<com.music.vivi.compose.prefs.DesktopPrefs>()
     @Suppress("UNUSED_VARIABLE")
     val prefsVersion = com.music.vivi.compose.ui.settings.rememberPrefsVersion(prefs)
-    val darkness = darknessOverride ?: (prefs.getInt(com.music.vivi.compose.prefs.PrefKeys.PlayerBackgroundDarkness, 0).coerceIn(0, 100) / 100f)
+    val darkness = darknessOverride ?: (prefs.getInt(com.music.vivi.compose.prefs.PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100) / 100f)
     val palette = LocalArtworkPalette.current
     val themeSurface = MaterialTheme.colorScheme.surface
+    val tint = com.music.vivi.compose.theme.backdropTint()
+    // Light theme: never wash less than what keeps dark text AAA on this cover; the setting can only add more.
+    val level = if (com.music.vivi.compose.theme.isLightTheme() && style != PlayerBackgroundStyle.DEFAULT) {
+        maxOf(darkness, com.music.vivi.compose.theme.lightWashFor(palette))
+    } else darkness
     Box(modifier.fillMaxSize().clipToBounds().drawWithContent {
         drawContent()
-        if (darkness > 0f) drawRect(Color.Black.copy(alpha = darkness))
+        if (level > 0f) drawRect(tint.copy(alpha = level))
     }) {
         when (style) {
             PlayerBackgroundStyle.DEFAULT -> Box(Modifier.fillMaxSize().background(themeSurface))
@@ -105,6 +110,7 @@ fun PlayerBackgroundLayer(
             PlayerBackgroundStyle.WAVE -> ShaderBackground(BackgroundShader.WAVE, palette, artworkUrl, scrollY = scrollY)
             PlayerBackgroundStyle.XMB -> ShaderBackground(BackgroundShader.XMB, palette, artworkUrl, scrollY = scrollY)
             PlayerBackgroundStyle.DISTORT -> ShaderBackground(BackgroundShader.DISTORT, palette, artworkUrl, scrollY = scrollY)
+            PlayerBackgroundStyle.RINGS -> ShaderBackground(BackgroundShader.RINGS, palette, artworkUrl, scrollY = scrollY)
             PlayerBackgroundStyle.LIVE_MESH -> ShaderBackground(BackgroundShader.MESH, palette, artworkUrl, scrollY = scrollY)
             PlayerBackgroundStyle.APPLE_MUSIC -> AppleMusicBg(
                 artworkUrl = artworkUrl,
@@ -345,9 +351,13 @@ fun MiniPlayerBackgroundLayer(
     val darkness = prefs.getInt(com.music.vivi.compose.prefs.PrefKeys.MiniPlayerBackgroundDarkness, 0).coerceIn(0, 100) / 100f
     val palette = LocalArtworkPalette.current
     val themeSurface = MaterialTheme.colorScheme.surfaceContainerHigh
+    val tint = com.music.vivi.compose.theme.backdropTint()
+    val level = if (com.music.vivi.compose.theme.isLightTheme() && style != PlayerBackgroundStyle.DEFAULT) {
+        maxOf(darkness, com.music.vivi.compose.theme.lightWashFor(palette))
+    } else darkness
     Box(modifier.clipToBounds().drawWithContent {
         drawContent()
-        if (darkness > 0f) drawRect(Color.Black.copy(alpha = darkness))
+        if (level > 0f) drawRect(tint.copy(alpha = level))
     }) {
         when (style) {
             PlayerBackgroundStyle.DEFAULT -> Box(Modifier.fillMaxSize().background(themeSurface))
@@ -358,6 +368,7 @@ fun MiniPlayerBackgroundLayer(
             PlayerBackgroundStyle.WAVE -> ShaderBackground(BackgroundShader.WAVE, palette, artworkUrl)
             PlayerBackgroundStyle.XMB -> ShaderBackground(BackgroundShader.XMB, palette, artworkUrl)
             PlayerBackgroundStyle.DISTORT -> ShaderBackground(BackgroundShader.DISTORT, palette, artworkUrl)
+            PlayerBackgroundStyle.RINGS -> ShaderBackground(BackgroundShader.RINGS, palette, artworkUrl)
             PlayerBackgroundStyle.LIVE_MESH -> ShaderBackground(BackgroundShader.MESH, palette, artworkUrl)
             PlayerBackgroundStyle.APPLE_MUSIC -> {
                 if (artworkUrl != null) {

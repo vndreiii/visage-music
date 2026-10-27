@@ -1,5 +1,8 @@
 package com.music.vivi.compose.ui.library.sidebar
 
+import androidx.compose.material.icons.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.PlayArrow
+import com.music.vivi.compose.ui.onboarding.tourAnchor
 import com.music.vivi.compose.ui.expressive.VisageTextField
 import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedContent
@@ -208,7 +211,8 @@ fun AnimatedLibrarySidebar(
                     start = if (fromRight) 4.dp else 8.dp, end = if (fromRight) 8.dp else 4.dp,
                     top = 8.dp, bottom = 8.dp,
                 )
-                .width(width),
+                .width(width)
+                .tourAnchor("library.sidebar"),
             shape = RoundedCornerShape(20.dp),
             color = if (com.music.vivi.compose.ui.glass.glassActive()) androidx.compose.ui.graphics.Color.Transparent
                 else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
@@ -217,7 +221,7 @@ fun AnimatedLibrarySidebar(
             Box(Modifier.fillMaxSize()) {
                 // Blur setting on: frosted glass over the tinted page background.
                 com.music.vivi.compose.ui.glass.GlassBackdrop(
-                    tint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                    tint = com.music.vivi.compose.ui.glass.panelGlassTint(0.45f),
                     modifier = Modifier.matchParentSize(),
                     shape = RoundedCornerShape(20.dp),
                 )
@@ -437,7 +441,7 @@ private fun LibraryPanel(
                 )
                 Box {
                     var addMenu by remember { mutableStateOf(false) }
-                    IconButton(onClick = { addMenu = true }, enabled = f > 0.5f) {
+                    IconButton(onClick = { addMenu = true }, enabled = f > 0.5f, modifier = Modifier.tourAnchor("library.add")) {
                         Icon(Icons.Outlined.Add, contentDescription = "Create")
                     }
                     DropdownMenu(
@@ -595,24 +599,31 @@ private fun LibraryPanel(
         )
     }
 
-    if (showCreate) NameDialog(
-        title = "New playlist", initial = "", confirm = "Create",
+    if (showCreate) PlaylistDialog(
         onDismiss = { showCreate = false },
-        onConfirm = { name ->
+        onConfirm = { name, description, cover ->
             showCreate = false
             scope.launch {
-                val id = withContext(Dispatchers.IO) { repo.createLocalPlaylist(name) }
+                val id = withContext(Dispatchers.IO) { repo.createLocalPlaylist(name, description = description, thumbnail = cover) }
                 navController.navigate(Routes.localPlaylist(id)) { launchSingleTop = true }
             }
         },
     )
     renaming?.let { e ->
-        NameDialog(
-            title = "Rename playlist", initial = e.title, confirm = "Rename",
+        // "Edit": the same card as New playlist, with the playlist's current name, description and photo.
+        val current = remember(e.id) { runCatching { repo.getPlaylist(e.id) }.getOrNull() }
+        PlaylistDialog(
+            title = "Edit playlist", confirm = "Save",
+            initialName = e.title,
+            initialDescription = current?.description.orEmpty(),
+            initialCover = current?.thumbnail?.takeIf { it.startsWith("/") },
             onDismiss = { renaming = null },
-            onConfirm = { name ->
+            onConfirm = { name, description, cover ->
                 renaming = null
-                scope.launch(Dispatchers.IO) { repo.renameLocalPlaylist(e.id, name) }
+                scope.launch(Dispatchers.IO) {
+                    val thumb = cover ?: current?.thumbnail?.takeIf { !it.startsWith("/") }
+                    repo.updateLocalPlaylistDetails(e.id, name, description, thumb)
+                }
             },
         )
     }
@@ -824,41 +835,6 @@ private fun EmptyState(loading: Boolean, searching: Boolean, onCreate: () -> Uni
     }
 }
 
-@Composable
-private fun NameDialog(title: String, initial: String, confirm: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var text by remember { mutableStateOf(initial) }
-    // Same card as the folder dialog: a live preview tile next to the field, expressive buttons underneath.
-    androidx.compose.ui.window.Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 6.dp,
-            modifier = Modifier.widthIn(max = 440.dp).fillMaxWidth(),
-        ) {
-            Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(title, style = MaterialTheme.typography.headlineSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    com.music.vivi.compose.ui.component.GeneratedCover(
-                        text.ifBlank { "playlist" },
-                        Modifier.size(104.dp).clip(RoundedCornerShape(20.dp)),
-                    )
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        VisageTextField(
-                            value = text, onValueChange = { text = it }, singleLine = true,
-                            label = { Text("Name") }, modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text("You can change the cover later", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                    ExpressiveButton("Cancel", onDismiss, style = ExpressiveStyle.Text)
-                    ExpressiveButton(confirm, { onConfirm(text.trim().ifBlank { "New playlist" }) })
-                }
-            }
-        }
-    }
-}
-
 // ── Rows ─────────────────────────────────────────────────────────────────────────────────────
 
 @Composable
@@ -1036,13 +1012,13 @@ private fun EntryMenu(expanded: Boolean, onDismiss: () -> Unit, e: LibraryEntry,
             MenuItem(label, icon) { onDismiss(); run() }
         if (page == 0) {
             if (e.kind != EntryKind.ARTIST) {
-                item("Play", Icons.Filled.PlayArrow) { a.play(e) }
+                item("Play", Icons.Outlined.PlayArrow) { a.play(e) }
                 item("Shuffle", Icons.Outlined.Shuffle) { a.shuffle(e) }
                 item("Add to queue", Icons.Outlined.QueueMusic) { a.enqueue(e) }
             }
-            item("Open", Icons.Outlined.OpenInFull) { a.open(e) }
+            item("Open", Icons.Outlined.OpenInNew) { a.open(e) }
             if (e.kind == EntryKind.LOCAL_PLAYLIST) {
-                item("Rename", Icons.Outlined.Edit) { a.rename(e) }
+                item("Edit", Icons.Outlined.Edit) { a.rename(e) }
                 item("Delete", Icons.Outlined.Delete) { a.delete(e) }
             }
             if (!e.pinned) {
@@ -1093,7 +1069,11 @@ fun EqualizerBars(playing: Boolean, color: Color, modifier: Modifier = Modifier)
 private fun rememberEntryDrop(e: LibraryEntry): Pair<Modifier, Float> {
     val repo = koinInject<LibraryRepository>()
     val yt = koinInject<YouTubeMusicService>()
-    val mod = if (e.isPlaylist) Modifier.trackDropTarget(e.key, accepts = { t -> canDropOnto(e, t) }) { t -> dropTrackOnto(e, t, repo, yt) } else Modifier
+    val downloads = koinInject<com.music.vivi.compose.download.TrackDownloadService>()
+    val controller = com.music.vivi.compose.LocalPlaybackController.current
+    val mod = if (e.isPlaylist || e.kind == EntryKind.LIKED || e.kind == EntryKind.DOWNLOADS) {
+        Modifier.trackDropTarget(e.key, accepts = { t -> canDropOnto(e, t) }) { t -> dropTrackOnto(e, t, repo, yt, controller, downloads) }
+    } else Modifier
     val hover by animateFloatAsState(
         if (TrackDrag.hoverKey == e.key && !TrackDrag.hoverRejected) 1f else 0f,
         androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 420f), label = "dropHover",
@@ -1118,11 +1098,17 @@ private fun canDropOnto(e: LibraryEntry, t: com.music.vivi.player.QueueTrack): B
     when (e.kind) {
         EntryKind.LOCAL_PLAYLIST -> true
         EntryKind.YT_PLAYLIST -> !isLocalFile(t)
+        // Local files have no YouTube Music page to like or download.
+        EntryKind.LIKED, EntryKind.DOWNLOADS -> !isLocalFile(t)
         else -> false
     }
 
 /** Adds a carried queue track to a playlist row; returns the toast text. */
-private suspend fun dropTrackOnto(e: LibraryEntry, t: com.music.vivi.player.QueueTrack, repo: LibraryRepository, yt: YouTubeMusicService): String? =
+private suspend fun dropTrackOnto(
+    e: LibraryEntry, t: com.music.vivi.player.QueueTrack, repo: LibraryRepository, yt: YouTubeMusicService,
+    controller: com.music.vivi.player.PlaybackController,
+    downloads: com.music.vivi.compose.download.TrackDownloadService,
+): String? =
     withContext(Dispatchers.IO) {
         when (e.kind) {
             EntryKind.LOCAL_PLAYLIST -> {
@@ -1134,6 +1120,16 @@ private suspend fun dropTrackOnto(e: LibraryEntry, t: com.music.vivi.player.Queu
                 // A downloaded YouTube track is queued as offline:<id>; YouTube only knows the bare id.
                 else runCatching { yt.addToPlaylist(e.id, t.videoId.removePrefix("offline:")).getOrThrow() }
                     .fold({ "Added ${t.title} to ${e.title}" }, { it.message ?: "Couldn't add to ${e.title}" })
+            }
+            EntryKind.LIKED -> {
+                if (isLocalFile(t)) "${t.title} is a local file, so it can't be liked on YouTube Music"
+                else runCatching { controller.setLiked(t.videoId, true) }
+                    .fold({ "Liked ${t.title}" }, { it.message ?: "Couldn't like ${t.title}" })
+            }
+            EntryKind.DOWNLOADS -> when {
+                isLocalFile(t) -> "${t.title} is a local file, so there is nothing to download"
+                t.videoId.startsWith("offline:") -> "${t.title} is already downloaded"
+                else -> { downloads.enqueue(t.videoId, t.title, t.artist); "Downloading ${t.title}" }
             }
             else -> null
         }

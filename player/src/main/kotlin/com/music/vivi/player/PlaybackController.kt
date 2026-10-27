@@ -55,6 +55,9 @@ interface PlaybackController {
     val durationMs: StateFlow<Long>
     val isFavorite: StateFlow<Boolean>
     val lastError: StateFlow<String?>
+    /** Short friendly note for a toast (e.g. a song was skipped because it would not load); null when none. */
+    val notice: StateFlow<String?>
+    fun clearNotice()
     val queueIds: StateFlow<List<String>>
     val queueTracks: StateFlow<List<QueueTrack>>
     val queueIndex: StateFlow<Int>
@@ -108,6 +111,9 @@ interface PlaybackController {
     fun toggleShuffle()
     fun cycleRepeatMode()
     suspend fun toggleFavorite()
+
+    /** Likes or unlikes any track (YouTube and the local library) and updates the heart if it is the one playing. */
+    suspend fun setLiked(videoId: String, like: Boolean)
     fun release()
 }
 

@@ -64,6 +64,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import com.music.vivi.compose.theme.LocalPlayerInk
+import com.music.vivi.compose.theme.ProvidePlayerInk
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -181,6 +183,31 @@ fun NowPlayingScreen(
     queueOpen: Boolean = false,
     onCloseQueue: (() -> Unit)? = null,
 ) {
+    val prefs = koinInject<DesktopPrefs>()
+    @Suppress("UNUSED_VARIABLE")
+    val observeInk = rememberPrefsVersion(prefs)
+    val style = runCatching {
+        PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle.name))
+    }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
+    ProvidePlayerInk(
+        solid = style == PlayerBackgroundStyle.DEFAULT,
+        backdrop = MaterialTheme.colorScheme.surface,
+        darkness = prefs.getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100) / 100f,
+        framedControls = prefs.getBoolean(PrefKeys.UsePlayerV2, false),
+    ) {
+        NowPlayingScreenContent(navController, onOpenPinnedQueue, onOpenFullscreenQueue, queueOpen, onCloseQueue)
+    }
+}
+
+@Composable
+private fun NowPlayingScreenContent(
+    navController: NavController,
+    onOpenPinnedQueue: (() -> Unit)? = null,
+    onOpenFullscreenQueue: (() -> Unit)? = null,
+    queueOpen: Boolean = false,
+    onCloseQueue: (() -> Unit)? = null,
+) {
+    val ink = LocalPlayerInk.current
     val controller = LocalPlaybackController.current
     val prefs = koinInject<DesktopPrefs>()
     @Suppress("UNUSED_VARIABLE")
@@ -214,9 +241,9 @@ fun NowPlayingScreen(
     val playPauseHeight = prefs.getInt(PrefKeys.PlayPauseHeight, 56).coerceIn(48, 96).dp
     val queueMode = runCatching {
         QueuePanelMode.valueOf(
-            prefs.getString(PrefKeys.QueuePanelMode, QueuePanelMode.FULLSCREEN.name),
+            prefs.getString(PrefKeys.QueuePanelMode, QueuePanelMode.PINNED_RIGHT.name),
         )
-    }.getOrDefault(QueuePanelMode.FULLSCREEN)
+    }.getOrDefault(QueuePanelMode.PINNED_RIGHT)
     var underPlaybarOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     val showUnderPlaybar = queueMode == QueuePanelMode.UNDER_PLAYBAR && underPlaybarOpen
     val nowPlaying by controller.nowPlaying.collectAsState()
@@ -249,7 +276,7 @@ fun NowPlayingScreen(
 
     val bgStyle = runCatching {
         PlayerBackgroundStyle.valueOf(
-            prefs.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name),
+            prefs.getString(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle.name),
         )
     }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
     val sliderStyle = runCatching {
@@ -567,6 +594,8 @@ fun NowPlayingScreen(
                                                 playing = playing,
                                                 modifier = Modifier
                                                     .fillMaxSize()
+                                                    // Moves with the swap like the cover does.
+                                                    .songSwapCover(swap)
                                                     .padding(bottom = 16.dp)
                                                     .clip(if (squareCover) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(24.dp))
                                                     .graphicsLayer {
@@ -614,7 +643,7 @@ fun NowPlayingScreen(
                                                     Alignment.Center,
                                                 ),
                                             )
-                                            .clip(RoundedCornerShape(14.dp)),
+                                            .clip(if (squareCover) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(14.dp)),
                                     )
                                 }
                                 Column(Modifier.weight(1f)) {
@@ -622,7 +651,7 @@ fun NowPlayingScreen(
                                         track?.title ?: "Nothing playing",
                                         style = MaterialTheme.typography.headlineMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = Color.White,
+                                        color = ink.text(),
                                         maxLines = 2,
                                         overflow = TextOverflow.Ellipsis,
                                     )
@@ -631,15 +660,15 @@ fun NowPlayingScreen(
                                         Text(
                                             state.name,
                                             style = MaterialTheme.typography.titleMedium,
-                                            color = Color.White.copy(alpha = 0.65f),
+                                            color = ink.text(0.65f),
                                             modifier = Modifier.padding(top = 6.dp),
                                         )
                                     } else {
                                         com.music.vivi.compose.ui.artist.ArtistLinks(
                                             credits = credits,
                                             style = MaterialTheme.typography.titleMedium,
-                                            color = Color.White.copy(alpha = 0.65f),
-                                            hoverColor = Color.White,
+                                            color = ink.text(0.65f),
+                                            hoverColor = ink.text(),
                                             onOpen = { navController.openArtistByName(it) },
                                             maxLines = 2,
                                             modifier = Modifier.padding(top = 6.dp),
@@ -763,7 +792,7 @@ fun NowPlayingScreen(
                             Icon(
                                 Icons.Outlined.VolumeDown,
                                 contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.75f),
+                                tint = ink.text(0.75f),
                                 modifier = Modifier.size(20.dp),
                             )
                             if (volumeStyle == VolumeControlStyle.COMPACT_PILL) {
@@ -792,6 +821,8 @@ fun NowPlayingScreen(
                                         scrubVolume = false
                                         prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
                                     },
+                                    activeColor = ink.primary,
+                                    inactiveColor = ink.fill(0.28f),
                                     style = SliderStyle.M3_EXPRESSIVE,
                                     squiggly = false,
                                     compact = true,
@@ -799,9 +830,9 @@ fun NowPlayingScreen(
                                 )
                                 Text(
                                     "${(displayVolume * 100).toInt()}%",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.7f),
-                                    modifier = Modifier.widthIn(min = 36.dp),
+                                    style = com.music.vivi.compose.theme.VisageType.readout,
+                                    color = ink.text(0.7f),
+                                    modifier = Modifier.widthIn(min = 40.dp),
                                     textAlign = androidx.compose.ui.text.style.TextAlign.Center,
                                 )
                             }
@@ -833,6 +864,7 @@ internal fun NowPlayingSeekSection(
     modifier: Modifier = Modifier,
     showTimes: Boolean = true,
 ) {
+    val ink = LocalPlayerInk.current
     val controller = LocalPlaybackController.current
     val positionMs by controller.positionMs.collectAsState()
     val playbackState by controller.state.collectAsState()
@@ -852,14 +884,16 @@ internal fun NowPlayingSeekSection(
                 scrubbing = false
                 controller.seekTo((scrubPos * duration).toLong().coerceAtLeast(0L))
             },
+            activeColor = ink.primary,
+            inactiveColor = ink.fill(0.28f),
             style = sliderStyle,
             squiggly = squiggly,
             isPlaying = playbackState == com.music.vivi.player.PlaybackState.Playing,
             modifier = Modifier.fillMaxWidth(),
         )
         if (showTimes) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(formatMs(displayPos), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
-            Text(formatMs(duration), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
+            Text(formatMs(displayPos), style = com.music.vivi.compose.theme.VisageType.readout, color = ink.text(0.7f))
+            Text(formatMs(duration), style = com.music.vivi.compose.theme.VisageType.readout, color = ink.text(0.7f))
         }
     }
 }
@@ -879,21 +913,22 @@ internal fun TransportRow(
     nextTracks: List<Pair<Int, QueueTrack>> = emptyList(),
     onPickTrack: (Int) -> Unit = {},
 ) {
+    val ink = LocalPlayerInk.current
     var eat by androidx.compose.runtime.remember { mutableStateOf(0f) }
     var eatSide by androidx.compose.runtime.remember { mutableStateOf(0) }
     val scheme = MaterialTheme.colorScheme
     val (pillBg, pillIcon) = when (style) {
-        PlayerButtonsStyle.DEFAULT -> Color.White.copy(alpha = 0.12f) to Color.White
+        PlayerButtonsStyle.DEFAULT -> ink.fill(0.12f) to ink.primary
         PlayerButtonsStyle.PRIMARY -> scheme.primary.copy(alpha = 0.85f) to scheme.onPrimary
         PlayerButtonsStyle.TERTIARY -> scheme.tertiary.copy(alpha = 0.85f) to scheme.onTertiary
     }
     val playBg = when (style) {
-        PlayerButtonsStyle.DEFAULT -> Color.White
+        PlayerButtonsStyle.DEFAULT -> ink.primary
         PlayerButtonsStyle.PRIMARY -> scheme.primary
         PlayerButtonsStyle.TERTIARY -> scheme.tertiary
     }
     val playFg = when (style) {
-        PlayerButtonsStyle.DEFAULT -> Color.Black
+        PlayerButtonsStyle.DEFAULT -> ink.inverse
         PlayerButtonsStyle.PRIMARY -> scheme.onPrimary
         PlayerButtonsStyle.TERTIARY -> scheme.onTertiary
     }
@@ -986,11 +1021,12 @@ internal fun QueuePillStrip(
     onPlayIndex: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val ink = LocalPlayerInk.current
     Column(modifier.fillMaxWidth()) {
         Text(
             if (upcoming.isEmpty()) "Up next" else "Up next · ${upcoming.size}",
             style = MaterialTheme.typography.labelLarge,
-            color = Color.White.copy(alpha = 0.55f),
+            color = ink.text(0.55f),
             modifier = Modifier.padding(bottom = 10.dp),
         )
         LazyColumn(
@@ -1002,7 +1038,7 @@ internal fun QueuePillStrip(
                 Surface(
                     onClick = { onPlayIndex(index) },
                     shape = RoundedCornerShape(50),
-                    color = Color.White.copy(alpha = 0.14f),
+                    color = ink.text(0.14f),
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                 ) {
                     Row(
@@ -1021,7 +1057,7 @@ internal fun QueuePillStrip(
                         Column(Modifier.weight(1f)) {
                             Text(
                                 track.title,
-                                color = Color.White,
+                                color = ink.text(),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
@@ -1031,7 +1067,7 @@ internal fun QueuePillStrip(
                             if (track.artist.isNotBlank()) {
                                 Text(
                                     track.artist,
-                                    color = Color.White.copy(alpha = 0.6f),
+                                    color = ink.text(0.6f),
                                     style = MaterialTheme.typography.labelSmall,
                                     maxLines = 1,
                                     overflow = TextOverflow.Clip,
@@ -1045,7 +1081,7 @@ internal fun QueuePillStrip(
             item(key = "queue-end-sentinel") {
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = Color.White.copy(alpha = 0.08f),
+                    color = ink.text(0.08f),
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                 ) {
                     Row(
@@ -1055,13 +1091,13 @@ internal fun QueuePillStrip(
                         Icon(
                             Icons.Filled.Pets,
                             contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.55f),
+                            tint = ink.text(0.55f),
                             modifier = Modifier.size(22.dp),
                         )
                         Spacer(Modifier.width(12.dp))
                         Text(
                             "Nothing to see here...",
-                            color = Color.White.copy(alpha = 0.45f),
+                            color = ink.text(0.45f),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -1076,7 +1112,7 @@ internal fun TransportPill(
     enabled: Boolean,
     onClick: () -> Unit,
     width: androidx.compose.ui.unit.Dp,
-    containerColor: Color = Color.White.copy(alpha = 0.12f),
+    containerColor: Color = LocalPlayerInk.current.fill(0.12f),
     /** Queue entries (index, track) listed in a dropdown while the pill is held; empty disables hold. */
     previewTracks: List<Pair<Int, QueueTrack>> = emptyList(),
     onPickPreview: (Int) -> Unit = {},
@@ -1085,6 +1121,7 @@ internal fun TransportPill(
     onEat: (Float) -> Unit = {},
     content: @Composable () -> Unit,
 ) {
+    val ink = LocalPlayerInk.current
     var pressed by androidx.compose.runtime.remember { mutableStateOf(false) }
     var menu by androidx.compose.runtime.remember { mutableStateOf(false) }
     var dragX by androidx.compose.runtime.remember { mutableStateOf(0f) }
@@ -1163,13 +1200,14 @@ internal fun TransportPill(
 internal fun ToolIconButton(
     icon: ImageVector,
     contentDescription: String,
-    tint: Color = Color.White,
+    tint: Color = LocalPlayerInk.current.primary,
     circle: Boolean = false,
     active: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val bg = if (active) Color.White else Color.White.copy(alpha = 0.12f)
-    val iconTint = if (active) Color.Black else tint
+    val ink = LocalPlayerInk.current
+    val bg = if (active) ink.primary else ink.fill(0.12f)
+    val iconTint = if (active) ink.inverse else tint
     Surface(
         onClick = onClick,
         shape = if (circle) CircleShape else RoundedCornerShape(12.dp),
@@ -1195,6 +1233,7 @@ fun VolumePillControl(
     onVolumeChangeFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val ink = LocalPlayerInk.current
     var editing by remember { mutableStateOf(false) }
     var text by remember(volume) { mutableStateOf((volume * 100).toInt().toString()) }
     val focusRequester = remember { FocusRequester() }
@@ -1207,7 +1246,7 @@ fun VolumePillControl(
     
     Surface(
         shape = RoundedCornerShape(999.dp),
-        color = Color.White.copy(alpha = 0.12f),
+        color = ink.text(0.12f),
         modifier = modifier.height(28.dp)
     ) {
         Row(
@@ -1221,7 +1260,7 @@ fun VolumePillControl(
                 },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Remove, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Remove, null, tint = ink.text(), modifier = Modifier.size(16.dp))
             }
             
             Box(
@@ -1232,8 +1271,8 @@ fun VolumePillControl(
                     BasicTextField(
                         value = text,
                         onValueChange = { if (it.length <= 3) text = it.filter { c -> c.isDigit() } },
-                        textStyle = MaterialTheme.typography.labelSmall.copy(color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center),
-                        cursorBrush = SolidColor(Color.White),
+                        textStyle = MaterialTheme.typography.labelSmall.copy(color = ink.text(), textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+                        cursorBrush = SolidColor(ink.text()),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = {
@@ -1248,7 +1287,7 @@ fun VolumePillControl(
                     Text(
                         "${(volume * 100).toInt()}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
+                        color = ink.text(),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
@@ -1261,7 +1300,7 @@ fun VolumePillControl(
                 },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Add, null, tint = ink.text(), modifier = Modifier.size(16.dp))
             }
         }
     }

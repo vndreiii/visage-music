@@ -48,6 +48,8 @@ import androidx.compose.material.icons.outlined.VolumeDown
 import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import com.music.vivi.compose.theme.LocalPlayerInk
+import com.music.vivi.compose.theme.ProvidePlayerInk
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import com.music.vivi.compose.ui.glass.glassSource
@@ -189,6 +191,22 @@ private fun PrefVertical(visible: Boolean, content: @Composable () -> Unit) {
  */
 @Composable
 fun NowPlayingFullscreenScreen(navController: NavController) {
+    val prefs = koinInject<DesktopPrefs>()
+    val prefsVersion = com.music.vivi.compose.ui.settings.rememberPrefsVersion(prefs)
+    val cfg = remember(prefsVersion) { FullscreenSettings.resolve(prefs.reader()) }
+    ProvidePlayerInk(
+        solid = cfg.backgroundStyle == PlayerBackgroundStyle.DEFAULT,
+        backdrop = MaterialTheme.colorScheme.surface,
+        darkness = prefs.getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100) / 100f,
+        framedControls = cfg.framedControls,
+    ) {
+        NowPlayingFullscreenContent(navController)
+    }
+}
+
+@Composable
+private fun NowPlayingFullscreenContent(navController: NavController) {
+    val ink = LocalPlayerInk.current
     val controller = LocalPlaybackController.current
     val windowState = LocalWindowState.current
     val prefs = koinInject<DesktopPrefs>()
@@ -432,7 +450,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                                 track?.title ?: "Nothing playing",
                                 style = MaterialTheme.typography.headlineMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = Color.White,
+                                color = ink.text(),
                                 maxLines = 2,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -441,7 +459,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                                 Text(
                                     state.name,
                                     style = MaterialTheme.typography.titleMedium,
-                                    color = Color.White.copy(alpha = 0.65f),
+                                    color = ink.text(0.65f),
                                     modifier = Modifier.padding(top = 6.dp),
                                 )
                             } else {
@@ -449,8 +467,8 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                                     ArtistLinks(
                                         credits = credits,
                                         style = MaterialTheme.typography.titleMedium,
-                                        color = Color.White.copy(alpha = 0.65f),
-                                        hoverColor = Color.White,
+                                        color = ink.text(0.65f),
+                                        hoverColor = ink.text(),
                                         onOpen = {
                                             WindowFullscreen.exit(windowState)
                                             navController.openArtistByName(it)
@@ -465,7 +483,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                                 Text(
                                     album,
                                     style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.White.copy(alpha = 0.5f),
+                                    color = ink.text(0.5f),
                                     maxLines = 1,
                                     overflow = TextOverflow.Clip,
                                     modifier = Modifier.padding(top = 4.dp).visageMarquee(),
@@ -664,7 +682,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                     now.format(DateTimeFormatter.ofPattern("HH:mm")),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color.White.copy(alpha = 0.8f),
+                    color = ink.text(0.8f),
                 )
             }
         }
@@ -727,12 +745,13 @@ private fun VolumeGroup(
     onChange: (Float) -> Unit,
     onFinished: () -> Unit,
 ) {
+    val ink = LocalPlayerInk.current
     Row(
         Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(Icons.Outlined.VolumeDown, null, tint = Color.White.copy(alpha = 0.75f), modifier = Modifier.size(20.dp))
+        Icon(Icons.Outlined.VolumeDown, null, tint = ink.text(0.75f), modifier = Modifier.size(20.dp))
         if (style == VolumeControlStyle.COMPACT_PILL) {
             VolumePillControl(volume = volume, onVolumeChange = onChange, onVolumeChangeFinished = onFinished)
         } else {
@@ -740,16 +759,18 @@ private fun VolumeGroup(
                 progress = volume,
                 onScrub = onChange,
                 onScrubFinished = onFinished,
+                activeColor = ink.primary,
+                inactiveColor = ink.fill(0.28f),
                 style = SliderStyle.M3_EXPRESSIVE,
                 squiggly = false,
                 compact = true,
                 modifier = Modifier.weight(1f),
             )
-            Icon(Icons.Outlined.VolumeUp, null, tint = Color.White.copy(alpha = 0.75f), modifier = Modifier.size(20.dp))
+            Icon(Icons.Outlined.VolumeUp, null, tint = ink.text(0.75f), modifier = Modifier.size(20.dp))
             Text(
                 "${(volume * 100).toInt()}%",
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.7f),
+                style = com.music.vivi.compose.theme.VisageType.readout,
+                color = ink.text(0.7f),
                 modifier = Modifier.widthIn(min = 40.dp),
             )
         }

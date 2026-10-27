@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.search
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
 import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.WheelLazyRow
@@ -468,7 +469,7 @@ fun SearchScreen(navController: NavController) {
                 showingTypingHints -> {
                     LazyColumn(
                         state = listState,
-                        contentPadding = PaddingValues(bottom = 96.dp),
+                        contentPadding = PaddingValues(bottom = MiniPlayerClearance),
                         modifier = Modifier.smoothWheelScroll(listState),
                     ) {
                         if (suggestions.isNotEmpty()) {
@@ -519,7 +520,7 @@ fun SearchScreen(navController: NavController) {
                 submittedQuery != null -> {
                     LazyColumn(
                         state = listState,
-                        contentPadding = PaddingValues(bottom = 96.dp),
+                        contentPadding = PaddingValues(bottom = MiniPlayerClearance),
                         modifier = Modifier.smoothWheelScroll(listState),
                     ) {
                         if (filter == SearchFilterType.ALL) {
@@ -604,7 +605,7 @@ fun SearchScreen(navController: NavController) {
                         showingIdleSuggestions && idleCharts.isNotEmpty() -> {
                             LazyColumn(
                                 state = listState,
-                                contentPadding = PaddingValues(bottom = 96.dp),
+                                contentPadding = PaddingValues(bottom = MiniPlayerClearance),
                                 modifier = Modifier.smoothWheelScroll(listState),
                             ) {
                                 item {
@@ -732,15 +733,9 @@ private fun SearchField(
         animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
         label = "searchCorner",
     )
-    val elev by animateDpAsState(
-        targetValue = if (focused) 6.dp else 0.dp,
-        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
-        label = "searchElev",
-    )
     Surface(
         shape = RoundedCornerShape(corner),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shadowElevation = elev,
         modifier = Modifier.fillMaxWidth().height(52.dp),
     ) {
         Row(

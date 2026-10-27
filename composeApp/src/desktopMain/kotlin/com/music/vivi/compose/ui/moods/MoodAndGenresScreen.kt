@@ -1,5 +1,8 @@
 package com.music.vivi.compose.ui.moods
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.edgeProgress
+import com.music.vivi.compose.ui.component.pageScrollEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.fadeIn
@@ -100,7 +103,17 @@ fun MoodAndGenresScreen(navController: NavHostController) {
     }
 
     Column(Modifier.fillMaxSize()) {
-        DetailPageHeader(title = "Moods & genres", onBack = { navController.navigateUp() })
+        DetailPageHeader(
+            title = "Moods & genres",
+            onBack = { navController.navigateUp() },
+            // The search sits on the title's own row, not in the chips row below it.
+            trailing = if (moods != null) ({
+                com.music.vivi.compose.ui.component.PageSearchField(
+                    value = query, onValueChange = { query = it }, placeholder = "Search moods & genres",
+                    modifier = Modifier.width(320.dp),
+                )
+            }) else null,
+        )
         val loaded = moods
         when {
             loading && loaded == null -> PageLoadingState("Loading moods", detail = true)
@@ -116,8 +129,6 @@ fun MoodAndGenresScreen(navController: NavHostController) {
                 FilterBar(
                     filter = filter,
                     onFilter = { if (it != filter) { filter = it; intro = true } },
-                    query = query,
-                    onQuery = { query = it },
                 )
                 MoodContent(
                     sections = sections, filter = filter, query = query.trim(), intro = intro,
@@ -129,44 +140,15 @@ fun MoodAndGenresScreen(navController: NavHostController) {
 }
 
 @Composable
-private fun FilterBar(filter: MoodFilter, onFilter: (MoodFilter) -> Unit, query: String, onQuery: (String) -> Unit) {
-    Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.weight(1f)) {
-            ChipsRow(
-                chips = MoodFilter.entries.map { it to it.label },
-                currentValue = filter,
-                onValueUpdate = { onFilter(it ?: MoodFilter.All) },
-            )
-        }
-        val focused = remember { mutableStateOf(false) }
-        val w by animateDpAsState(if (focused.value || query.isNotEmpty()) 280.dp else 200.dp, VisageMotion.spatialDefault(), label = "searchW")
-        Row(
-            Modifier.padding(end = 20.dp).width(w).height(40.dp).clip(CircleShape)
-                .background(MaterialTheme.colorScheme.surfaceContainerHigh).padding(start = 14.dp, end = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(Icons.Rounded.Search, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-            Spacer(Modifier.width(8.dp))
-            Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
-                if (query.isEmpty()) Text("Search", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                BasicTextField(
-                    value = query, onValueChange = onQuery, singleLine = true,
-                    textStyle = MaterialTheme.typography.bodyMedium.copy(color = MaterialTheme.colorScheme.onSurface),
-                    cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
-                    modifier = Modifier.fillMaxWidth().androidxOnFocus { focused.value = it },
-                )
-            }
-            AnimatedVisibility(query.isNotEmpty(), enter = fadeIn(), exit = fadeOut()) {
-                IconButton(onClick = { onQuery("") }, modifier = Modifier.size(32.dp)) {
-                    Icon(Icons.Rounded.Close, "Clear search", Modifier.size(18.dp))
-                }
-            }
-        }
+private fun FilterBar(filter: MoodFilter, onFilter: (MoodFilter) -> Unit) {
+    Box(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 8.dp)) {
+        ChipsRow(
+            chips = MoodFilter.entries.map { it to it.label },
+            currentValue = filter,
+            onValueUpdate = { onFilter(it ?: MoodFilter.All) },
+        )
     }
 }
-
-private fun Modifier.androidxOnFocus(onChange: (Boolean) -> Unit): Modifier =
-    this.then(Modifier.onFocusChanged { onChange(it.isFocused) })
 
 @Composable
 private fun MoodContent(
@@ -205,9 +187,9 @@ private fun MoodContent(
 
         LazyColumn(
             state = state,
-            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = 120.dp),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 4.dp, bottom = MiniPlayerClearance),
             verticalArrangement = Arrangement.spacedBy(gap),
-            modifier = Modifier.fillMaxSize().smoothWheelScroll(state),
+            modifier = Modifier.fillMaxSize().pageScrollEdge { state.edgeProgress() }.smoothWheelScroll(state),
         ) {
             if (heroesVisible.isNotEmpty()) {
                 val delays = heroesVisible.map { nextDelay() }

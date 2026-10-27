@@ -1,6 +1,7 @@
 package com.music.vivi.compose.ui
 
 import com.music.vivi.nativelib.AppPaths
+import java.io.File
 import com.music.vivi.player.login.LoginBrowserHost
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -42,6 +43,19 @@ internal fun embeddedBrowserChromiumSwitches(osName: String): List<String> {
     }
 }
 
+/**
+ * The Chromium runtime shipped inside the app (the Windows bundle stages it as `jcef-152.0.6` in the
+ * resources dir, see `stageJcefRuntime` in composeApp/build.gradle.kts), or null when there is none.
+ * `VISAGE_JCEF_DIR` overrides the location (dev runs).
+ */
+internal fun bundledJcefRuntime(): File? =
+    listOfNotNull(
+        System.getenv("VISAGE_JCEF_DIR")?.takeIf { it.isNotBlank() }?.let(::File),
+        com.music.vivi.nativelib.HostOs.resourcesDir()?.resolve("jcef-152.0.6"),
+    ).firstOrNull { it.resolve("libcef.dll").isFile }
+
+private const val JCEF_VERSION_DIR = "jcef-152.0.6"
+
 /** One process-wide CEF runtime, with a browser component embedded in the Account page. */
 private object LoginCefRuntime {
     val debugPort = ServerSocket(0).use { it.localPort }
@@ -81,7 +95,20 @@ private object LoginCefRuntime {
             }
         }
         embeddedBrowserChromiumSwitches(System.getProperty("os.name")).forEach { builder.addJcefArgs(it) }
-        builder.setInstallDir(AppPaths.cache().resolve("jcef-152.0.6"))
+        val installDir = AppPaths.cache().resolve(JCEF_VERSION_DIR)
+        // Bundled runtime: copy it once into the cache (via a .partial folder, so an interrupted copy is never
+        // mistaken for a finished install) and jcefmaven then finds it there, without the ~150 MB download.
+        bundledJcefRuntime()?.let { bundled ->
+            if (!installDir.resolve("libcef.dll").isFile) {
+                progress.value = "Preparing the bundled browser component…"
+                val partial = File(installDir.path + ".partial")
+                partial.deleteRecursively()
+                bundled.copyRecursively(partial, overwrite = true)
+                installDir.deleteRecursively()
+                check(partial.renameTo(installDir)) { "Could not move the bundled browser into place" }
+            }
+        }
+        builder.setInstallDir(installDir)
         builder.cefSettings.apply {
             windowless_rendering_enabled = false
             remote_debugging_port = debugPort

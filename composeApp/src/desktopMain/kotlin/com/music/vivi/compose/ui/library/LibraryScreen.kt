@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.library
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.onboarding.tourAnchor
 import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 
@@ -505,6 +507,7 @@ fun LibraryScreen(navController: NavController) {
             }
             com.music.vivi.compose.ui.expressive.ExpressiveButton(
                 text = "Tag Manager",
+                modifier = Modifier.tourAnchor("library.tagmanager"),
                 onClick = { navController.navigate(Routes.TAG_MANAGER) },
                 style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Text,
             )
@@ -996,7 +999,7 @@ private fun LikedSplit(
             LikedColumnHeader("YouTube", songs.size)
             if (songs.isEmpty()) EmptyContent("No liked YouTube songs") else {
                 val state = androidx.compose.foundation.lazy.rememberLazyListState()
-                LazyColumn(state = state, contentPadding = PaddingValues(bottom = 128.dp), modifier = Modifier.smoothWheelScroll(state)) {
+                LazyColumn(state = state, contentPadding = PaddingValues(bottom = MiniPlayerClearance), modifier = Modifier.smoothWheelScroll(state)) {
                     items(songs, key = { "yt-${it.id}" }) { song ->
                         YouTubeListItem(
                             item = song,
@@ -1013,7 +1016,7 @@ private fun LikedSplit(
             LikedColumnHeader("Local", localLiked.size)
             if (localLiked.isEmpty()) EmptyContent("No liked local songs") else {
                 val state = androidx.compose.foundation.lazy.rememberLazyListState()
-                LazyColumn(state = state, contentPadding = PaddingValues(bottom = 128.dp), modifier = Modifier.smoothWheelScroll(state)) {
+                LazyColumn(state = state, contentPadding = PaddingValues(bottom = MiniPlayerClearance), modifier = Modifier.smoothWheelScroll(state)) {
                     items(localLiked, key = { "ll-${it.id}" }) { track ->
                         LocalTrackRow(track, active = playingId == "local:${track.id}") {
                             onPlayLocal(localLiked, localLiked.indexOfFirst { it.id == track.id }.coerceAtLeast(0))
@@ -1077,7 +1080,7 @@ private fun LikedList(
     } else {
         val smoothScroll2 = androidx.compose.foundation.lazy.rememberLazyListState()
         LazyColumn(
-            state = smoothScroll2,contentPadding = PaddingValues(bottom = 128.dp),
+            state = smoothScroll2,contentPadding = PaddingValues(bottom = MiniPlayerClearance),
             modifier = Modifier.smoothWheelScroll(smoothScroll2),
         ) {
             items(songs, key = { it.id }) { song ->
@@ -1106,7 +1109,7 @@ private fun LocalTrackList(
     }
     val smoothScroll3 = androidx.compose.foundation.lazy.rememberLazyListState()
     LazyColumn(
-        state = smoothScroll3,contentPadding = PaddingValues(bottom = 128.dp),
+        state = smoothScroll3,contentPadding = PaddingValues(bottom = MiniPlayerClearance),
         modifier = Modifier.smoothWheelScroll(smoothScroll3),
     ) {
         items(tracks, key = { it.id }) { track ->
@@ -1181,7 +1184,7 @@ private fun RecentMixedList(
     }
     val smoothScroll4 = androidx.compose.foundation.lazy.rememberLazyListState()
     LazyColumn(
-        state = smoothScroll4,contentPadding = PaddingValues(bottom = 128.dp),
+        state = smoothScroll4,contentPadding = PaddingValues(bottom = MiniPlayerClearance),
         modifier = Modifier.smoothWheelScroll(smoothScroll4),
     ) {
         if (localRecent.isNotEmpty()) {
@@ -1252,7 +1255,7 @@ private fun OfflineList(
         } else {
             val smoothScroll5 = androidx.compose.foundation.lazy.rememberLazyListState()
             LazyColumn(
-                state = smoothScroll5,contentPadding = PaddingValues(bottom = 128.dp),
+                state = smoothScroll5,contentPadding = PaddingValues(bottom = MiniPlayerClearance),
                 modifier = Modifier.smoothWheelScroll(smoothScroll5),
             ) {
                 items(tracks, key = { it.video_id }) { track ->
@@ -1329,7 +1332,7 @@ private fun LocalAlbumsGrid(
     LazyVerticalGrid(
         state = smoothScroll6,
         columns = GridCells.Adaptive(minSize = 164.dp),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 128.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = MiniPlayerClearance),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxSize()
@@ -1371,7 +1374,7 @@ private fun LocalArtistsGrid(
     LazyVerticalGrid(
         state = smoothScroll7,
         columns = GridCells.Adaptive(minSize = 164.dp),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 128.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = MiniPlayerClearance),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxSize()
@@ -1408,9 +1411,9 @@ private fun PlaylistsGrid(
     }
     val smoothScroll8 = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     // YouTube playlists sit in their own tinted container so their origin is obvious.
-    Surface(
+    com.music.vivi.compose.ui.glass.GlassSurface(
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        fallbackColor = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
     ) {
         Column(Modifier.fillMaxSize()) {
@@ -1424,7 +1427,7 @@ private fun PlaylistsGrid(
             LazyVerticalGrid(
                 state = smoothScroll8,
                 columns = GridCells.Adaptive(minSize = 164.dp),
-                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 128.dp),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = MiniPlayerClearance),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize().smoothWheelScroll(smoothScroll8),

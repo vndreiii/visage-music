@@ -45,7 +45,8 @@ if (-not (Test-Path "$deps\yt-dlp.exe")) {
     if ($want -ne $have) { Remove-Item "$deps\yt-dlp.exe"; throw "yt-dlp checksum mismatch: expected [$want], got [$have]" }
 }
 
-# 4. App image, installers.
+# 4. App image, installers. The Chromium runtime for the sign-in browser is staged by Gradle (stageJcefRuntime),
+#    so the package ships it as resources\jcef-152.0.6 and the app does not download it on first use.
 .\gradlew.bat --no-daemon :composeApp:createDistributable :composeApp:packageMsi :composeApp:packageExe
 if ($LASTEXITCODE -ne 0) { throw "gradle failed" }
 

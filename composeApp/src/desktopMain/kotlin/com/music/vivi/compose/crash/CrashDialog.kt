@@ -64,7 +64,19 @@ import kotlin.system.exitProcess
 @Composable
 fun CrashDialogHost(onQuit: () -> Unit) {
     val report by CrashReporter.current.collectAsState()
-    val shown = report ?: return
+    // VISAGE_UI_STATE=crash-dialog shows a made-up report so the dialog can be checked without a real crash.
+    val shown = report ?: if (com.music.vivi.compose.dev.DevUiState.has("crash-dialog")) {
+        CrashReport(
+            id = 0L,
+            title = "Something went wrong (dev preview)",
+            explanation = "This is a forced preview from VISAGE_UI_STATE=crash-dialog. Nothing was crashed or sent.",
+            exceptionSummary = "java.lang.IllegalStateException: preview",
+            stackTrace = "java.lang.IllegalStateException: preview\n\tat dev.preview(DevUiState.kt:1)",
+            thread = "main",
+            timeMs = System.currentTimeMillis(),
+            fatal = false,
+        )
+    } else return
     BasicAlertDialog(onDismissRequest = CrashReporter::dismiss) {
         Surface(
             shape = AlertDialogDefaults.shape,

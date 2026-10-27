@@ -68,6 +68,7 @@ class YouTubeMusicService(
     suspend fun album(browseId: String) = withSession { YouTube.album(browseId) }
     suspend fun playlist(playlistId: String): Result<PlaylistPage> = withSession { YouTube.playlist(playlistId) }
     suspend fun playlistContinuation(continuation: String): Result<PlaylistContinuationPage> = withSession { YouTube.playlistContinuation(continuation) }
+    suspend fun likeVideo(videoId: String, like: Boolean): Result<Unit> = withSession { YouTube.setVideoLiked(videoId, like) }
     suspend fun addToPlaylist(playlistId: String, videoId: String): Result<Unit> = withSession { YouTube.addToPlaylist(playlistId, videoId) }
     suspend fun libraryPlaylists(): Result<List<com.music.innertube.models.PlaylistItem>> = withSession {
         YouTube.library("FEmusic_liked_playlists").completed().map { page ->

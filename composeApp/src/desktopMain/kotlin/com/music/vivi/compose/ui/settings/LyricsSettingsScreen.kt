@@ -64,6 +64,7 @@ import com.music.vivi.compose.prefs.PlayerBackgroundStyle
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.compose.theme.LocalArtworkPalette
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
 import com.music.vivi.compose.ui.player.lyrics.LyricsAccent
 import com.music.vivi.compose.ui.player.lyrics.LyricsAnimation
 import com.music.vivi.compose.ui.player.lyrics.LyricsBackground
@@ -129,7 +130,15 @@ fun LyricsSettingsScreen(navController: NavController) {
             SettingsBackHeader(title = "Lyrics", onBack = { navController.navigateUp() })
             LyricsPreview(live, Modifier.fillMaxWidth().height(230.dp).padding(top = 4.dp))
         }
-        Box(Modifier.weight(1f).fillMaxWidth().smoothWheelScroll(scroll).verticalScroll(scroll), contentAlignment = Alignment.TopCenter) {
+        val viewport = androidx.compose.runtime.remember(scroll) { SettingsViewport(scroll) }
+        androidx.compose.runtime.CompositionLocalProvider(LocalSettingsViewport provides viewport) {
+        Box(
+            Modifier.weight(1f).fillMaxWidth()
+                // Rounded top and a fade where rows slide under the sticky preview, instead of a hard cut.
+                .pageScrollEdge(progress = { (scroll.value / 48f).coerceIn(0f, 1f) })
+                .settingsViewport(viewport).smoothWheelScroll(scroll).verticalScroll(scroll),
+            contentAlignment = Alignment.TopCenter,
+        ) {
             Column(
                 Modifier.widthIn(max = maxW).fillMaxWidth()
                     .padding(horizontal = if (adwaita) 12.dp else 24.dp).padding(bottom = 120.dp),
@@ -235,6 +244,15 @@ fun LyricsSettingsScreen(navController: NavController) {
                             LiveSlider("Close-up fade", live.sceneDissolve, 0.55f..0.95f, 16, { "${(it * 100).toInt()}%" }, { live = live.copy(sceneDissolve = it) }) {
                                 commit(live.copy(sceneDissolve = it))
                             }
+                            LiveSlider("Linger time", live.sceneLingerSec, 0.5f..8f, 15, { "${((it * 10).toInt()) / 10f} s" }, { live = live.copy(sceneLingerSec = it) }) {
+                                commit(live.copy(sceneLingerSec = it))
+                            }
+                        }
+                        if (live.scene == LyricsScene.CUTS) {
+                            SettingsDivider()
+                            SwitchItem(Icons.Outlined.AutoAwesome, "Rings cut the lyrics", "The rings slice the lettering and slide the pieces; off keeps the text whole", live.cutsSliceText) {
+                                commit(live.copy(cutsSliceText = it))
+                            }
                         }
                         SettingsDivider()
                         LiveSlider("Inertial overshoot", live.bounceAmp, 0f..2.5f, 25, { if (it <= 0f) "Off" else "${(it * 100).toInt()}%" }, { live = live.copy(bounceAmp = it) }) {
@@ -279,6 +297,7 @@ fun LyricsSettingsScreen(navController: NavController) {
                 }
             }
         }
+        }
     }
 }
 
@@ -301,7 +320,7 @@ private fun LyricsPreview(cfg: LyricsConfig, modifier: Modifier = Modifier) {
             intensity = cfg.backgroundIntensity,
             artworkUrl = null,
             palette = LocalArtworkPalette.current,
-            playerBackgroundStyle = prefs.enumPref(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT),
+            playerBackgroundStyle = prefs.enumPref(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle),
             corner = 24,
         )
         when {

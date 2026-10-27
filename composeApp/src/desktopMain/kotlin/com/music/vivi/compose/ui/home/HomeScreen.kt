@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.home
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import kotlinx.coroutines.yield
 import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 import kotlinx.coroutines.withContext
@@ -33,6 +35,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -44,6 +47,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -91,6 +96,8 @@ import com.music.vivi.compose.ui.component.ListItemHeight
 import com.music.vivi.compose.ui.component.ListThumbnailSize
 import com.music.vivi.compose.ui.component.PlaylistShelfCard
 import com.music.vivi.compose.ui.component.ThumbnailCornerRadius
+import com.music.vivi.compose.ui.component.LocalArtistClick
+import com.music.vivi.compose.ui.component.LocalArtistNameClick
 import com.music.vivi.compose.ui.component.YouTubeGridItem
 import com.music.vivi.compose.ui.component.YouTubeHeroCard
 import com.music.vivi.compose.ui.component.RoundedClickable
@@ -255,9 +262,39 @@ private fun packHomeFeedRows(sections: List<HomePage.Section>): List<HomeFeedRow
 @Composable
 fun HomeScreen(navController: NavController) {
     val yt = koinInject<YouTubeMusicService>()
+    val scope = rememberCoroutineScope()
+    val sessionManager = koinInject<com.music.vivi.core.session.SessionManager>()
+    val prefs = koinInject<com.music.vivi.compose.prefs.DesktopPrefs>()
+    val vm = remember {
+        HomeViewModel(
+            yt, scope,
+            isLoggedIn = { sessionManager.isLoggedIn() },
+            quickPicksCache = QuickPicksCache(java.io.File(com.music.vivi.nativelib.AppPaths.config(), "quickpicks.json")),
+            quickPicksIntervalMs = {
+                if (!prefs.getBoolean(com.music.vivi.compose.prefs.PrefKeys.QuickPicksAutoRefresh, true)) null
+                else prefs.getInt(com.music.vivi.compose.prefs.PrefKeys.QuickPicksIntervalHours, QuickPicksSchedule.DefaultHours)
+                    .coerceIn(QuickPicksSchedule.MinHours, QuickPicksSchedule.MaxHours) * 3_600_000L
+            },
+        )
+    }
+    val manualRefresh = prefs.getBoolean(com.music.vivi.compose.prefs.PrefKeys.QuickPicksManualRefresh, true)
+    // Artist names in Home item subtitles open the artist page.
+    CompositionLocalProvider(
+        // Navigate after the text's own press gesture has finished (next dispatch), not from inside it: the click
+        // removes the page that owns the gesture, and tearing it down mid-press raced with its pending release.
+        LocalArtistClick provides { artistId: String -> scope.launch { yield(); runCatching { navController.navigate(Routes.artist(artistId)) } } },
+        LocalArtistNameClick provides { name: String -> scope.launch { yield(); runCatching { navController.navigate(Routes.searchResult(name)) } } },
+        LocalQuickPicksRefresh provides if (!manualRefresh) null else QuickPicksRefresh(vm.quickPicksLoading) { vm.refreshQuickPicks(vm.quickPicksOverride ?: vm.homePage?.sections.orEmpty().filter { it.isQuickPicks() }.flatMap { it.items }.filterIsInstance<SongItem>()) },
+    ) {
+        HomeScreenContent(navController, vm)
+    }
+}
+
+@Composable
+private fun HomeScreenContent(navController: NavController, vm: HomeViewModel) {
     val controller = LocalPlaybackController.current
     val scope = rememberCoroutineScope()
-    val vm = remember { HomeViewModel(yt, scope) }
+    var showLogin by remember { mutableStateOf(false) }
     val focusRequester = remember { FocusRequester() }
     val listState = rememberLazyListState()
     val history = koinInject<com.music.vivi.database.PlayHistoryRepository>()
@@ -292,21 +329,38 @@ fun HomeScreen(navController: NavController) {
 
     val (playingId, isPlaying) = rememberNowPlayingIds()
 
-    when {
-        vm.isLoading && vm.homePage == null -> {
-            PageLoadingState("Finding your next listen", detail = false)
-        }
-        vm.error != null && vm.homePage == null -> {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(24.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally,
+    if (showLogin) {
+        androidx.compose.ui.window.Dialog(onDismissRequest = { showLogin = false }) {
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.fillMaxWidth(0.92f).fillMaxHeight(0.9f),
             ) {
-                Text("Home failed: ${vm.error}", style = MaterialTheme.typography.bodyLarge)
-                Button(onClick = { vm.refresh() }, modifier = Modifier.padding(top = 12.dp)) {
-                    Text("Retry")
+                Column(Modifier.padding(20.dp)) {
+                    com.music.vivi.compose.ui.YtLoginPanel(onLoggedIn = {
+                        showLogin = false
+                        vm.refresh()
+                    })
                 }
             }
+        }
+    }
+
+    when {
+        // VISAGE_UI_STATE=home-login / home-error force these states for dev runs (see docs/dev-ui-states.md).
+        com.music.vivi.compose.dev.DevUiState.has("home-login") ||
+            (vm.needsLogin && vm.homePage == null) -> {
+            HomeLoginState(
+                onLogin = { showLogin = true },
+                onContinueWithoutAccount = { navController.navigate(Routes.LIBRARY) },
+            )
+        }
+        com.music.vivi.compose.dev.DevUiState.has("home-error") ||
+            (vm.error != null && vm.homePage == null) -> {
+            HomeErrorState(onRetry = { vm.refresh() })
+        }
+        vm.isLoading && vm.homePage == null -> {
+            PageLoadingState("Finding your next listen", detail = false)
         }
         else -> {
             // No PullToRefreshBox — its nested-scroll connection fights LazyColumn
@@ -373,10 +427,23 @@ fun HomeScreen(navController: NavController) {
                         }
                     }
 
-                    val sections = remember(vm.homePage, vm.accountPlaylists) {
-                        prepareHomeSections(vm.homePage?.sections.orEmpty(), vm.accountPlaylists.map { it.id }.toSet())
+                    val world by com.music.vivi.compose.ui.charts.WorldChart.snapshot.collectAsState()
+                    val sections = remember(vm.homePage, vm.accountPlaylists, world) {
+                        // The cross-country charts (built slowly in the background) join the feed once they exist.
+                        val extra = world?.let { w ->
+                            listOfNotNull(
+                                w.ranked.takeIf { it.size >= 8 }?.let { HomePage.Section("Trending everywhere", "Ranked across every country's chart", null, null, it.take(40)) },
+                                w.breaking.takeIf { it.size >= 8 }?.let { HomePage.Section("Breaking out", "High in a few countries, not everywhere yet", null, null, it) },
+                            )
+                        }.orEmpty()
+                        prepareHomeSections(vm.homePage?.sections.orEmpty(), vm.accountPlaylists.map { it.id }.toSet()) + extra
                     }
-                    val (quickPicks, otherSections) = remember(sections) { sections.partition { it.isQuickPicks() } }
+                    val (feedQuickPicks, otherSections) = remember(sections) { sections.partition { it.isQuickPicks() } }
+                    val quickPicks = remember(feedQuickPicks, vm.quickPicksOverride) {
+                        val override = vm.quickPicksOverride
+                        if (override == null) feedQuickPicks else feedQuickPicks.map { it.copy(items = override) }
+                    }
+                    val currentQuickSongs = quickPicks.firstOrNull()?.items?.filterIsInstance<SongItem>().orEmpty()
                     val showAccountPlaylists =
                         vm.selectedChip == null && vm.accountPlaylists.isNotEmpty()
 
@@ -462,7 +529,7 @@ fun HomeScreen(navController: NavController) {
                         state = listState,
                         modifier = Modifier.fillMaxSize()
                             .smoothWheelScroll(listState),
-                        contentPadding = PaddingValues(top = 4.dp, bottom = 128.dp),
+                        contentPadding = PaddingValues(top = 4.dp, bottom = MiniPlayerClearance),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         item(key = "header") {
@@ -518,6 +585,12 @@ fun HomeScreen(navController: NavController) {
                                         }
                                     },
                                     onSeeAll = { navController.navigate(Routes.HISTORY) },
+                                    onRemove = { event ->
+                                        scope.launch(Dispatchers.IO) {
+                                            runCatching { history.removeSong(event.song_id) }
+                                            recent = runCatching { history.recentDistinct(20) }.getOrDefault(emptyList())
+                                        }
+                                    },
                                 )
                             }
                         }
@@ -687,6 +760,8 @@ private fun HomeSectionBlock(
             onClick = sectionData.endpoint?.let { ep ->
                 { onBrowse(ep.browseId, ep.params) }
             },
+            onRefreshClick = if (isQuickPicks) LocalQuickPicksRefresh.current?.onRefresh else null,
+            refreshing = isQuickPicks && LocalQuickPicksRefresh.current?.loading == true,
             onShuffleClick = if (isQuickPicks && displaySongs.size > 1) {
                 { shuffleNonce += 1 }
             } else {
@@ -863,6 +938,8 @@ private fun HomeCategoryHeader(
     onClick: (() -> Unit)?,
     onPlayAllClick: (() -> Unit)?,
     onShuffleClick: (() -> Unit)? = null,
+    onRefreshClick: (() -> Unit)? = null,
+    refreshing: Boolean = false,
 ) {
     // kind kept for call-site / frame coloring; chrome is title + bg only
     @Suppress("UNUSED_PARAMETER")
@@ -918,6 +995,22 @@ private fun HomeCategoryHeader(
                 titleText()
             }
         }
+        if (onRefreshClick != null) {
+            IconButton(onClick = onRefreshClick, enabled = !refreshing) {
+                if (refreshing) {
+                    androidx.compose.material3.CircularProgressIndicator(
+                        modifier = Modifier.size(20.dp),
+                        strokeWidth = 2.dp,
+                    )
+                } else {
+                    Icon(
+                        Icons.Outlined.Refresh,
+                        contentDescription = "Get new quick picks",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
         if (onShuffleClick != null) {
             IconButton(onClick = onShuffleClick) {
                 Icon(
@@ -949,15 +1042,31 @@ private fun HomeCategoryFrame(
         else ->
             MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.55f)
     }
-    Surface(
+    // With the blur setting on, the frame is frosted glass (like the sidebars and mini-player) carrying the same tint
+    // it always had, kept at least 55 % strong so the colour still reads; otherwise it is the plain tinted card.
+    com.music.vivi.compose.ui.glass.GlassSurface(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 10.dp),
         shape = RoundedCornerShape(24.dp),
-        color = container,
+        fallbackColor = container,
+        // Exactly the recipe the sidebars and mini-player use; the songs frame leans into the accent colour.
+        tint = if (emphasized && kind == HomeCategoryKind.Songs) {
+            androidx.compose.ui.graphics.lerp(
+                com.music.vivi.compose.ui.glass.panelGlassTint(0.5f),
+                MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.6f),
+                0.45f,
+            )
+        } else {
+            com.music.vivi.compose.ui.glass.panelGlassTint(0.5f)
+        },
     ) {
         Column(Modifier.padding(bottom = 14.dp, top = 10.dp, start = 8.dp, end = 8.dp)) {
             content()
         }
     }
 }
+
+/** Quick picks "get new picks" button wiring, provided by [HomeScreen] and read by the section header. */
+internal class QuickPicksRefresh(val loading: Boolean, val onRefresh: () -> Unit)
+internal val LocalQuickPicksRefresh = androidx.compose.runtime.compositionLocalOf<QuickPicksRefresh?> { null }

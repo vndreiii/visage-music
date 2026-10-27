@@ -1,5 +1,15 @@
 package com.music.vivi.compose.ui.artist
 
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Album
+import androidx.compose.material.icons.outlined.MusicNote
+import androidx.compose.material.icons.outlined.Headphones
+import androidx.compose.material.icons.outlined.Groups
+import androidx.compose.foundation.layout.width
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.PageHeaderTopPadding
+import com.music.vivi.compose.ui.component.PageInset
+import com.music.vivi.compose.ui.component.PageHeaderBottomPadding
 import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 
@@ -97,6 +107,21 @@ fun ArtistScreen(
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
 
+    // The artist page only carries a handful of items per shelf; shelves with a "more" link are filled in from it.
+    val fullSections = remember(artistId) { androidx.compose.runtime.mutableStateMapOf<Int, List<YTItem>>() }
+    LaunchedEffect(page) {
+        val p = page ?: return@LaunchedEffect
+        p.sections.forEachIndexed { i, sec ->
+            val ep = sec.moreEndpoint ?: return@forEachIndexed
+            if (sec.items.isEmpty()) return@forEachIndexed
+            launch(Dispatchers.IO) {
+                com.music.innertube.YouTube.artistItems(com.music.innertube.models.BrowseEndpoint(browseId = ep.browseId, params = ep.params))
+                    .getOrNull()?.items?.distinctBy { it.id }?.takeIf { it.size > sec.items.size }
+                    ?.let { fullSections[i] = it }
+            }
+        }
+    }
+
     LaunchedEffect(artistId) {
         loading = true
         error = null
@@ -148,7 +173,7 @@ fun ArtistScreen(
                 state = smoothScroll1,
                 modifier = Modifier.fillMaxSize()
                     .smoothWheelScroll(smoothScroll1),
-                contentPadding = PaddingValues(bottom = 24.dp),
+                contentPadding = PaddingValues(top = 12.dp, bottom = MiniPlayerClearance),
             ) {
                 item(key = "toolbar") { ArtistBackBar { navController.navigateUp() } }
                 item(key = "header") {
@@ -175,40 +200,29 @@ fun ArtistScreen(
                 }
 
                 artistPage.sections.forEachIndexed { index, section ->
+                    val full = fullSections[index] ?: section.items
+                    val songsOnly = full.isNotEmpty() && full.all { it is SongItem }
+                    val isVideos = songsOnly && section.title.contains("video", ignoreCase = true)
                     item(key = "section_title_$index") {
                         NavigationTitle(
                             title = section.title.ifBlank { "More" },
+                            // NavigationTitle pads its text by 12 dp; shift so the text starts where the covers do.
+                            modifier = Modifier.padding(start = ArtistContentStart - 12.dp),
                             onClick = section.moreEndpoint?.let { ep ->
                                 { navController.navigate(Routes.forBrowse(ep.browseId, ep.params, artistId)) }
                             },
                         )
                     }
-                    val songsOnly = section.items.isNotEmpty() && section.items.all { it is SongItem }
-                    if (songsOnly) {
-                        items(
-                            items = section.items.filterIsInstance<SongItem>(),
-                            key = { "${index}_${it.id}" },
-                        ) { song ->
-                            YouTubeListItem(
-                                item = song,
-                                isActive = song.id == playingId,
-                                isPlaying = isPlaying,
-                                onClick = { onItem(song) },
-                                modifier = Modifier.padding(horizontal = 8.dp),
-                            )
+                    when {
+                        isVideos -> item(key = "section_videos_$index") {
+                            // Videos are big 16:9 thumbnails in a grid, not a text list.
+                            VideoGrid(full.filterIsInstance<SongItem>(), playingId, isPlaying) { onItem(it) }
                         }
-                    } else {
-                        item(key = "section_row_$index") {
-                            WheelLazyRow(contentPadding = PaddingValues(horizontal = 8.dp)) {
-                                items(section.items, key = { it.id }) { item ->
-                                    YouTubeGridItem(
-                                        item = item,
-                                        onClick = { onItem(item) },
-                                        isActive = item.id == playingId,
-                                        isPlaying = isPlaying,
-                                    )
-                                }
-                            }
+                        songsOnly -> item(key = "section_songs_$index") {
+                            ArtistSongColumns(full.filterIsInstance<SongItem>(), playingId, isPlaying) { onItem(it) }
+                        }
+                        else -> item(key = "section_row_$index") {
+                            ArtistShelf(full, playingId, isPlaying) { onItem(it) }
                         }
                     }
                 }
@@ -219,7 +233,7 @@ fun ArtistScreen(
 
 @Composable
 internal fun ArtistBackBar(onBack: () -> Unit) {
-    Box(Modifier.padding(start = 16.dp, top = 8.dp)) { com.music.vivi.compose.ui.component.VisageBackButton(onClick = onBack) }
+    Box(Modifier.padding(start = PageInset, top = PageHeaderTopPadding, bottom = PageHeaderBottomPadding)) { com.music.vivi.compose.ui.component.VisageBackButton(onClick = onBack) }
 }
 
 @Composable
@@ -272,11 +286,18 @@ internal fun ArtistPageHeader(
     portrait: @Composable () -> Unit,
 ) {
     val portraitSize = 140.dp
+    // Banner, portrait, name, description and the Play row are one card: frosted glass over the page background with
+    // the blur setting on (so the banner fades into the glass, not into the bare page), a plain card otherwise.
+    com.music.vivi.compose.ui.glass.GlassSurface(
+        shape = RoundedCornerShape(28.dp),
+        fallbackColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.55f),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp),
+    ) {
     Column(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
+        modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(2.4f)) {
+        Box(Modifier.fillMaxWidth().aspectRatio(3.0f)) {
             // The banner fades to transparent (not to an opaque colour), so whatever the page has behind it, including
             // the tinted blur background, shows through with no visible edge.
             Box(
@@ -317,12 +338,7 @@ internal fun ArtistPageHeader(
             modifier = Modifier.padding(horizontal = 24.dp),
         )
         if (meta.isNotBlank()) {
-            Text(
-                meta,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(top = 6.dp, start = 24.dp, end = 24.dp),
-            )
+            ArtistStatChips(meta, Modifier.padding(top = 10.dp, start = 24.dp, end = 24.dp))
         }
         description?.takeIf { it.isNotBlank() }?.let { ArtistDescription(it) }
         Spacer(Modifier.height(16.dp))
@@ -362,6 +378,7 @@ internal fun ArtistPageHeader(
             }
         }
     }
+    }
 }
 
 /**
@@ -400,6 +417,147 @@ internal fun ArtistDescription(text: String) {
                     .clickable { expanded = !expanded }
                     .padding(horizontal = 6.dp, vertical = 4.dp),
             )
+        }
+    }
+}
+
+
+/** Left edge of the first cover on an artist page: the page inset plus the card's own 6 dp padding. Titles line up with it. */
+private val ArtistContentStart = PageInset + 6.dp
+
+/** Big 16:9 video thumbnails, as many columns as fit. */
+@Composable
+private fun VideoGrid(videos: List<SongItem>, playingId: String?, isPlaying: Boolean, onClick: (SongItem) -> Unit) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val gap = 12.dp
+        val usable = maxWidth - PageInset * 2
+        val cols = ((usable + gap) / (300.dp + gap)).toInt().coerceIn(1, 4)
+        Column(
+            Modifier.padding(horizontal = PageInset),
+            verticalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            videos.chunked(cols).forEach { row ->
+                androidx.compose.foundation.layout.Row(horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    row.forEach { v ->
+                        YouTubeGridItem(
+                            item = v,
+                            onClick = { onClick(v) },
+                            isActive = v.id == playingId,
+                            isPlaying = isPlaying,
+                            thumbnailRatio = 16f / 9f,
+                            fillWidth = true,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    repeat(cols - row.size) { androidx.compose.foundation.layout.Spacer(Modifier.weight(1f)) }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One shelf of albums, singles, playlists or artists. Cards are sized so a whole number of them fills the row edge to
+ * edge (no leftover gap on the right), larger than before, and the row scrolls sideways for the rest.
+ */
+@Composable
+private fun ArtistShelf(items: List<YTItem>, playingId: String?, isPlaying: Boolean, onClick: (YTItem) -> Unit) {
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val gap = 14.dp
+        val usable = maxWidth - PageInset * 2
+        val perRow = ((usable + gap) / (200.dp + gap)).toInt().coerceAtLeast(3)
+        val cardWidth = (usable - gap * (perRow - 1)) / perRow
+        WheelLazyRow(
+            contentPadding = PaddingValues(horizontal = PageInset),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+        ) {
+            items(items, key = { it.id }) { item ->
+                YouTubeGridItem(
+                    item = item,
+                    onClick = { onClick(item) },
+                    isActive = item.id == playingId,
+                    isPlaying = isPlaying,
+                    thumbnailRatio = 1f,
+                    modifier = Modifier.width(cardWidth),
+                )
+            }
+        }
+    }
+}
+
+
+/** "2.76M subscribers • 74.7M monthly audience" as separate pills, each with an icon that says what it counts. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+@Composable
+private fun ArtistStatChips(meta: String, modifier: Modifier = Modifier) {
+    androidx.compose.foundation.layout.FlowRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        meta.split('•', '·').map { it.trim() }.filter { it.isNotEmpty() }.forEach { stat ->
+            val lower = stat.lowercase()
+            val icon = when {
+                "subscriber" in lower || "follower" in lower -> Icons.Outlined.Groups
+                "listener" in lower || "audience" in lower || "monthly" in lower -> Icons.Outlined.Headphones
+                "song" in lower || "track" in lower -> Icons.Outlined.MusicNote
+                "album" in lower -> Icons.Outlined.Album
+                else -> Icons.Outlined.Info
+            }
+            androidx.compose.foundation.layout.Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.7f))
+                    .padding(start = 10.dp, end = 14.dp, top = 6.dp, bottom = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.primary)
+                Text(stat, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface)
+            }
+        }
+    }
+}
+
+
+/** Songs in columns like Home's Quick picks (read down each column), a few rows at first and "Show more" for the rest. */
+@Composable
+private fun ArtistSongColumns(songs: List<SongItem>, playingId: String?, isPlaying: Boolean, onClick: (SongItem) -> Unit) {
+    var expanded by remember(songs.firstOrNull()?.id) { mutableStateOf(false) }
+    androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val gap = 8.dp
+        // The list row adds 8 + 12 dp of its own before the cover.
+        val side = ArtistContentStart - 20.dp
+        val usable = maxWidth - side * 2
+        val cols = ((usable + gap) / (280.dp + gap)).toInt().coerceIn(1, 4)
+        val collapsedRows = 4
+        val shown = if (expanded) songs.take(60) else songs.take(collapsedRows * cols)
+        val rows = (shown.size + cols - 1) / cols
+        Column(Modifier.fillMaxWidth().padding(horizontal = side), verticalArrangement = Arrangement.spacedBy(0.dp)) {
+            for (r in 0 until rows) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
+                    for (c in 0 until cols) {
+                        val song = shown.getOrNull(c * rows + r)
+                        if (song != null) {
+                            YouTubeListItem(
+                                item = song,
+                                isActive = song.id == playingId,
+                                isPlaying = isPlaying,
+                                onClick = { onClick(song) },
+                                modifier = Modifier.weight(1f),
+                            )
+                        } else Spacer(Modifier.weight(1f))
+                    }
+                }
+            }
+            if (songs.size > collapsedRows * cols) {
+                com.music.vivi.compose.ui.expressive.ExpressiveButton(
+                    text = if (expanded) "Show less" else "Show more",
+                    onClick = { expanded = !expanded },
+                    style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Tonal,
+                    modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
+                )
+            }
         }
     }
 }

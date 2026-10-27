@@ -53,6 +53,7 @@ import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowState
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
+import kotlinx.coroutines.launch
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.currentBackStackEntryAsState
@@ -160,6 +161,21 @@ fun FrameWindowScope.AppScaffold(
         if (queueRailOn) closePinnedQueue() else { queueDismissedOnHome = false; openPinnedQueue() }
     }
 
+    // Onboarding tour: drives the real UI (navigation, queue and library sidebars) step by step.
+    LaunchedEffect(Unit) {
+        com.music.vivi.compose.ui.onboarding.TourBus.commands.collect { cmd ->
+            when (cmd) {
+                is com.music.vivi.compose.ui.onboarding.TourCommand.Navigate -> navigateMain(navController, cmd.route)
+                is com.music.vivi.compose.ui.onboarding.TourCommand.Queue -> {
+                    // Not through openPinnedQueue(): the tour must not overwrite the saved queue mode.
+                    if (cmd.open) { fullscreenQueue = false; queueDismissedOnHome = false; pinnedQueue = true }
+                    else { pinnedQueue = false; queueDismissedOnHome = true }
+                }
+                is com.music.vivi.compose.ui.onboarding.TourCommand.Library -> setLibraryState(cmd.state)
+            }
+        }
+    }
+
     // Global keyboard shortcuts (AWT-level dispatcher) + the screen-owned effects they trigger.
     com.music.vivi.compose.keys.KeyboardShortcutHost(navController, windowState)
     com.music.vivi.compose.keys.ShortcutEventEffect { event ->
@@ -171,6 +187,8 @@ fun FrameWindowScope.AppScaffold(
     }
 
     val glassState = remember { dev.chrisbanes.haze.HazeState() }
+    // Sourced from the page background only, for cards inside the page content (see LocalPageHazeState).
+    val pageGlassState = remember { dev.chrisbanes.haze.HazeState() }
     val backdropScroll = remember { com.music.vivi.compose.ui.glass.BackdropScroll() }
     androidx.compose.runtime.LaunchedEffect(current) { backdropScroll.y = 0f }
     // Drag / touchpad scrolling reports through nested scroll; the mouse wheel reports from the shared wheel scroller.
@@ -234,7 +252,7 @@ fun FrameWindowScope.AppScaffold(
     }
     var miniBarHeightPx by remember { androidx.compose.runtime.mutableIntStateOf(0) }
     val miniBarInset = if (miniAtRoot) with(androidx.compose.ui.platform.LocalDensity.current) { miniBarHeightPx.toDp() } else 0.dp
-    com.music.vivi.compose.ui.glass.ProvideGlass(glassState, scroll = backdropScroll) {
+    com.music.vivi.compose.ui.glass.ProvideGlass(glassState, scroll = backdropScroll, pageState = pageGlassState) {
     Box(
         Modifier.fillMaxSize().onPreviewKeyEvent { e ->
             if (e.type == KeyEventType.KeyDown && e.key == Key.L && e.isCtrlPressed && e.isShiftPressed && libraryAllowed) {
@@ -244,7 +262,7 @@ fun FrameWindowScope.AppScaffold(
     ) {
       if (glassOn) {
           // One tinted background behind everything (bar, sidebars, pages): the glass surfaces blur it.
-          Box(Modifier.fillMaxSize().glassSource(glassState)) {
+          Box(Modifier.fillMaxSize().glassSource(glassState).glassSource(pageGlassState)) {
               com.music.vivi.compose.ui.glass.PageBackground(nowPlayingStyle = onNowPlaying)
           }
       }
@@ -273,6 +291,17 @@ fun FrameWindowScope.AppScaffold(
                 val rightFrac by animateFloatAsState(if (libRight || queueRight) 1f else 0f, VisageMotion.rail(), label = "insetRight")
                 val inset = maxOf(leftFrac, rightFrac)
                 Row(Modifier.fillMaxSize().then(if (overlayTopBar) Modifier.padding(top = com.music.vivi.compose.ui.glass.TopBarInset) else Modifier).padding(bottom = miniBarInset)) {
+                    // Artist names in any item subtitle (playlists, albums, queue, lists) open the artist page. Navigate
+                    // after the text's own press gesture has finished, not from inside it.
+                    val linkScope = androidx.compose.runtime.rememberCoroutineScope()
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        com.music.vivi.compose.ui.component.LocalArtistClick provides { artistId: String ->
+                            linkScope.launch { kotlinx.coroutines.yield(); runCatching { navController.navigate(Routes.artist(artistId)) } }
+                        },
+                        com.music.vivi.compose.ui.component.LocalArtistNameClick provides { name: String ->
+                            linkScope.launch { kotlinx.coroutines.yield(); runCatching { navController.navigate(Routes.searchResult(name)) } }
+                        },
+                    ) {
                     AnimatedLibrarySidebar(
                         state = if (sidebarCfg.librarySide == SidebarSide.LEFT) libraryState else LibrarySidebarState.HIDDEN,
                         side = SidebarSide.LEFT,
@@ -329,7 +358,8 @@ fun FrameWindowScope.AppScaffold(
                         navController = navController,
                         onStateChange = ::setLibraryState,
                     )
-                }
+                                    }
+}
             }
             if (!onNowPlaying && !miniAtRoot) {
                 // At window level (not inside the inset, rounded pane) so the pill sits flush on the bottom edge,

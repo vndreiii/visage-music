@@ -17,6 +17,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ShaderBrush
@@ -113,13 +115,51 @@ private fun ShaderLayer(
         val start = withFrameNanos { it }
         while (true) withFrameNanos { time.floatValue = (it - start) / 1_000_000_000f }
     }
+    val prefs = org.koin.compose.koinInject<com.music.vivi.compose.prefs.DesktopPrefs>()
+    @Suppress("UNUSED_VARIABLE") val prefsVersion = com.music.vivi.compose.ui.settings.rememberPrefsVersion(prefs)
+    val ringOx = prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsOriginX, 0.20f)
+    val ringOy = prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsOriginY, 0.50f)
+    val ringScale = prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsScale, 1.6f)
+    val ringOpacity = prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsOpacity, 0.8f)
+    val ringReaction = prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsReaction, 1f)
+    val ringSmoothing = prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsSmoothing, 0f)
 
+    if (effective == BackgroundShader.RINGS) {
+        androidx.compose.runtime.DisposableEffect(Unit) { onDispose { RingsField.live = false } }
+    }
     Box(
         modifier
             .fillMaxSize()
+            .then(
+                if (effective == BackgroundShader.RINGS) {
+                    Modifier.onGloballyPositioned {
+                        val p = it.positionInWindow()
+                        RingsField.left = p.x; RingsField.top = p.y
+                        RingsField.width = it.size.width.toFloat(); RingsField.height = it.size.height.toFloat()
+                        RingsField.live = true
+                    }
+                } else Modifier,
+            )
             .drawBehind {
+                if (effective == BackgroundShader.RINGS) {
+                    builder.uniform("ringOrigin", ringOx, ringOy)
+                    builder.uniform("ringScale", ringScale.coerceIn(0.4f, 6f))
+                    builder.uniform("ringOpacity", ringOpacity.coerceIn(0.1f, 1f))
+                    RingsReaction.update(ringReaction, ringSmoothing)
+                    builder.uniform("audioBass", RingsReaction.bass)
+                    builder.uniform("audioMid", RingsReaction.mid)
+                    builder.uniform("audioHigh", RingsReaction.high)
+                    builder.uniform("audioKick", RingsReaction.kick)
+                    val dimOn = RingsField.dimActive()
+                    builder.uniform("dimOn", if (dimOn) 1f else 0f)
+                    builder.uniform(
+                        "dimRect",
+                        RingsField.dimLeft - RingsField.left, RingsField.dimTop - RingsField.top,
+                        RingsField.dimRight - RingsField.left, RingsField.dimBottom - RingsField.top,
+                    )
+                }
                 builder.uniform("iResolution", size.width, size.height)
-                builder.uniform("iTime", time.floatValue)
+                builder.uniform("iTime", if (effective == BackgroundShader.RINGS) RingsField.seconds().also { time.floatValue } else time.floatValue)
                 builder.uniform("scrollY", scrollY?.invoke() ?: 0f)
                 colors.forEachIndexed { i, c -> builder.uniform("c$i", c.red, c.green, c.blue) }
                 if (effective.usesImage && imageShader != null && image != null) {

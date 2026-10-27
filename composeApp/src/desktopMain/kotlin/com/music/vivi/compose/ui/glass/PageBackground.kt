@@ -26,11 +26,11 @@ fun PageBackground(modifier: Modifier = Modifier.fillMaxSize(), nowPlayingStyle:
     rememberPrefsVersion(prefs)
     // On Now Playing the floating chrome blurs that page's own background, so mirror its style and darkness.
     val style = runCatching {
-        if (nowPlayingStyle) PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name))
-        else PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PageBackgroundStyle, PlayerBackgroundStyle.BLUR.name))
+        if (nowPlayingStyle) PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle.name))
+        else PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PageBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PageStyle.name))
     }.getOrDefault(PlayerBackgroundStyle.BLUR)
-    val darkness = if (nowPlayingStyle) prefs.getInt(PrefKeys.PlayerBackgroundDarkness, 0).coerceIn(0, 100) / 100f
-    else prefs.getInt(PrefKeys.PageBackgroundDarkness, 50).coerceIn(0, 100) / 100f
+    val darkness = if (nowPlayingStyle) prefs.getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100) / 100f
+    else prefs.getInt(PrefKeys.PageBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PageDarkness).coerceIn(0, 100) / 100f
     val track by LocalPlaybackController.current.nowPlaying.collectAsState()
     val scroll = LocalBackdropScroll.current
     // The background drifts down as the page scrolls (a quarter of the distance). The shader mirrors its own

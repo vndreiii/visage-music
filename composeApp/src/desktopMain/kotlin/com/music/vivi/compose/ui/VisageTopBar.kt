@@ -77,6 +77,7 @@ import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.compose.prefs.TopNavStyle
 import com.music.vivi.compose.theme.ensureContrastingOn
+import com.music.vivi.compose.ui.onboarding.tourAnchor
 import org.koin.compose.koinInject
 
 private val TopBarHeight = com.music.vivi.compose.ui.glass.TopBarInset
@@ -214,7 +215,15 @@ fun FrameWindowScope.VisageTopBar(
                                         currentRoute?.startsWith("search/") == true
                                 else -> currentRoute == dest.route
                             }
-                            Box {
+                            Box(Modifier.tourAnchor(
+                                when (dest.route) {
+                                    Routes.HOME -> "nav.home"
+                                    Routes.SEARCH -> "nav.search"
+                                    Routes.LIBRARY -> "nav.library"
+                                    Routes.SETTINGS -> "nav.settings"
+                                    else -> "nav.${dest.route}"
+                                },
+                            )) {
                                 TopNavChip(
                                     label = dest.label,
                                     icon = destIcon(dest.route, selected),
@@ -305,11 +314,20 @@ private fun SettingsDropdownMenu(
         containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         DropdownMenuItem(
-            text = { Text("Settings hub") },
+            text = { Text("Settings") },
             leadingIcon = {
                 Icon(Icons.Outlined.Settings, contentDescription = null)
             },
             onClick = { onOpen(Routes.SETTINGS) },
+        )
+        DropdownMenuItem(
+            text = { Text("Search settings") },
+            leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+            onClick = {
+                com.music.vivi.compose.ui.settings.SettingsSearch.query = ""
+                com.music.vivi.compose.ui.settings.SettingsSearch.focusRequest++
+                onOpen(Routes.SETTINGS)
+            },
         )
         HorizontalDivider()
         DropdownMenuItem(

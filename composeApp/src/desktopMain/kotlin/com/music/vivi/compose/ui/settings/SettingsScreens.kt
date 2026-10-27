@@ -10,6 +10,13 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.relocation.bringIntoViewRequester
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -50,6 +57,7 @@ import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.Groups
 import androidx.compose.material.icons.outlined.HighQuality
 import androidx.compose.material.icons.outlined.Lyrics
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Menu
 import androidx.compose.material.icons.outlined.MovieFilter
 import androidx.compose.material.icons.outlined.CropSquare
@@ -174,6 +182,7 @@ private fun PlayerBackgroundStyle.label(): String = when (this) {
     PlayerBackgroundStyle.WAVE -> "Wave"
     PlayerBackgroundStyle.XMB -> "XMB"
     PlayerBackgroundStyle.DISTORT -> "Distort"
+    PlayerBackgroundStyle.RINGS -> "Rings"
 }
 
 // —— Hub ——————————————————————————————————————————————————————
@@ -181,6 +190,7 @@ private fun PlayerBackgroundStyle.label(): String = when (this) {
 @Composable
 fun SettingsHubScreen(navController: NavController) {
     val yt = koinInject<YouTubeMusicService>()
+    val prefs = koinInject<DesktopPrefs>()
     var account by remember { mutableStateOf<AccountInfo?>(null) }
     var error by remember { mutableStateOf<String?>(null) }
     val scope = androidx.compose.runtime.rememberCoroutineScope()
@@ -190,7 +200,7 @@ fun SettingsHubScreen(navController: NavController) {
             .onFailure { error = it.message ?: it.toString() }
     }
 
-    SettingsPage(title = "Settings", onBack = null) {
+    SettingsPage(title = "Settings", onBack = null, searchNav = navController) {
         AccountCard(account, error) { navController.navigate(Routes.SETTINGS_ACCOUNT) }
 
         var confirmSignOut by remember { mutableStateOf(false) }
@@ -260,6 +270,12 @@ fun SettingsHubScreen(navController: NavController) {
         com.music.vivi.compose.update.UpdateSettingsSection()
 
         SettingsSection("About") {
+            SettingsNavItem(
+                icon = Icons.Outlined.Restore,
+                title = "Replay tour",
+                subtitle = "Walk through Home, Search, Library, the queue and Settings again",
+                onClick = { prefs.setBoolean(PrefKeys.OnboardingReplay, true) },
+            )
             SettingsNavItem(
                 icon = Icons.Outlined.Favorite,
                 title = "Support VIsage",
@@ -408,7 +424,11 @@ fun ThemeSettingsScreen(navController: NavController) {
                 title = "Dynamic color",
                 subtitle = "Tint the app from the cover art that's playing",
                 checked = dynamicTheme,
-                onChecked = { prefs.setBoolean(PrefKeys.DynamicTheme, it) },
+                // Dynamic color and Matugen are two sources for the same palette, so turning one on turns the other off.
+                onChecked = { on ->
+                    prefs.setBoolean(PrefKeys.DynamicTheme, on)
+                    if (on) prefs.setBoolean(PrefKeys.MatugenTheme, false)
+                },
             )
             SettingsDivider()
             val matugenSupported = !com.music.vivi.nativelib.HostOs.isWindows
@@ -426,7 +446,10 @@ fun ThemeSettingsScreen(navController: NavController) {
                     "Run matugen with the visage template first"
                 },
                 checked = matugenOn,
-                onChecked = { prefs.setBoolean(PrefKeys.MatugenTheme, it) },
+                onChecked = { on ->
+                    prefs.setBoolean(PrefKeys.MatugenTheme, on)
+                    if (on) prefs.setBoolean(PrefKeys.DynamicTheme, false)
+                },
             )
             AnimatedVisibility(matugenOn && matugenReady, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                 val preview = remember(matugenOn, darkMode) {
@@ -549,6 +572,43 @@ fun AppearanceSettingsScreen(navController: NavController) {
             InterfaceLinkItems(navController, skipRoute = Routes.SETTINGS_APPEARANCE)
         }
 
+        SettingsSection("Home") {
+            val autoQuick = prefs.getBoolean(PrefKeys.QuickPicksAutoRefresh, true)
+            SwitchItem(
+                icon = Icons.Outlined.Refresh,
+                title = "Refresh Quick picks automatically",
+                subtitle = "A new set is built once the time below has passed; until then your last refresh stays",
+                checked = autoQuick,
+                onChecked = { prefs.setBoolean(PrefKeys.QuickPicksAutoRefresh, it) },
+            )
+            if (autoQuick) {
+                PrefSecondsSlider(
+                    title = "Every",
+                    value = prefs.getInt(PrefKeys.QuickPicksIntervalHours, 24)
+                        .coerceIn(1, 168).toFloat(),
+                    valueRange = 1f..168f,
+                    steps = 166,
+                    valueLabel = { h ->
+                        val hours = h.toInt()
+                        if (hours < 48) "${hours}h" else "${hours / 24}d ${hours % 24}h"
+                    },
+                    onCommit = { prefs.setInt(PrefKeys.QuickPicksIntervalHours, it.toInt().coerceIn(1, 168)) },
+                )
+            }
+            SettingsDivider()
+            SwitchItem(
+                icon = Icons.Outlined.Refresh,
+                title = "Manual refresh button",
+                subtitle = "Show the refresh button on the Quick picks shelf",
+                checked = prefs.getBoolean(PrefKeys.QuickPicksManualRefresh, true),
+                onChecked = { prefs.setBoolean(PrefKeys.QuickPicksManualRefresh, it) },
+            )
+        }
+
+        SettingsSection("Ring background") {
+            RingsControls(prefs, showIntro = true)
+        }
+
         SettingsSection("Typography") {
             FontPairingContent(prefs)
         }
@@ -566,14 +626,14 @@ fun AppearanceSettingsScreen(navController: NavController) {
                 icon = Icons.Outlined.Tune,
                 title = "Material 3 Expressive Blur",
                 subtitle = "Surfaces over other content (mini-player, player controls, queue tray) become translucent frosted glass. Same design, blurred backdrop.",
-                checked = prefs.getBoolean(PrefKeys.GlassBlur, false),
+                checked = prefs.getBoolean(PrefKeys.GlassBlur, com.music.vivi.compose.prefs.LookDefaults.GlassBlur),
                 onChecked = { prefs.setBoolean(PrefKeys.GlassBlur, it) },
             )
-            if (prefs.getBoolean(PrefKeys.GlassBlur, false)) {
+            if (prefs.getBoolean(PrefKeys.GlassBlur, com.music.vivi.compose.prefs.LookDefaults.GlassBlur)) {
                 SettingsDivider()
                 PrefSecondsSlider(
-                    title = "Page background darkness",
-                    value = prefs.getInt(PrefKeys.PageBackgroundDarkness, 50).coerceIn(0, 100).toFloat(),
+                    title = "Page background ${com.music.vivi.compose.theme.backdropLevelName().lowercase()}",
+                    value = prefs.getInt(PrefKeys.PageBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PageDarkness).coerceIn(0, 100).toFloat(),
                     valueRange = 0f..100f,
                     steps = 19,
                     valueLabel = { "${it.toInt()}%" },
@@ -583,9 +643,10 @@ fun AppearanceSettingsScreen(navController: NavController) {
                     icon = Icons.Outlined.Wallpaper,
                     title = "Page background style",
                     options = PlayerBackgroundStyle.entries.map { it to it.label() },
-                    selected = prefs.enumPref(PrefKeys.PageBackgroundStyle, PlayerBackgroundStyle.BLUR),
+                    selected = prefs.enumPref(PrefKeys.PageBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PageStyle),
                     onSelect = { prefs.setString(PrefKeys.PageBackgroundStyle, it.name) },
                 )
+                if (prefs.enumPref(PrefKeys.PageBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PageStyle) == PlayerBackgroundStyle.RINGS) RingsControls(prefs)
             }
         }
 
@@ -639,8 +700,9 @@ fun AppearanceSettingsScreen(navController: NavController) {
                 selected = miniBg,
                 onSelect = { prefs.setString(PrefKeys.MiniPlayerBackgroundStyle, it.name) },
             )
+            if (miniBg == PlayerBackgroundStyle.RINGS) RingsControls(prefs)
             PrefSecondsSlider(
-                title = "Darkness",
+                title = com.music.vivi.compose.theme.backdropLevelName(),
                 value = prefs.getInt(PrefKeys.MiniPlayerBackgroundDarkness, 0).coerceIn(0, 100).toFloat(),
                 valueRange = 0f..100f,
                 steps = 19,
@@ -666,7 +728,7 @@ fun NowPlayingSettingsScreen(navController: NavController) {
     val prefs = koinInject<DesktopPrefs>()
     @Suppress("UNUSED_VARIABLE")
     val observe = rememberPrefsVersion(prefs)
-    val playerBg = prefs.enumPref(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT)
+    val playerBg = prefs.enumPref(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle)
     val canvasOn = prefs.getBoolean(PrefKeys.EnableCanvas, true)
 
     SettingsPage(title = "Now Playing", onBack = { navController.navigateUp() }) {
@@ -692,8 +754,8 @@ fun NowPlayingSettingsScreen(navController: NavController) {
         SettingsSection("Background") {
             LivePlayerBackgroundHeroPreview(style = playerBg)
             PrefSecondsSlider(
-                title = "Darkness",
-                value = prefs.getInt(PrefKeys.PlayerBackgroundDarkness, 0).coerceIn(0, 100).toFloat(),
+                title = com.music.vivi.compose.theme.backdropLevelName(),
+                value = prefs.getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100).toFloat(),
                 valueRange = 0f..100f,
                 steps = 19,
                 valueLabel = { "${it.toInt()}%" },
@@ -706,6 +768,7 @@ fun NowPlayingSettingsScreen(navController: NavController) {
                 selected = playerBg,
                 onSelect = { prefs.setString(PrefKeys.PlayerBackgroundStyle, it.name) },
             )
+            if (playerBg == PlayerBackgroundStyle.RINGS) RingsControls(prefs)
             SettingsDivider()
             SwitchItem(
                 icon = Icons.Outlined.MovieFilter,
@@ -895,7 +958,7 @@ fun NowPlayingSettingsScreen(navController: NavController) {
                     QueuePanelMode.PINNED_RIGHT to "Side panel",
                     QueuePanelMode.UNDER_PLAYBAR to "Inline",
                 ),
-                selected = prefs.enumPref(PrefKeys.QueuePanelMode, QueuePanelMode.FULLSCREEN),
+                selected = prefs.enumPref(PrefKeys.QueuePanelMode, QueuePanelMode.PINNED_RIGHT),
                 onSelect = { prefs.setString(PrefKeys.QueuePanelMode, it.name) },
             )
             SettingsDivider()
@@ -993,6 +1056,7 @@ fun FullscreenPlayerSettingsScreen(navController: NavController) {
                 selected = if (bgOverride == FullscreenFollow || PlayerBackgroundStyle.entries.any { it.name == bgOverride }) bgOverride else FullscreenFollow,
                 onSelect = { prefs.setString(FullscreenKeys.Background, it) },
             )
+            if (bgOverride == PlayerBackgroundStyle.RINGS.name) RingsControls(prefs)
             SettingsDivider()
             ChoiceRow(
                 icon = Icons.Outlined.MovieFilter,
@@ -1375,6 +1439,7 @@ private fun SignOutDialog(onDismiss: () -> Unit, onConfirm: () -> Unit) {
 internal fun SettingsPage(
     title: String,
     onBack: (() -> Unit)?,
+    searchNav: NavController? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val prefs = koinInject<DesktopPrefs>()
@@ -1382,7 +1447,9 @@ internal fun SettingsPage(
     val observe = rememberPrefsVersion(prefs)
     val adwaita = prefs.getBoolean(PrefKeys.AdwaitaInspired, false)
     val scroll = rememberScrollState()
-    Box(Modifier.fillMaxSize().smoothWheelScroll(scroll).verticalScroll(scroll), contentAlignment = Alignment.TopCenter) {
+    val viewport = remember(scroll) { SettingsViewport(scroll) }
+    androidx.compose.runtime.CompositionLocalProvider(LocalSettingsViewport provides viewport) {
+    Box(Modifier.fillMaxSize().settingsViewport(viewport).smoothWheelScroll(scroll).verticalScroll(scroll), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier
                 .widthIn(max = if (adwaita) 600.dp else 760.dp)
@@ -1391,8 +1458,22 @@ internal fun SettingsPage(
                 .padding(top = if (adwaita) 24.dp else 8.dp, bottom = 120.dp),
         ) {
             SettingsBackHeader(title = title, onBack = onBack)
+            val route = remember(title) { SettingsIndex.firstOrNull { it.page == title }?.route }
+            androidx.compose.runtime.DisposableEffect(route) {
+                onDispose { if (route != null) SettingsNew.markVisited(prefs, route) }
+            }
+            if (onBack == null) {
+                SettingsSearchField()
+                if (SettingsSearch.query.isNotBlank()) {
+                    if (searchNav != null) SettingsSearchResults(searchNav)
+                    return@Column
+                }
+            } else {
+                SettingsSearchBanner()
+            }
             content()
         }
+    }
     }
 }
 
@@ -1458,8 +1539,53 @@ internal fun SettingsRowFrame(
     title: String,
     subtitle: String?,
     onClick: (() -> Unit)?,
+    belowSubtitle: @Composable () -> Unit = {},
+    /** Extra searchable text for the row (the labels of its options). */
+    extraText: String? = null,
     trailing: @Composable () -> Unit = {},
 ) {
+    val prefs = koinInject<DesktopPrefs>()
+    val isMatch = SettingsSearch.matches(title, subtitle, extraText)
+    val isNew = SettingsNew.isNewRow(prefs, title)
+    val bring = remember { androidx.compose.foundation.relocation.BringIntoViewRequester() }
+    val flash = remember { androidx.compose.animation.core.Animatable(0f) }
+    val viewport = LocalSettingsViewport.current
+    val rowCoordsRef = remember { object { var value: androidx.compose.ui.layout.LayoutCoordinates? = null } }
+    if (isMatch && SettingsSearch.target == title) {
+        androidx.compose.runtime.LaunchedEffect(title) {
+            val vp = viewport
+            // The page may still be laying out (images, glass): wait for the row and the scroll area, then centre the
+            // row, and check again in case the content moved while scrolling.
+            var waited = 0
+            while ((vp?.coords?.isAttached != true || rowCoordsRef.value?.isAttached != true || vp.scroll.maxValue == 0) && waited < 1500) {
+                kotlinx.coroutines.delay(50); waited += 50
+            }
+            repeat(3) { attempt ->
+                val rc = rowCoordsRef.value
+                val vc = vp?.coords
+                if (vp != null && rc != null && vc != null && rc.isAttached && vc.isAttached) {
+                    // positionInWindow, not boundsInWindow: the latter is clipped to what is visible, so a row far
+                    // below the fold would report an empty rectangle.
+                    val boxTop = vc.positionInWindow().y
+                    val rowMid = rc.positionInWindow().y + rc.size.height / 2f
+                    val delta = rowMid - (boxTop + vc.size.height * 0.42f)
+                    if (kotlin.math.abs(delta) > 24f) {
+                        vp.scroll.animateScrollTo(
+                            (vp.scroll.value + delta).toInt().coerceIn(0, vp.scroll.maxValue),
+                            androidx.compose.animation.core.tween(450, easing = androidx.compose.animation.core.FastOutSlowInEasing),
+                        )
+                        kotlinx.coroutines.delay(120)
+                    } else return@repeat
+                } else if (attempt == 0) bring.bringIntoView()
+            }
+            kotlinx.coroutines.delay(150)
+            // One smooth pulse so the opened setting is easy to spot.
+            flash.animateTo(1f, androidx.compose.animation.core.tween(380, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+            flash.animateTo(0f, androidx.compose.animation.core.tween(700, easing = androidx.compose.animation.core.FastOutSlowInEasing))
+            SettingsSearch.target = null
+        }
+    }
+    val flashColor = MaterialTheme.colorScheme.primary
     val rowContent: @Composable () -> Unit = {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 12.dp),
@@ -1470,15 +1596,28 @@ internal fun SettingsRowFrame(
                 Spacer(Modifier.width(18.dp))
             }
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge)
-                if (!subtitle.isNullOrBlank()) {
-                    Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(highlighted(title), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f, fill = false))
+                    if (isNew) NewChip(Modifier.padding(start = 8.dp))
                 }
+                if (!subtitle.isNullOrBlank()) {
+                    Text(highlighted(subtitle), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                belowSubtitle()
             }
             trailing()
         }
     }
     val mod = Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 1.dp)
+        .bringIntoViewRequester(bring)
+        .onGloballyPositioned { rowCoordsRef.value = it }
+        .drawBehind {
+            if (flash.value > 0f) drawRoundRect(
+                flashColor.copy(alpha = 0.38f * flash.value),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(InteractionCornerRadius.toPx()),
+            )
+        }
+        .then(if (isMatch) Modifier.background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.25f), RoundedCornerShape(InteractionCornerRadius)) else Modifier)
     if (onClick != null) {
         Surface(onClick = onClick, shape = RoundedCornerShape(InteractionCornerRadius), color = Color.Transparent, modifier = mod) { rowContent() }
     } else {
@@ -1493,7 +1632,13 @@ internal fun SettingsNavItem(
     subtitle: String?,
     onClick: () -> Unit,
 ) {
-    SettingsRowFrame(icon, title, subtitle, onClick) {
+    val prefs = koinInject<DesktopPrefs>()
+    val route = remember(title) { SettingsIndex.firstOrNull { it.page == "Settings" && it.title == title }?.route }
+    val categoryNew = route != null && SettingsNew.pageHasNew(prefs, route)
+    SettingsRowFrame(
+        icon, title, subtitle, onClick,
+    ) {
+        if (categoryNew) NewChip(Modifier.padding(end = 8.dp))
         Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
@@ -1546,10 +1691,10 @@ internal fun <T> ChoiceRow(
             )
         }
         if (inline) {
-            SettingsRowFrame(icon, title, null, onClick = null) { segmented(Modifier.widthIn(max = 380.dp)) }
+            SettingsRowFrame(icon, title, null, onClick = null, extraText = options.joinToString(" ") { it.second }) { segmented(Modifier.widthIn(max = 380.dp)) }
         } else {
             Column {
-                SettingsRowFrame(icon, title, null, onClick = null)
+                SettingsRowFrame(icon, title, null, onClick = null, extraText = options.joinToString(" ") { it.second })
                 segmented(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
             }
         }
@@ -1568,7 +1713,7 @@ internal fun <T> ChipChoiceRow(
 ) {
     var local by remember(selected) { mutableStateOf(selected) }
     Column(Modifier.fillMaxWidth()) {
-        SettingsRowFrame(icon, title, null, onClick = null)
+        SettingsRowFrame(icon, title, null, onClick = null, extraText = options.joinToString(" ") { it.second })
         FlowRow(
             Modifier.fillMaxWidth().padding(start = if (icon != null) 56.dp else 16.dp, end = 16.dp, bottom = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1578,7 +1723,7 @@ internal fun <T> ChipChoiceRow(
                 FilterChip(
                     selected = local == value,
                     onClick = { local = value; onSelect(value) },
-                    label = { Text(label) },
+                    label = { Text(highlighted(label)) },
                     shape = RoundedCornerShape(12.dp),
                     colors = FilterChipDefaults.filterChipColors(
                         selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
@@ -1633,4 +1778,42 @@ internal fun openExternalUrl(url: String) {
             }
         }
     }.apply { isDaemon = true }.start()
+}
+
+
+/** Spawn point and size of the Rings background; shown wherever the Rings style can be picked. */
+@Composable
+internal fun RingsControls(prefs: DesktopPrefs, showIntro: Boolean = false) {
+    if (showIntro) {
+        Text(
+            "For the Rings background style (page, Now Playing, mini-player): where the rings spread from and how big they are.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
+        )
+    }
+    PrefSecondsSlider(
+        title = "Spawn X", value = prefs.getFloat(PrefKeys.RingsOriginX, 0.20f), valueRange = 0f..1f, steps = 19,
+        valueLabel = { "${(it * 100).toInt()}%" }, onCommit = { prefs.setFloat(PrefKeys.RingsOriginX, it) },
+    )
+    PrefSecondsSlider(
+        title = "Spawn Y", value = prefs.getFloat(PrefKeys.RingsOriginY, 0.50f), valueRange = 0f..1f, steps = 19,
+        valueLabel = { "${(it * 100).toInt()}%" }, onCommit = { prefs.setFloat(PrefKeys.RingsOriginY, it) },
+    )
+    PrefSecondsSlider(
+        title = "Ring size", value = prefs.getFloat(PrefKeys.RingsScale, 1.6f), valueRange = 0.5f..5f, steps = 44,
+        valueLabel = { "%.1f×".format(it) }, onCommit = { prefs.setFloat(PrefKeys.RingsScale, it) },
+    )
+    PrefSecondsSlider(
+        title = "Ring opacity", value = prefs.getFloat(PrefKeys.RingsOpacity, 0.8f), valueRange = 0.1f..1f, steps = 17,
+        valueLabel = { "${(it * 100).toInt()}%" }, onCommit = { prefs.setFloat(PrefKeys.RingsOpacity, it) },
+    )
+    PrefSecondsSlider(
+        title = "Reaction level", value = prefs.getFloat(PrefKeys.RingsReaction, 1f), valueRange = 0f..2f, steps = 19,
+        valueLabel = { if (it <= 0f) "Off" else "${(it * 100).toInt()}%" }, onCommit = { prefs.setFloat(PrefKeys.RingsReaction, it) },
+    )
+    PrefSecondsSlider(
+        title = "Smoothing", value = prefs.getFloat(PrefKeys.RingsSmoothing, 0f), valueRange = 0f..1f, steps = 19,
+        valueLabel = { if (it <= 0f) "Off" else "${(it * 100).toInt()}%" }, onCommit = { prefs.setFloat(PrefKeys.RingsSmoothing, it) },
+    )
 }

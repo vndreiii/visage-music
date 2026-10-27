@@ -1,5 +1,9 @@
 package com.music.vivi.compose.ui.playlist
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.PageHeaderTopPadding
+import com.music.vivi.compose.ui.component.PageInset
+import com.music.vivi.compose.ui.component.PageHeaderBottomPadding
 import com.music.vivi.compose.ui.expressive.VisageTextField
 import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.clickable
@@ -106,10 +110,10 @@ fun LocalPlaylistScreen(playlistId: String, navController: NavController) {
     LazyColumn(
         state = listState,
         modifier = Modifier.fillMaxSize().smoothWheelScroll(listState),
-        contentPadding = PaddingValues(bottom = 120.dp),
+        contentPadding = PaddingValues(bottom = MiniPlayerClearance),
     ) {
         item(key = "back") {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+            Row(Modifier.fillMaxWidth().padding(start = PageInset, end = PageInset, top = PageHeaderTopPadding, bottom = PageHeaderBottomPadding)) {
                 VisageBackButton(onClick = { navController.navigateUp() })
             }
         }
@@ -134,8 +138,16 @@ fun LocalPlaylistScreen(playlistId: String, navController: NavController) {
                             if (total > 0) append(" · ${total / 3600}h ${(total % 3600) / 60}m".replace("0h ", ""))
                         },
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
+                        modifier = Modifier.padding(top = 4.dp, bottom = if (playlist?.description.isNullOrBlank()) 14.dp else 6.dp),
                     )
+                    playlist?.description?.takeIf { it.isNotBlank() }?.let { desc ->
+                        Text(
+                            desc, style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 3, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(bottom = 14.dp),
+                        )
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Button(onClick = { play(songs, 0) }, enabled = songs.isNotEmpty()) {
                             Icon(Icons.Filled.PlayArrow, null, Modifier.size(20.dp)); Spacer(Modifier.width(6.dp)); Text("Play")
@@ -143,7 +155,7 @@ fun LocalPlaylistScreen(playlistId: String, navController: NavController) {
                         FilledTonalButton(onClick = { play(songs, 0, shuffled = true) }, enabled = songs.isNotEmpty()) {
                             Icon(Icons.Outlined.Shuffle, null, Modifier.size(20.dp)); Spacer(Modifier.width(6.dp)); Text("Shuffle")
                         }
-                        IconButton(onClick = { renaming = true }) { Icon(Icons.Outlined.Edit, "Rename") }
+                        IconButton(onClick = { renaming = true }) { Icon(Icons.Outlined.Edit, "Edit details") }
                         IconButton(onClick = { deleting = true }) { Icon(Icons.Outlined.Delete, "Delete playlist") }
                     }
                 }
@@ -198,18 +210,22 @@ fun LocalPlaylistScreen(playlistId: String, navController: NavController) {
     }
 
     if (renaming && playlist != null) {
-        var text by remember { mutableStateOf(playlist.title) }
-        AlertDialog(
-            onDismissRequest = { renaming = false },
-            title = { Text("Rename playlist") },
-            text = { VisageTextField(text, { text = it }, singleLine = true, label = { Text("Name") }, ) },
-            confirmButton = {
-                TextButton(onClick = {
-                    renaming = false
-                    scope.launch(Dispatchers.IO) { repo.renameLocalPlaylist(playlistId, text) }
-                }) { Text("Rename") }
+        // Same card as New playlist, filled in: change the name, description and photo.
+        com.music.vivi.compose.ui.library.sidebar.PlaylistDialog(
+            title = "Edit playlist",
+            confirm = "Save",
+            initialName = playlist.title,
+            initialDescription = playlist.description.orEmpty(),
+            initialCover = playlist.thumbnail?.takeIf { it.startsWith("/") },
+            onDismiss = { renaming = false },
+            onConfirm = { name, description, cover ->
+                renaming = false
+                scope.launch(Dispatchers.IO) {
+                    // Keep the automatic cover when the user hasn't chosen a photo.
+                    val thumb = cover ?: playlist.thumbnail?.takeIf { !it.startsWith("/") }
+                    repo.updateLocalPlaylistDetails(playlistId, name, description, thumb)
+                }
             },
-            dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancel") } },
         )
     }
     if (deleting && playlist != null) {

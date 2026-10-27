@@ -116,7 +116,7 @@ data class FullscreenSettings(
                 runCatching { parse(str(k)) }.getOrDefault(fallback)
 
             val npBg = runCatching {
-                PlayerBackgroundStyle.valueOf(p.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name))
+                PlayerBackgroundStyle.valueOf(p.getString(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle.name))
             }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
             val canvasMode = en(FullscreenKeys.CanvasMode, { FullscreenCanvasMode.valueOf(it) }, FullscreenCanvasMode.FOLLOW)
             return FullscreenSettings(

@@ -31,6 +31,10 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.sp
 import com.music.lyricsync.LyricsTimeline
+import com.music.vivi.player.AudioLevels
+import com.music.vivi.compose.ui.player.background.RingsField
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
 import com.music.vivi.compose.prefs.LyricsTextAlign
 import com.music.vivi.compose.theme.ArtworkPalette
 import com.music.vivi.compose.theme.LocalArtworkPalette
@@ -50,7 +54,7 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
 
-private const val CUTS_SKSL = """
+private const val CUTS_SKSL = com.music.vivi.compose.ui.player.background.RING_FIELD_SKSL + """
 uniform float2 iResolution;
 uniform float2 uCenter;
 uniform float uTime;
@@ -62,6 +66,15 @@ uniform float uBaseRippleAmp;
 uniform float uEnergyRippleAmp;
 uniform float uSoundEnergy;
 uniform float uSnakeAmp;
+uniform float uSliceAmp;
+uniform float uFused;
+uniform float uCut;
+uniform float uDiag;
+uniform float uRScale;
+uniform float uBass;
+uniform float uMid;
+uniform float uHigh;
+uniform float uKick;
 uniform shader textContent;
 
 half4 main(float2 fc) {
@@ -81,6 +94,12 @@ half4 main(float2 fc) {
 
     // Modulate physical ring distance: creates ripples propagating outward
     float rippleDist = dist + rippleWave * rippleAmp;
+    float fusedE = ringEnergy(dist, uRingStep, uBass, uMid, uHigh);
+    if (uFused > 0.5) {
+        // Fused with the Rings background: the very same ring field, so the cuts sit exactly on the background's rings.
+        rippleDist = ringDistance(dist, uRingStep, uDiag, uRScale, uTime, fusedE, uKick);
+        waveCrest = 0.5 + 0.5 * sin(dist / uDiag * 46.0 / uRScale - uTime * 1.6);
+    }
 
     // -------------------------------------------------------------------------
     // 2. CONCENTRIC CUT LINES (Vinyl Grooves)
@@ -91,34 +110,36 @@ half4 main(float2 fc) {
 
     // Line width & glow swell with the ripple crest
     float localLineWidth = uLineWidth * (1.0 + waveCrest * 0.45 * (1.0 + uSoundEnergy));
+    if (uFused > 0.5) localLineWidth = max(uDiag * 0.0021 * (1.0 + waveCrest * 0.5 + fusedE * 2.4 + uKick * 0.8), 2.0);
     float localGlow = 0.15 + 0.35 * waveCrest * (0.6 + uSoundEnergy * 0.8);
 
     // Crisp anti-aliased vinyl groove cut lines
     float lineAlpha = smoothstep(localLineWidth, 0.18, distToLine);
     float maxDist = length(iResolution) * 1.1;
-    float ringDepthAlpha = clamp(0.46 - (dist / maxDist) * 0.24, 0.08, 0.55);
-    float ringA = lineAlpha * ringDepthAlpha * (0.75 + localGlow);
+    float ringDepthAlpha = clamp(0.30 - (dist / maxDist) * 0.16, 0.05, 0.36);
+    float ringA = lineAlpha * ringDepthAlpha * (0.75 + localGlow) * (1.0 - uFused);
     half4 ringCol = half4(ringA, ringA, ringA, ringA);
 
     // -------------------------------------------------------------------------
-    // 3. SNAKE-LIKE FLOATING TEXT MOTION
+    // 3. SLICED TEXT: every ring band carries its own slice of the line
     // -------------------------------------------------------------------------
-    // Text undulates smoothly like a snake swimming through water
-    float snakePhase = fc.x * 0.0036 - uTime * 2.2;
-    float snakeY = (sin(snakePhase) * 0.70 + sin(snakePhase * 0.48 + uTime * 0.85) * 0.30) * uSnakeAmp;
-    float floatY = sin(uTime * 1.4) * (uSnakeAmp * 0.35);
-    float textDy = snakeY + floatY;
+    // The text is cut along the rings, and each band between two rings slides along the radius by its own amount.
+    // As the ripple travels outward and the sound energy rises, the bands shift further, so the letters visibly
+    // break apart and re-join at the cuts in real time.
+    float band = floor(rippleDist / uRingStep);
+    float2 radial = dVec / max(dist, 1.0);
+    float bandPhase = band * 1.93 + sin(band * 4.1) * 1.7;
+    float sliceEnergy = 1.0 - exp(-uSoundEnergy * 1.6); // soft-capped: loud peaks do not tear the letters apart
+    float shift = sin(bandPhase + uTime * 2.4) * uSliceAmp * (0.16 + sliceEnergy * 0.34) * uCut;
+    // Slight undulation so the whole line still breathes between the cuts.
+    float floatY = sin(fc.x * 0.0036 - uTime * 2.2) * uSnakeAmp * 0.35;
+    half4 textCol = textContent.eval(float2(fc.x, fc.y + floatY) - radial * shift);
 
-    // Sample text texture with snake displacement (unified cohesive line!)
-    half4 textCol = textContent.eval(float2(fc.x, fc.y + textDy));
-
     // -------------------------------------------------------------------------
-    // 4. CUTS MASKING: Lines are the cuts, spaces between lines hold the text
+    // 4. CUTS MASKING: the lines are real gaps in the lettering
     // -------------------------------------------------------------------------
-    // Between lines: text is 100% visible. Right on cut lines: clean razor slice.
-    float cutFactor = smoothstep(0.15, localLineWidth * 0.85, distToLine);
-    float textMask = mix(0.20, 1.0, cutFactor);
-    textCol *= textMask;
+    float cutFactor = smoothstep(localLineWidth * 0.5, localLineWidth * 1.7, distToLine);
+    textCol *= mix(1.0, cutFactor, uCut);
 
     // -------------------------------------------------------------------------
     // 5. SMOOTH EDGE FADE ON ALL 4 SIDES (No hard rectangular borders!)
@@ -135,7 +156,8 @@ half4 main(float2 fc) {
     float totalFade = edgeFade * radialFade;
 
     // Composite text over rippling concentric vinyl cut lines
-    half4 finalCol = (textCol + ringCol * (1.0 - textCol.a * 0.75)) * totalFade;
+    // Only the rings dissolve with distance; the lyric keeps full strength along its whole width.
+    half4 finalCol = textCol * edgeFade + ringCol * (1.0 - textCol.a * 0.75) * totalFade;
     return finalCol;
 }
 """
@@ -167,6 +189,11 @@ internal fun LyricsCutsScene(
     val densityPx = density.density
     val measurer = rememberTextMeasurer(cacheSize = 64)
 
+    val prefs = org.koin.compose.koinInject<com.music.vivi.compose.prefs.DesktopPrefs>()
+    @Suppress("UNUSED_VARIABLE") val prefsVersion = com.music.vivi.compose.ui.settings.rememberPrefsVersion(prefs)
+    val ringOriginX = prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsOriginX, 0.20f)
+    val ringOriginY = prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsOriginY, 0.50f)
+    val canvasWindowOrigin = remember { androidx.compose.runtime.mutableStateOf(Offset.Zero) }
     val wall = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
         val t0 = withFrameNanos { it }
@@ -189,7 +216,7 @@ internal fun LyricsCutsScene(
         }
     }
 
-    BoxWithConstraints(modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier.fillMaxSize().onGloballyPositioned { canvasWindowOrigin.value = it.positionInWindow() }) {
         Canvas(Modifier.fillMaxSize()) {
             val pos = clock.value
             val timeWall = wall.floatValue
@@ -208,15 +235,23 @@ internal fun LyricsCutsScene(
                 surfaceCache[0] = surf
             }
 
-            // Center of the concentric circle (offset diagonally to sweep dramatically across the screen)
-            val ringCenterX = canvasW * 0.35f
-            val ringCenterY = canvasH * 0.58f
+            // The rings spread from the spawn point chosen in Settings (not tied to the lyric).
+            var ringCenterX = canvasW * ringOriginX
+            var ringCenterY = canvasH * ringOriginY
+            // Fused with the Rings background: use its exact centre, spacing and clock (see RingsField).
+            val fused = RingsField.live && RingsField.width > 10f
+            val ringScale = prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsScale, 1.6f).coerceIn(0.4f, 6f)
+            val bgDiag = kotlin.math.hypot(RingsField.width, RingsField.height)
+            if (fused) {
+                ringCenterX = RingsField.left + ringOriginX * RingsField.width - canvasWindowOrigin.value.x
+                ringCenterY = RingsField.top + ringOriginY * RingsField.height - canvasWindowOrigin.value.y
+            }
 
             // Extra large, bold typography for maximum presence and legibility
             val fontPx = cfg.fontSizeSp * sizeScale * densityPx * 1.85f
 
             // Ring step tuned so 2-4 clean concentric cuts cross each text line (like reference posters)
-            val ringStep = (fontPx * 0.42f).coerceIn(24f * densityPx, 44f * densityPx)
+            val ringStep = if (fused) bgDiag * 0.050f * ringScale else (fontPx * 0.42f).coerceIn(24f * densityPx, 44f * densityPx)
             val lineWidth = 1.9f * densityPx
 
             // Outward ripple parameters (sound-reactive traveling waves)
@@ -227,6 +262,8 @@ internal fun LyricsCutsScene(
 
             // Snake undulating amplitude for the text
             val snakeAmp = (fontPx * 0.16f * cfg.animStrength).coerceIn(8f * densityPx, 18f * densityPx)
+            // How far a ring band slides along the radius when the sound peaks.
+            val sliceAmp = (fontPx * 0.13f * cfg.animStrength).coerceIn(6f * densityPx, 24f * densityPx)
 
             // Find line index (supports both synced and unsynced)
             val curIndex = if (timeline.isSynced) {
@@ -243,40 +280,8 @@ internal fun LyricsCutsScene(
             val lineDur = max(lineEnd - lineStart, 100f)
             val isLineActive = hasActiveLine && (if (timeline.isSynced) (pos >= lineStart && pos <= lineEnd) else true)
 
-            // Active word timing & reaction
-            var wordExcitement = 0f
-            if (curLine != null && curLine.words.isNotEmpty() && isLineActive) {
-                for ((wIdx, w) in curLine.words.withIndex()) {
-                    val wp = w.progressAt(pos)
-                    if (wp in 0.001f..0.999f) {
-                        wordExcitement = sin(wp * PI.toFloat())
-                        break
-                    }
-                }
-            }
-
-            // Inertial bounce on lyric start / change
-            var inertialBounce = 0f
-            if (hasActiveLine && pos >= lineStart && cfg.bounceAmp > 0.01f) {
-                val bounceT = (pos - lineStart) / 1000f
-                if (bounceT in 0f..1.4f) {
-                    val decay = exp(cfg.bounceDecay * bounceT)
-                    val osc = sin(bounceT * 2.0f * PI.toFloat() * cfg.bounceFreq)
-                    inertialBounce = (osc / decay) * cfg.bounceAmp
-                }
-            }
-
-            // Musical tempo pulse
-            val songSec = pos / 1000f
-            val tempoBeat = if (isPlaying) {
-                val b = sin(songSec * 2f * PI.toFloat() * 1.8f).coerceAtLeast(0f)
-                b * b
-            } else {
-                0.2f
-            }
-
-            // Sound energy radiating from center outwards
-            val soundEnergy = (wordExcitement * 0.75f + abs(inertialBounce) * 0.65f + tempoBeat * 0.25f).coerceIn(0f, 2.0f)
+            // The rings and the slicing react to the music itself (loudness and beats of the playing audio), not to the lyric.
+            val soundEnergy = (AudioLevels.level * 1.1f + AudioLevels.beat * 0.9f).coerceIn(0f, 2.0f)
 
             // -------------------------------------------------------------------------
             // STEP 1: Render Text to Reusable Offscreen Texture
@@ -319,6 +324,16 @@ internal fun LyricsCutsScene(
                 val textTotalH = textLayout.size.height + (transLayout?.size?.height ?: 0) + (if (transLayout != null) (fontPx * 0.25f).toInt() else 0)
                 val textDrawX = (canvasW - textLayout.size.width) / 2f
                 val textDrawY = (canvasH - textTotalH) / 2f
+
+                // Tell the Rings background where the lyric is so it can darken the rings around it.
+                run {
+                    val pad = fontPx * 0.35f
+                    RingsField.dimLeft = canvasWindowOrigin.value.x + textDrawX - pad
+                    RingsField.dimTop = canvasWindowOrigin.value.y + textDrawY - pad
+                    RingsField.dimRight = canvasWindowOrigin.value.x + textDrawX + textLayout.size.width + pad
+                    RingsField.dimBottom = canvasWindowOrigin.value.y + textDrawY + textTotalH + pad
+                    RingsField.dimStamp = System.nanoTime()
+                }
 
                 val glowOn = cfg.glow > 0f
                 val glowRadius = fontPx * 0.50f * cfg.glow
@@ -378,7 +393,19 @@ internal fun LyricsCutsScene(
             // -------------------------------------------------------------------------
             shaderBuilder.uniform("iResolution", canvasW, canvasH)
             shaderBuilder.uniform("uCenter", ringCenterX, ringCenterY)
-            shaderBuilder.uniform("uTime", timeWall)
+            shaderBuilder.uniform("uTime", if (fused) RingsField.seconds() else timeWall)
+            shaderBuilder.uniform("uFused", if (fused) 1f else 0f)
+            shaderBuilder.uniform("uCut", if (cfg.cutsSliceText) 1f else 0f)
+            shaderBuilder.uniform("uDiag", bgDiag.coerceAtLeast(1f))
+            shaderBuilder.uniform("uRScale", ringScale)
+            com.music.vivi.compose.ui.player.background.RingsReaction.update(
+                prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsReaction, 1f),
+                prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsSmoothing, 0f),
+            )
+            shaderBuilder.uniform("uBass", com.music.vivi.compose.ui.player.background.RingsReaction.bass)
+            shaderBuilder.uniform("uMid", com.music.vivi.compose.ui.player.background.RingsReaction.mid)
+            shaderBuilder.uniform("uHigh", com.music.vivi.compose.ui.player.background.RingsReaction.high)
+            shaderBuilder.uniform("uKick", com.music.vivi.compose.ui.player.background.RingsReaction.kick)
             shaderBuilder.uniform("uRingStep", ringStep)
             shaderBuilder.uniform("uLineWidth", lineWidth)
             shaderBuilder.uniform("uRippleFreq", rippleFreq)
@@ -387,6 +414,7 @@ internal fun LyricsCutsScene(
             shaderBuilder.uniform("uEnergyRippleAmp", energyRippleAmp)
             shaderBuilder.uniform("uSoundEnergy", soundEnergy)
             shaderBuilder.uniform("uSnakeAmp", snakeAmp)
+            shaderBuilder.uniform("uSliceAmp", sliceAmp)
             shaderBuilder.child("textContent", textShader)
 
             val finalShader = shaderBuilder.makeShader()

@@ -15,6 +15,7 @@ internal enum class BackgroundShader(val sksl: String, val usesImage: Boolean = 
     MESH(SHADER_COMMON + MESH_BODY),
     WAVE(SHADER_COMMON + WAVE_BODY),
     XMB(SHADER_COMMON + XMB_BODY),
+    RINGS(SHADER_COMMON + RINGS_BODY),
     BLUR(SHADER_COMMON + IMAGE_COMMON + BLUR_BODY, usesImage = true, imageEdge = 14),
     DISTORT(SHADER_COMMON + IMAGE_COMMON + DISTORT_BODY, usesImage = true, imageEdge = 256),
 }
@@ -342,3 +343,54 @@ half4 main(float2 fc) {
     return finish(col, fc);
 }
 """
+
+
+/**
+ * Huge concentric rings spreading from a point you choose (the cuts-lyrics ring visualizer as a page background).
+ * `ringOrigin` is the spawn point as fractions of the screen, `ringScale` the ring spacing. Rings are tinted from the
+ * cover; two slow waves travelling outward make them breathe.
+ */
+private const val RINGS_BODY = RING_FIELD_SKSL + """
+uniform float2 ringOrigin;
+uniform float ringScale;
+uniform float audioBass;
+uniform float audioMid;
+uniform float audioHigh;
+uniform float audioKick;
+uniform float ringOpacity;
+uniform float4 dimRect;
+uniform float dimOn;
+
+half4 main(float2 fc) {
+    float2 uv = fc / iResolution;
+    float2 center = ringOrigin * iResolution;
+    float dist = length(fc - center);
+    float diag = length(iResolution);
+    float step = diag * 0.050 * ringScale;
+
+    // A radial spectrum: each ring reacts to its own part of the music.
+    float e = ringEnergy(dist, step, audioBass, audioMid, audioHigh);
+    float d = ringDistance(dist, step, diag, ringScale, iTime, e, audioKick);
+    float f = fract(d / step);
+    float toLine = min(f, 1.0 - f) * step;
+    float crest = 0.5 + 0.5 * sin(dist / diag * 46.0 / ringScale - iTime * 1.6);
+    float w = diag * 0.0012 * (1.0 + crest * 0.5 + e * 2.4 + audioKick * 0.8);
+    float line = smoothstep(w, w * 0.15, toLine);
+    float soft = exp(-toLine / (step * 0.22)) * 0.12;
+
+    float reach = smoothstep(diag * 1.05, diag * 0.15, dist);
+    // Darken the rings around the lyric so the words stand out (soft rounded box around dimRect).
+    float2 bc = float2((dimRect.x + dimRect.z) * 0.5, (dimRect.y + dimRect.w) * 0.5);
+    float2 bh = float2((dimRect.z - dimRect.x) * 0.5, (dimRect.w - dimRect.y) * 0.5);
+    float2 q = abs(fc - bc) - bh;
+    float outside = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+    float pad = diag * 0.07;
+    reach *= 1.0 - dimOn * 0.88 * smoothstep(pad, 0.0, outside);
+    float3 base = mix(c0 * 0.55, c1 * 0.20, clamp(uv.y, 0.0, 1.0));
+    base += c2 * 0.10 * exp(-dist / (diag * 0.45)) * (1.0 + audioBass * 0.8);
+    float3 rc = mix(palette(0.15 + dist / diag * 0.8), float3(1.0), 0.55);
+    float3 col = base + rc * (line * (0.10 + 0.08 * crest + 0.62 * e + 0.22 * audioKick) + soft * (1.0 + e * 1.4 + audioKick * 0.8)) * reach * ringOpacity;
+    return half4(col, 1.0);
+}
+"""
+

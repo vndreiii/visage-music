@@ -22,6 +22,9 @@ LIMIT ?;
 clearAll:
 DELETE FROM play_event;
 
+deleteBySong:
+DELETE FROM play_event WHERE song_id = ?;
+
 deleteById:
 DELETE FROM play_event WHERE id = ?;
 

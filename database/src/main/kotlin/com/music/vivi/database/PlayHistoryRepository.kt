@@ -41,4 +41,7 @@ class PlayHistoryRepository(
         db.playEventQueries.selectRecentDistinct(limit).executeAsList()
 
     fun clear() = db.playEventQueries.clearAll()
+
+    /** Forgets every play of [songId], so it also leaves "Jump back in". */
+    fun removeSong(songId: String) = db.playEventQueries.deleteBySong(songId)
 }
