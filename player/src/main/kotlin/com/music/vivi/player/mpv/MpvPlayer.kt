@@ -309,8 +309,8 @@ class MpvPlayer(
     private val bandsDir: java.io.File? by lazy {
         if (System.getProperty("os.name").orEmpty().startsWith("Windows")) null
         else runCatching {
-            java.io.File(System.getProperty("java.io.tmpdir"), "visage-bands-${ProcessHandle.current().pid()}-${System.identityHashCode(this)}")
-                .also { it.mkdirs() }
+            // Random name, owner-only (0700): another local user cannot pre-create or symlink it.
+            java.nio.file.Files.createTempDirectory("visage-bands-").toFile()
         }.getOrNull()
     }
 
