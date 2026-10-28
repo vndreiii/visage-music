@@ -36,6 +36,7 @@ import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Remove
 import androidx.compose.material.icons.outlined.FormatAlignCenter
 import androidx.compose.material.icons.outlined.Lyrics
+import androidx.compose.material.icons.outlined.Translate
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -228,9 +229,24 @@ fun LyricsPanel(
         }
     }
 
-    val timeline = remember(parsed, cfg.estimateWords, cfg.showBackgroundVocals, cfg.gapStyle) {
+    // Romanization / translation under each line, filled in after the lyrics load (offline kana/Hangul first).
+    val tOpts = remember(prefsTick) { prefs.lyricsTransformOptions() }
+    var shownParsed by remember { mutableStateOf(parsed) }
+    var transformProblem by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(parsed, tOpts) {
+        shownParsed = parsed
+        transformProblem = null
+        if (!tOpts.enabled || parsed.lines.isEmpty()) return@LaunchedEffect
+        val key = nowPlaying?.videoId ?: return@LaunchedEffect
+        // Offline part first so Japanese/Korean/Cyrillic romanization shows immediately.
+        if (tOpts.romanize) shownParsed = LyricsTransform.apply(key, parsed, tOpts.copy(translate = false, provider = TranslateProvider.GOOGLE)).lyrics
+        val full = LyricsTransform.apply(key, parsed, tOpts)
+        shownParsed = full.lyrics
+        transformProblem = full.problem
+    }
+    val timeline = remember(shownParsed, cfg.estimateWords, cfg.showBackgroundVocals, cfg.gapStyle) {
         LyricsTimeline.build(
-            parsed,
+            shownParsed,
             estimateWords = cfg.estimateWords,
             minGapMs = if (cfg.gapStyle == LyricsGapStyle.NONE) Long.MAX_VALUE / 4 else LyricsTimeline.DEFAULT_MIN_GAP_MS,
             showBackground = cfg.showBackgroundVocals,
@@ -301,6 +317,7 @@ fun LyricsPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            LyricsTransformControl(prefs = prefs, version = prefsTick, problem = transformProblem)
             LyricsProviderControl(
                 current = shownProvider ?: provider,
                 onSelect = {
@@ -445,6 +462,57 @@ private fun LyricsAlignControls(
             }
         },
     )
+}
+
+@Composable
+private fun LyricsTransformControl(prefs: DesktopPrefs, version: Int, problem: String?) {
+    var open by remember { mutableStateOf(false) }
+    val o = remember(version) { prefs.lyricsTransformOptions() }
+    Box {
+        Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.28f)) {
+            IconButton(onClick = { open = true }) {
+                Icon(
+                    Icons.Outlined.Translate, "Romanization and translation",
+                    tint = if (o.enabled) MaterialTheme.colorScheme.primary else Color.White,
+                )
+            }
+        }
+        if (open) {
+            Popup(alignment = Alignment.TopEnd, offset = IntOffset(0, 52), onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 8.dp, shadowElevation = 10.dp,
+                    modifier = Modifier.widthIn(min = 240.dp, max = 300.dp),
+                ) {
+                    androidx.compose.foundation.layout.Column(Modifier.padding(vertical = 8.dp, horizontal = 4.dp)) {
+                        fun flip(key: String, on: Boolean) {
+                            prefs.setBoolean(key, on)
+                            if (on) prefs.setBoolean(PrefKeys.LyricsShowTranslation, true)
+                        }
+                        TransformRow("Romanize (romaji, romaja…)", o.romanize) { flip(PrefKeys.LyricsRomanize, it) }
+                        TransformRow("Translate to ${TranslateLanguages.firstOrNull { it.first == o.targetLang }?.second ?: o.targetLang}", o.translate) { flip(PrefKeys.LyricsAutoTranslate, it) }
+                        if (problem != null) {
+                            Text(problem, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                        }
+                        Text(
+                            "Language, provider and Gemini key: Settings → Lyrics",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TransformRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        androidx.compose.material3.Switch(checked = checked, onCheckedChange = onChange)
+    }
 }
 
 @Composable

@@ -191,6 +191,62 @@ fun LyricsSettingsScreen(navController: NavController) {
                     LiveSlider("Line spacing", live.lineSpacingDp, 0f..40f, 19, { "${it.toInt()} dp" }, { live = live.copy(lineSpacingDp = it) }) { commit(live.copy(lineSpacingDp = it)) }
                 }
 
+                SettingsSection("Romanization & translation") {
+                    SwitchItem(
+                        Icons.Outlined.Translate, "Romanize lyrics",
+                        "Show Japanese, Korean and Cyrillic lines in Latin letters (kana and Hangul offline; kanji via the provider below)",
+                        prefs.getBoolean(PrefKeys.LyricsRomanize, false),
+                    ) {
+                        prefs.setBoolean(PrefKeys.LyricsRomanize, it)
+                        if (it) commit(live.copy(showTranslation = true))
+                    }
+                    SettingsDivider()
+                    SwitchItem(
+                        Icons.Outlined.Translate, "Auto-translate lyrics",
+                        "Translate lines that have no translation of their own into the language below",
+                        prefs.getBoolean(PrefKeys.LyricsAutoTranslate, false),
+                    ) {
+                        prefs.setBoolean(PrefKeys.LyricsAutoTranslate, it)
+                        if (it) commit(live.copy(showTranslation = true))
+                    }
+                    SettingsDivider()
+                    ChipChoiceRow(
+                        Icons.Outlined.Translate, "Translate into",
+                        com.music.vivi.compose.ui.player.lyrics.TranslateLanguages,
+                        prefs.getString(PrefKeys.LyricsTranslateLang, "en"),
+                    ) { prefs.setString(PrefKeys.LyricsTranslateLang, it) }
+                    SettingsDivider()
+                    val provider = runCatching {
+                        com.music.vivi.compose.ui.player.lyrics.TranslateProvider.valueOf(
+                            prefs.getString(PrefKeys.LyricsTranslateProvider, com.music.vivi.compose.ui.player.lyrics.TranslateProvider.GOOGLE.name),
+                        )
+                    }.getOrDefault(com.music.vivi.compose.ui.player.lyrics.TranslateProvider.GOOGLE)
+                    ChipChoiceRow(
+                        Icons.Outlined.AutoAwesome, "Provider",
+                        com.music.vivi.compose.ui.player.lyrics.TranslateProvider.entries.map { it to it.label }, provider,
+                    ) { prefs.setString(PrefKeys.LyricsTranslateProvider, it.name) }
+                    if (provider == com.music.vivi.compose.ui.player.lyrics.TranslateProvider.GEMINI) {
+                        var key by remember { mutableStateOf(prefs.getString(PrefKeys.LyricsGeminiKey, "")) }
+                        var model by remember { mutableStateOf(prefs.getString(PrefKeys.LyricsGeminiModel, "gemini-2.5-flash")) }
+                        androidx.compose.material3.OutlinedTextField(
+                            value = key,
+                            onValueChange = { key = it; prefs.setString(PrefKeys.LyricsGeminiKey, it.trim()) },
+                            label = { Text("Gemini API key") },
+                            singleLine = true,
+                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                            supportingText = { Text("Stored in plain text in the settings file. Get one free at aistudio.google.com") },
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        )
+                        androidx.compose.material3.OutlinedTextField(
+                            value = model,
+                            onValueChange = { model = it; prefs.setString(PrefKeys.LyricsGeminiModel, it.trim()) },
+                            label = { Text("Gemini model") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+                        )
+                    }
+                }
+
                 SettingsSection("Animation") {
                     ChipChoiceRow(Icons.Outlined.AutoAwesome, "Preset", LyricsAnimation.entries.map { it to it.label }, live.animation) {
                         commit(live.copy(animation = it))
