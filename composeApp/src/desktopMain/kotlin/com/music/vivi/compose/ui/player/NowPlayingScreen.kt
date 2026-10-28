@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Lyrics
@@ -102,6 +103,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.music.vivi.compose.ui.artist.openArtistByName
+import com.music.vivi.compose.ui.album.openAlbumOf
 import coil3.compose.AsyncImage
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -674,6 +676,27 @@ private fun NowPlayingScreenContent(
                                             maxLines = 2,
                                             modifier = Modifier.padding(top = 6.dp),
                                         )
+                                    }
+                                    val albumName = track?.album.orEmpty()
+                                    if (albumName.isNotBlank()) {
+                                        val canOpenAlbum = com.music.vivi.compose.ui.album.AlbumLinks.isOpenable(albumName, track?.albumId, track?.localPath != null)
+                                        Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(Icons.Outlined.Album, "Album", tint = ink.text(0.5f), modifier = Modifier.size(16.dp))
+                                            Spacer(Modifier.width(6.dp))
+                                            com.music.vivi.compose.ui.album.AlbumLink(
+                                                albumName,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                color = ink.text(0.55f),
+                                                hoverColor = ink.text(),
+                                                modifier = Modifier.weight(1f, fill = false),
+                                                onClick = if (!canOpenAlbum) null else {
+                                                    {
+                                                        val t = track
+                                                        scope.launch { navController.openAlbumOf(t?.albumId, albumName, t?.artist.orEmpty()) }
+                                                    }
+                                                },
+                                            )
+                                        }
                                     }
                                 }
                                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {

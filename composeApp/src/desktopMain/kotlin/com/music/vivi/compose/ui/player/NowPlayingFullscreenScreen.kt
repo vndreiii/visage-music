@@ -95,6 +95,7 @@ import com.music.vivi.compose.prefs.SliderStyle
 import com.music.vivi.compose.prefs.reader
 import com.music.vivi.compose.ui.artist.ArtistLinks
 import com.music.vivi.compose.ui.artist.openArtistByName
+import com.music.vivi.compose.ui.album.openAlbumOf
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.VisageBackButton
 import com.music.vivi.compose.ui.component.rememberReadyArtwork
@@ -473,13 +474,20 @@ private fun NowPlayingFullscreenContent(
                                 Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Outlined.Album, "Album", tint = ink.text(0.5f), modifier = Modifier.size(16.dp))
                                     Spacer(Modifier.width(6.dp))
-                                    Text(
+                                    val canOpen = com.music.vivi.compose.ui.album.AlbumLinks.isOpenable(album, track?.albumId, track?.localPath != null)
+                                    com.music.vivi.compose.ui.album.AlbumLink(
                                         album,
                                         style = MaterialTheme.typography.bodyMedium,
                                         color = ink.text(0.55f),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Clip,
-                                        modifier = Modifier.weight(1f).visageMarquee(),
+                                        hoverColor = ink.text(),
+                                        modifier = Modifier.weight(1f, fill = false),
+                                        onClick = if (!canOpen) null else {
+                                            {
+                                                val t = track
+                                                WindowFullscreen.exit(windowState)
+                                                scope.launch { navController.openAlbumOf(t?.albumId, album, t?.artist.orEmpty()) }
+                                            }
+                                        },
                                     )
                                 }
                             }

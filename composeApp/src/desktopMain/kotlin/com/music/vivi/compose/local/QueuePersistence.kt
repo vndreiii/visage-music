@@ -32,6 +32,7 @@ class QueuePersistence(private val prefs: DesktopPrefs, private val controller: 
                                 localPath = props.getProperty("$i.path"),
                                 durationMs = props.getProperty("$i.duration")?.toLongOrNull() ?: 0,
                                 album = props.getProperty("$i.album"),
+                                albumId = props.getProperty("$i.albumId"),
                                 lyricsPath = props.getProperty("$i.lyrics"),
                                 embeddedLyrics = props.getProperty("$i.embeddedLyrics"),
                             )
@@ -66,6 +67,7 @@ class QueuePersistence(private val prefs: DesktopPrefs, private val controller: 
                 track.artworkUrl?.let { props["$i.art"] = it }
                 track.localPath?.let { props["$i.path"] = it }
                 track.album?.let { props["$i.album"] = it }
+                track.albumId?.let { props["$i.albumId"] = it }
                 track.lyricsPath?.let { props["$i.lyrics"] = it }
                 track.embeddedLyrics?.let { props["$i.embeddedLyrics"] = it }
             }

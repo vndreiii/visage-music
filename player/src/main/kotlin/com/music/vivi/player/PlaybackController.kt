@@ -29,6 +29,8 @@ data class NowPlaying(
     val localPath: String? = null,
     val lyricsPath: String? = null,
     val embeddedLyrics: String? = null,
+    /** YouTube Music browse id of [album] when known (MPREb…), so the UI can open the album page. */
+    val albumId: String? = null,
 )
 
 /** One entry in the playback queue (ids alone are not enough for UI). */
@@ -43,6 +45,8 @@ data class QueueTrack(
     val album: String? = null,
     val lyricsPath: String? = null,
     val embeddedLyrics: String? = null,
+    /** YouTube Music browse id of [album] when known (MPREb…); null for local files and old saved queues. */
+    val albumId: String? = null,
 )
 
 /**
@@ -127,6 +131,7 @@ fun com.music.innertube.models.YTItem.toQueueTrack(): QueueTrack = when (this) {
         artworkUrl = thumbnail,
         durationMs = (duration?.toLong() ?: 0L) * 1000L,
         album = album?.name,
+        albumId = album?.id?.takeIf { it.isNotBlank() },
     ).also { ArtistIdRegistry.remember(artists) }
     else -> QueueTrack(
         videoId = id,

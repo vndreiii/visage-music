@@ -406,7 +406,7 @@ private fun QueuePanelBody(
                                     np.title, np.artist, np.artworkUrl,
                                     com.music.vivi.player.QueueTrack(
                                         videoId = np.videoId, title = np.title, artist = np.artist, artworkUrl = np.artworkUrl,
-                                        localPath = np.localPath, durationMs = np.durationMs, album = np.album,
+                                        localPath = np.localPath, durationMs = np.durationMs, album = np.album, albumId = np.albumId,
                                         lyricsPath = np.lyricsPath, embeddedLyrics = np.embeddedLyrics,
                                     ),
                                 )

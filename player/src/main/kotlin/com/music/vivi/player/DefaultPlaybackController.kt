@@ -700,13 +700,14 @@ class DefaultPlaybackController(
 
     private fun applyOptimisticNowPlaying(track: QueueTrack, softUi: Boolean = false) {
         val cached = streams.get(track.videoId)?.nowPlaying
-        val np = cached ?: NowPlaying(
+        val np = cached?.let { if (it.albumId == null && track.albumId != null) it.copy(albumId = track.albumId, album = it.album ?: track.album) else it } ?: NowPlaying(
             videoId = track.videoId,
             title = track.title.ifBlank { "Loading…" },
             artist = track.artist,
             artworkUrl = track.artworkUrl,
             durationMs = track.durationMs,
             album = track.album,
+            albumId = track.albumId,
             localPath = track.localPath,
             lyricsPath = track.lyricsPath,
             embeddedLyrics = track.embeddedLyrics,
@@ -1022,6 +1023,7 @@ class DefaultPlaybackController(
             artworkUrl = art ?: track.artworkUrl,
             durationMs = track.durationMs,
             album = track.album,
+            albumId = track.albumId,
             localPath = path,
             lyricsPath = track.lyricsPath,
             embeddedLyrics = track.embeddedLyrics,
@@ -1174,6 +1176,7 @@ class DefaultPlaybackController(
             artist = if (placeholderArtist) queued.artist.ifBlank { resolved.artist } else resolved.artist,
             artworkUrl = resolved.artworkUrl ?: queued.artworkUrl,
             album = resolved.album ?: queued.album,
+            albumId = resolved.albumId ?: queued.albumId,
             durationMs = resolved.durationMs.takeIf { it > 0 } ?: queued.durationMs,
         )
     }

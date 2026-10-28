@@ -3,6 +3,9 @@ package com.music.vivi.compose.ui.artist
 import androidx.compose.foundation.lazy.grid.items
 import com.music.vivi.compose.ui.component.horizontalWheelScroll
 import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.CalendarMonth
+import androidx.compose.material.icons.outlined.Schedule
+import com.music.vivi.compose.ui.component.MediaPageHeader
 import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.MusicNote
 import androidx.compose.material.icons.outlined.Headphones
@@ -277,7 +280,7 @@ private fun ArtistHeader(
 /**
  * The shared artist page header (YouTube artists and helper-backed local artists): full-width
  * banner, round portrait overlapping its bottom edge, centered name, stats line, collapsible
- * description, then a pill Play button with a round shuffle button.
+ * description, then a pill Play button with a round shuffle button. Layout lives in [MediaPageHeader].
  */
 @Composable
 internal fun ArtistPageHeader(
@@ -289,100 +292,17 @@ internal fun ArtistPageHeader(
     banner: @Composable () -> Unit,
     portrait: @Composable () -> Unit,
 ) {
-    val portraitSize = 140.dp
-    // Banner, portrait, name, description and the Play row are one card: frosted glass over the page background with
-    // the blur setting on (so the banner fades into the glass, not into the bare page), a plain card otherwise.
-    com.music.vivi.compose.ui.glass.GlassSurface(
-        shape = RoundedCornerShape(28.dp),
-        fallbackColor = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.55f),
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).padding(bottom = 8.dp),
-    ) {
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(Modifier.fillMaxWidth().aspectRatio(3.0f)) {
-            // The banner fades to transparent (not to an opaque colour), so whatever the page has behind it, including
-            // the tinted blur background, shows through with no visible edge.
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
-                    .drawWithContent {
-                        drawContent()
-                        drawRect(
-                            brush = Brush.verticalGradient(
-                                colorStops = arrayOf(
-                                    0f to Color.Black,
-                                    0.45f to Color.Black,
-                                    0.7f to Color.Black.copy(alpha = 0.6f),
-                                    0.88f to Color.Black.copy(alpha = 0.18f),
-                                    1f to Color.Transparent,
-                                ),
-                            ),
-                            blendMode = BlendMode.DstIn,
-                        )
-                    },
-            ) { banner() }
-            Box(
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .offset(y = portraitSize / 2)
-                    .size(portraitSize)
-                    .shadow(12.dp, CircleShape)
-                    .clip(CircleShape),
-            ) { portrait() }
-        }
-        Spacer(Modifier.height(portraitSize / 2 + 12.dp))
-        Text(
-            title,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(horizontal = 24.dp),
-        )
-        if (meta.isNotBlank()) {
-            ArtistStatChips(meta, Modifier.padding(top = 10.dp, start = 24.dp, end = 24.dp))
-        }
-        description?.takeIf { it.isNotBlank() }?.let { ArtistDescription(it) }
-        Spacer(Modifier.height(16.dp))
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 32.dp),
-        ) {
-            Surface(
-                onClick = onPlay,
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.height(48.dp).weight(1.5f),
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(
-                        "Play",
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
-            }
-            Surface(
-                onClick = onShuffle,
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant,
-                modifier = Modifier.size(48.dp),
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Outlined.Shuffle,
-                        contentDescription = "Shuffle",
-                        modifier = Modifier.size(22.dp),
-                    )
-                }
-            }
-        }
-    }
-    }
+    MediaPageHeader(
+        title = title,
+        meta = meta,
+        description = description,
+        onPlay = onPlay,
+        onShuffle = onShuffle,
+        banner = banner,
+        artwork = portrait,
+        artworkShape = CircleShape,
+        artworkSize = { 140.dp },
+    )
 }
 
 /**
@@ -493,7 +413,7 @@ private fun ArtistShelf(items: List<YTItem>, playingId: String?, isPlaying: Bool
 /** "2.76M subscribers • 74.7M monthly audience" as separate pills, each with an icon that says what it counts. */
 @OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun ArtistStatChips(meta: String, modifier: Modifier = Modifier) {
+internal fun ArtistStatChips(meta: String, modifier: Modifier = Modifier) {
     androidx.compose.foundation.layout.FlowRow(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
@@ -506,6 +426,8 @@ private fun ArtistStatChips(meta: String, modifier: Modifier = Modifier) {
                 "listener" in lower || "audience" in lower || "monthly" in lower -> Icons.Outlined.Headphones
                 "song" in lower || "track" in lower -> Icons.Outlined.MusicNote
                 "album" in lower -> Icons.Outlined.Album
+                Regex("^(19|20)\\d\\d$").matches(stat) -> Icons.Outlined.CalendarMonth
+                Regex("^(\\d+ ?(h|hr|min|m)\\b ?)+$").matches(lower) -> Icons.Outlined.Schedule
                 else -> Icons.Outlined.Info
             }
             androidx.compose.foundation.layout.Row(

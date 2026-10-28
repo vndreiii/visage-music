@@ -11,6 +11,14 @@ import com.music.vivi.compose.ui.component.pageScrollEdge
 import com.music.vivi.compose.ui.component.edgeProgress
 
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.outlined.Link
+import androidx.compose.ui.draw.blur
+import com.music.vivi.compose.ui.artist.ArtistBackBar
+import com.music.vivi.compose.ui.artist.ArtistLinks
+import com.music.vivi.compose.ui.artist.openArtistByName
+import com.music.vivi.compose.ui.component.MediaHeaderAction
+import com.music.vivi.compose.ui.component.MediaPageHeader
+import com.music.vivi.compose.ui.component.SystemClipboard
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -141,19 +149,13 @@ fun OnlineAlbumScreen(
         else -> {
             val page = vm.page ?: return
             val listState = rememberLazyListState()
-            val collapse = (
-                listState.firstVisibleItemIndex * 320f +
-                    listState.firstVisibleItemScrollOffset
-                ).coerceIn(0f, 320f) / 320f
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
                     .pageScrollEdge { listState.edgeProgress() }.smoothWheelScroll(listState),
-                contentPadding = PaddingValues(bottom = MiniPlayerClearance),
+                contentPadding = PaddingValues(top = 12.dp, bottom = MiniPlayerClearance),
             ) {
-                item(key = "toolbar") {
-                    com.music.vivi.compose.ui.component.VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = PageInset, top = PageHeaderTopPadding, bottom = PageHeaderBottomPadding))
-                }
+                item(key = "toolbar") { ArtistBackBar { navController.navigateUp() } }
 
                 item(key = "header") {
                     OnlineAlbumHeader(
@@ -161,12 +163,9 @@ fun OnlineAlbumScreen(
                         songs = vm.songs,
                         playingId = playingId,
                         isPlaying = isPlaying,
-                        collapseFraction = collapse,
                         onPlay = { playFrom(0) },
                         onShuffle = { playFrom(0, shuffled = true) },
-                        onArtistClick = { artistId ->
-                            navController.navigate(Routes.artist(artistId))
-                        },
+                        navController = navController,
                     )
                 }
 
@@ -225,165 +224,74 @@ fun OnlineAlbumScreen(
     }
 }
 
+/** YouTube cover URLs end in `=w544-h544`-style size suffixes; ask for a size that stays sharp at the header's big cover. */
+internal fun bigCover(url: String): String = url.replace(Regex("=w\\d+-h\\d+[^/]*$"), "=w1000-h1000")
+
+internal fun albumDurationText(totalSeconds: Int): String {
+    val hours = totalSeconds / 3600
+    val minutes = (totalSeconds % 3600) / 60
+    return if (hours > 0) "${hours} hr ${minutes} min" else "$minutes min"
+}
+
+/** The album page's top: the artist page's header card with the album cover shown large instead of a portrait. */
 @Composable
 private fun OnlineAlbumHeader(
     page: AlbumPage,
     songs: List<SongItem>,
     playingId: String?,
     isPlaying: Boolean,
-    collapseFraction: Float = 0f,
     onPlay: () -> Unit,
     onShuffle: () -> Unit,
-    onArtistClick: (String) -> Unit,
+    navController: NavController,
 ) {
     val album = page.album
     val anyPlayingHere = songs.any { it.id == playingId }
-    val artScale = 1f - collapseFraction * 0.35f
-    val artAlpha = 1f - collapseFraction * 0.75f
+    val artists = album.artists.orEmpty()
+    val cover = remember(album.thumbnail) { bigCover(album.thumbnail) }
+    val totalDuration = songs.sumOf { it.duration ?: 0 }
+    val meta = listOfNotNull(
+        album.year?.toString(),
+        "${songs.size} tracks".takeIf { songs.isNotEmpty() },
+        albumDurationText(totalDuration).takeIf { totalDuration > 0 },
+    ).joinToString(" • ")
 
-    Column(
-        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(168.dp)
-                .graphicsLayer {
-                    alpha = artAlpha
-                    scaleX = artScale
-                    scaleY = artScale
-                },
-        ) {
+    MediaPageHeader(
+        title = album.title,
+        meta = meta,
+        description = page.description,
+        onPlay = onPlay,
+        onShuffle = onShuffle,
+        playLabel = if (isPlaying && anyPlayingHere) "Pause" else "Play",
+        banner = {
             AsyncImage(
-                model = album.thumbnail,
+                model = cover,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize(),
+                modifier = Modifier.fillMaxSize().blur(36.dp).graphicsLayer { scaleX = 1.2f; scaleY = 1.2f },
             )
-            Box(
-                Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(Color.Transparent, MaterialTheme.colorScheme.surface),
-                        ),
-                    ),
-            )
-            CoverImage(
-                album.thumbnail, album.id,
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(bottom = 6.dp)
-                    .size(128.dp)
-                    .clip(RoundedCornerShape(8.dp)),
-                animated = true,
-            )
-        }
-
-        Spacer(Modifier.height(10.dp))
-
-        Text(
-            text = album.title,
-            style = MaterialTheme.typography.headlineMedium,
-            fontWeight = FontWeight.Bold,
-            textAlign = TextAlign.Center,
-            maxLines = 2,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 32.dp),
-        )
-
-        album.artists?.takeIf { it.isNotEmpty() }?.let { artists ->
-            val onClick = if (artists.size == 1) {
-                artists.firstOrNull()?.id?.let { id -> { onArtistClick(id) } }
-            } else {
-                null
-            }
-            Text(
-                text = artists.joinToString(", ") { it.name },
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.primary,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .padding(top = 6.dp, start = 32.dp, end = 32.dp)
-                    .clickable(enabled = onClick != null, onClick = { onClick?.invoke() }),
-            )
-        }
-
-        val totalDuration = songs.sumOf { it.duration ?: 0 }
-        Text(
-            text = buildString {
-                append("Album")
-                album.year?.let { append(" • $it") }
-                append(" • ${songs.size} Tracks")
-                if (totalDuration > 0) {
-                    val hours = totalDuration / 3600
-                    val minutes = (totalDuration % 3600) / 60
-                    append(" • ")
-                    if (hours > 0) append("${hours}h ${minutes}m") else append("${minutes}m")
-                }
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.padding(top = 8.dp, start = 32.dp, end = 32.dp),
-        )
-
-        page.description?.takeIf { it.isNotBlank() }?.let { desc ->
-            Text(
-                text = desc,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 3,
-                overflow = TextOverflow.Ellipsis,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.padding(top = 8.dp, start = 32.dp, end = 32.dp),
-            )
-        }
-
-        Spacer(Modifier.height(16.dp))
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 32.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .height(52.dp)
-                    .weight(1.5f)
-                    .fillMaxWidth()
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary)
-                    .clickable(onClick = onPlay),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = if (isPlaying && anyPlayingHere) "Pause" else "Play",
+        },
+        artwork = { CoverImage(cover, album.id, Modifier.fillMaxSize(), animated = true) },
+        artworkShape = RoundedCornerShape(24.dp),
+        artworkSize = { (it * 0.6f).coerceIn(180.dp, 340.dp) },
+        subtitle = if (artists.isEmpty()) null else {
+            {
+                ArtistLinks(
+                    credits = artists.joinToString(", ") { it.name },
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onPrimary,
-                    textAlign = TextAlign.Center,
+                    color = MaterialTheme.colorScheme.primary,
+                    hoverColor = MaterialTheme.colorScheme.onSurface,
+                    onOpen = { name ->
+                        val id = artists.firstOrNull { it.name.equals(name, ignoreCase = true) }?.id
+                        if (id != null) navController.navigate(Routes.artist(id)) else navController.openArtistByName(name)
+                    },
+                    maxLines = 2,
                 )
             }
-            Surface(
-                onClick = onShuffle,
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
-                modifier = Modifier.size(52.dp),
-            ) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Icon(
-                        Icons.Outlined.Shuffle,
-                        contentDescription = "Shuffle",
-                        modifier = Modifier.size(24.dp),
-                    )
-                }
+        },
+        actions = {
+            MediaHeaderAction(Icons.Outlined.Link, "Copy link") {
+                SystemClipboard.copy("https://music.youtube.com/playlist?list=${page.album.playlistId}")
             }
-        }
-    }
+        },
+    )
 }
