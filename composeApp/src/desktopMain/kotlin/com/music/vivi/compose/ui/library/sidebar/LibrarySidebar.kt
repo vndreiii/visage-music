@@ -184,6 +184,32 @@ fun AnimatedLibrarySidebar(
     onStateChange: (LibrarySidebarState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    LibrarySidebarFrame(state, side, expandedWidth, modifier, tourAnchored = true) { f, expanded, panelModifier ->
+        LibraryPanel(
+            f = f,
+            expanded = expanded,
+            side = side,
+            navController = navController,
+            onStateChange = onStateChange,
+            modifier = panelModifier,
+        )
+    }
+}
+
+/**
+ * The sidebar's animated shell: slide/expand in and out, the rail/expanded width spring, the rounded glass surface.
+ * [panel] draws the contents given the expand fraction `f` (1 = expanded, 0 = rail), whether it is expanded, and a
+ * modifier that measures it at the full width. Shared by the real sidebar and the Settings live preview.
+ */
+@Composable
+internal fun LibrarySidebarFrame(
+    state: LibrarySidebarState,
+    side: SidebarSide,
+    expandedWidth: Dp,
+    modifier: Modifier = Modifier,
+    tourAnchored: Boolean = false,
+    panel: @Composable (f: Float, expanded: Boolean, modifier: Modifier) -> Unit,
+) {
     val fromRight = side == SidebarSide.RIGHT
     val offset = VisageMotion.rail<IntOffset>()
     val size = VisageMotion.rail<IntSize>()
@@ -211,7 +237,7 @@ fun AnimatedLibrarySidebar(
                     top = 8.dp, bottom = 8.dp,
                 )
                 .width(width)
-                .tourAnchor("library.sidebar"),
+                .then(if (tourAnchored) Modifier.tourAnchor("library.sidebar") else Modifier),
             shape = RoundedCornerShape(20.dp),
             color = if (com.music.vivi.compose.ui.glass.glassActive()) androidx.compose.ui.graphics.Color.Transparent
                 else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
@@ -225,16 +251,13 @@ fun AnimatedLibrarySidebar(
                     shape = RoundedCornerShape(20.dp),
                 )
                 // Fixed-width content anchored to the start edge: the surface only reveals/clips it.
-                LibraryPanel(
-                    f = f,
-                    expanded = state == LibrarySidebarState.EXPANDED,
-                    side = side,
-                    navController = navController,
-                    onStateChange = onStateChange,
+                panel(
+                    f,
+                    state == LibrarySidebarState.EXPANDED,
                     // Root-cause fix for the "empty rail": requiredWidth centres an oversized child inside a
                     // narrower parent, which pushed every cover out of the clipped surface. Measure at the
                     // full width but always place at the start edge so the surface merely reveals it.
-                    modifier = Modifier.fillMaxHeight().layout { m, c ->
+                    Modifier.fillMaxHeight().layout { m, c ->
                         val w = expandedWidth.roundToPx()
                         val p = m.measure(androidx.compose.ui.unit.Constraints.fixed(w, c.maxHeight))
                         layout(c.maxWidth, c.maxHeight) { p.place(0, 0) }
@@ -423,149 +446,20 @@ private fun LibraryPanel(
     fun setView(v: LibraryViewMode) { view = v; prefs.setString(SidebarKeys.LibraryView, v.name) }
     fun setShowHidden(v: Boolean) { showHidden = v; prefs.setBoolean(SidebarKeys.LibraryShowHidden, v) }
 
-    Column(modifier.padding(top = 8.dp)) {
-        // Header: library icon doubles as the expand/collapse handle; the rest fades with f.
-        Row(
-            Modifier.fillMaxWidth().height(52.dp).padding(start = 14.dp, end = ContentPad - 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(
-                onClick = { onStateChange(if (expanded) LibrarySidebarState.RAIL else LibrarySidebarState.EXPANDED) },
-                modifier = Modifier.size(RowCover),
-            ) {
-                Icon(Icons.Outlined.LibraryMusic, contentDescription = if (expanded) "Collapse library" else "Expand library")
-            }
-            Row(Modifier.weight(1f).alpha(f), verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    "Your Library",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    modifier = Modifier.padding(start = 6.dp).weight(1f),
-                )
-                Box {
-                    var addMenu by remember { mutableStateOf(false) }
-                    IconButton(onClick = { addMenu = true }, enabled = f > 0.5f, modifier = Modifier.tourAnchor("library.add")) {
-                        Icon(Icons.Outlined.Add, contentDescription = "Create")
-                    }
-                    DropdownMenu(
-                        expanded = addMenu, onDismissRequest = { addMenu = false },
-                        shape = RoundedCornerShape(20.dp), containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    ) {
-                        MenuItem("New playlist", Icons.Outlined.QueueMusic) { addMenu = false; showCreate = true }
-                        MenuItem("New folder", Icons.Outlined.CreateNewFolder) {
-                            addMenu = false; creatingFolder = null; editingFolder = null; showFolderDialog = true
-                        }
-                    }
-                }
-                IconButton(onClick = { onStateChange(LibrarySidebarState.RAIL) }, enabled = f > 0.5f) {
-                    Icon(
-                        if (side == SidebarSide.RIGHT) Icons.Outlined.KeyboardDoubleArrowRight else Icons.Outlined.KeyboardDoubleArrowLeft,
-                        contentDescription = "Collapse to rail",
-                    )
-                }
-                IconButton(onClick = { onStateChange(LibrarySidebarState.HIDDEN) }, enabled = f > 0.5f) {
-                    Icon(Icons.Outlined.Close, contentDescription = "Hide library")
-                }
-            }
-        }
-
-        // Search + chips + sort: height and alpha follow the width animation.
-        Column(
-            Modifier
-                .layout { m, c ->
-                    val p = m.measure(c)
-                    layout(p.width, (p.height * f).toInt()) { p.place(0, 0) }
-                }
-                .alpha(f),
-        ) {
-            SearchField(
-                query = query,
-                onQuery = { query = it },
-                modifier = Modifier.padding(horizontal = ContentPad, vertical = 4.dp),
-            )
-            WheelLazyRow(
-                contentPadding = PaddingValues(horizontal = ContentPad),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.padding(vertical = 4.dp),
-            ) {
-                items(LibraryFilter.entries.toList()) { fl ->
-                    FilterChip(
-                        selected = fl == filter,
-                        onClick = { setFilter(fl) },
-                        label = { Text(fl.label) },
-                        shape = RoundedCornerShape(12.dp),
-                        colors = FilterChipDefaults.filterChipColors(
-                            selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                        ),
-                    )
-                }
-            }
-            SortBar(
-                sort = sort,
-                view = view,
-                onSort = { setSort(it) },
-                onView = { setView(it) },
-                hiddenCount = hiddenKeys.size,
-                showHidden = showHidden,
-                onShowHidden = { setShowHidden(it) },
-            )
-        }
-
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            val showGrid = view == LibraryViewMode.GRID && expanded
-            AnimatedContent(
-                targetState = showGrid,
-                transitionSpec = { fadeIn(VisageMotion.fadeInSpec(60)) togetherWith fadeOut(VisageMotion.fadeOutSpec()) },
-                label = "libViewMode",
-            ) { grid ->
-                when {
-                    rows.isEmpty() -> EmptyState(
-                        loading = ytData.playlists.isEmpty() && ytData.error == null,
-                        searching = query.isNotBlank() || filter != LibraryFilter.ALL,
-                        onCreate = { showCreate = true },
-                        f = f,
-                    )
-                    grid -> {
-                        val gridState = rememberLazyGridState()
-                        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
-                            state = gridState,
-                            columns = GridCells.Adaptive(116.dp),
-                            contentPadding = PaddingValues(start = ContentPad, end = ContentPad, bottom = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.fillMaxSize().smoothWheelScroll(gridState),
-                        ) {
-                            items(
-                                rows, key = { it.key },
-                                span = { r -> if (r is SidebarRow.Folder) androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) else androidx.compose.foundation.lazy.grid.GridItemSpan(1) },
-                            ) { r ->
-                                when (r) {
-                                    is SidebarRow.Folder -> FolderRowView(r, thumbsByFolder[r.folder.id].orEmpty(), 1f, folderActions, Modifier.animateItem())
-                                    is SidebarRow.Item -> LibraryGridCard(r, playback, actions, Modifier.animateItem())
-                                }
-                            }
-                        }
-                    }
-                    else -> {
-                        val listState = rememberLazyListState()
-                        LazyColumn(
-                            state = listState,
-                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                            modifier = Modifier.fillMaxSize().smoothWheelScroll(listState),
-                        ) {
-                            items(rows, key = { it.key }) { r ->
-                                when (r) {
-                                    is SidebarRow.Folder -> FolderRowView(r, thumbsByFolder[r.folder.id].orEmpty(), f, folderActions, Modifier.animateItem())
-                                    is SidebarRow.Item -> LibraryRow(r, f, playback, actions, Modifier.animateItem())
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
+    LibraryPanelBody(
+        f = f, expanded = expanded, side = side, onStateChange = onStateChange,
+        rows = rows, thumbsByFolder = thumbsByFolder, hiddenCount = hiddenKeys.size,
+        query = query, onQuery = { query = it },
+        filter = filter, onFilter = { setFilter(it) },
+        sort = sort, onSort = { setSort(it) },
+        view = view, onView = { setView(it) },
+        showHidden = showHidden, onShowHidden = { setShowHidden(it) },
+        loading = ytData.playlists.isEmpty() && ytData.error == null,
+        playback = playback, actions = actions, folderActions = folderActions,
+        onNewPlaylist = { showCreate = true },
+        onNewFolder = { creatingFolder = null; editingFolder = null; showFolderDialog = true },
+        modifier = modifier,
+    )
 
     VisageToast(toast, onDismiss = { toast = null })
 
@@ -651,6 +545,183 @@ private fun LibraryPanel(
     }
 }
 
+/**
+ * Everything the library panel draws, as pure presentation: rows and state come in as parameters, nothing reads a
+ * repository. The real [LibraryPanel] feeds it from the database; the Settings preview feeds it sample entries.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun LibraryPanelBody(
+    f: Float,
+    expanded: Boolean,
+    side: SidebarSide,
+    onStateChange: (LibrarySidebarState) -> Unit,
+    rows: List<SidebarRow>,
+    thumbsByFolder: Map<String, List<ChildThumb>>,
+    hiddenCount: Int,
+    query: String,
+    onQuery: (String) -> Unit,
+    filter: LibraryFilter,
+    onFilter: (LibraryFilter) -> Unit,
+    sort: LibrarySort,
+    onSort: (LibrarySort) -> Unit,
+    view: LibraryViewMode,
+    onView: (LibraryViewMode) -> Unit,
+    showHidden: Boolean,
+    onShowHidden: (Boolean) -> Unit,
+    loading: Boolean,
+    playback: EntryPlayingHolder,
+    actions: EntryActions,
+    folderActions: FolderActions,
+    onNewPlaylist: () -> Unit,
+    onNewFolder: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier.padding(top = 8.dp)) {
+        // Header: library icon doubles as the expand/collapse handle; the rest fades with f.
+        Row(
+            Modifier.fillMaxWidth().height(52.dp).padding(start = 14.dp, end = ContentPad - 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(
+                onClick = { onStateChange(if (expanded) LibrarySidebarState.RAIL else LibrarySidebarState.EXPANDED) },
+                modifier = Modifier.size(RowCover),
+            ) {
+                Icon(Icons.Outlined.LibraryMusic, contentDescription = if (expanded) "Collapse library" else "Expand library")
+            }
+            Row(Modifier.weight(1f).alpha(f), verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    "Your Library",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    modifier = Modifier.padding(start = 6.dp).weight(1f),
+                )
+                Box {
+                    var addMenu by remember { mutableStateOf(false) }
+                    IconButton(onClick = { addMenu = true }, enabled = f > 0.5f, modifier = Modifier.tourAnchor("library.add")) {
+                        Icon(Icons.Outlined.Add, contentDescription = "Create")
+                    }
+                    DropdownMenu(
+                        expanded = addMenu, onDismissRequest = { addMenu = false },
+                        shape = RoundedCornerShape(20.dp), containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    ) {
+                        MenuItem("New playlist", Icons.Outlined.QueueMusic) { addMenu = false; onNewPlaylist() }
+                        MenuItem("New folder", Icons.Outlined.CreateNewFolder) {
+                            addMenu = false; onNewFolder()
+                        }
+                    }
+                }
+                IconButton(onClick = { onStateChange(LibrarySidebarState.RAIL) }, enabled = f > 0.5f) {
+                    Icon(
+                        if (side == SidebarSide.RIGHT) Icons.Outlined.KeyboardDoubleArrowRight else Icons.Outlined.KeyboardDoubleArrowLeft,
+                        contentDescription = "Collapse to rail",
+                    )
+                }
+                IconButton(onClick = { onStateChange(LibrarySidebarState.HIDDEN) }, enabled = f > 0.5f) {
+                    Icon(Icons.Outlined.Close, contentDescription = "Hide library")
+                }
+            }
+        }
+
+        // Search + chips + sort: height and alpha follow the width animation.
+        Column(
+            Modifier
+                .layout { m, c ->
+                    val p = m.measure(c)
+                    layout(p.width, (p.height * f).toInt()) { p.place(0, 0) }
+                }
+                .alpha(f),
+        ) {
+            SearchField(
+                query = query,
+                onQuery = onQuery,
+                modifier = Modifier.padding(horizontal = ContentPad, vertical = 4.dp),
+            )
+            WheelLazyRow(
+                contentPadding = PaddingValues(horizontal = ContentPad),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.padding(vertical = 4.dp),
+            ) {
+                items(LibraryFilter.entries.toList()) { fl ->
+                    FilterChip(
+                        selected = fl == filter,
+                        onClick = { onFilter(fl) },
+                        label = { Text(fl.label) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                        ),
+                    )
+                }
+            }
+            SortBar(
+                sort = sort,
+                view = view,
+                onSort = onSort,
+                onView = onView,
+                hiddenCount = hiddenCount,
+                showHidden = showHidden,
+                onShowHidden = onShowHidden,
+            )
+        }
+
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            val showGrid = view == LibraryViewMode.GRID && expanded
+            AnimatedContent(
+                targetState = showGrid,
+                transitionSpec = { fadeIn(VisageMotion.fadeInSpec(60)) togetherWith fadeOut(VisageMotion.fadeOutSpec()) },
+                label = "libViewMode",
+            ) { grid ->
+                when {
+                    rows.isEmpty() -> EmptyState(
+                        loading = loading,
+                        searching = query.isNotBlank() || filter != LibraryFilter.ALL,
+                        onCreate = onNewPlaylist,
+                        f = f,
+                    )
+                    grid -> {
+                        val gridState = rememberLazyGridState()
+                        androidx.compose.foundation.lazy.grid.LazyVerticalGrid(
+                            state = gridState,
+                            columns = GridCells.Adaptive(116.dp),
+                            contentPadding = PaddingValues(start = ContentPad, end = ContentPad, bottom = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxSize().smoothWheelScroll(gridState),
+                        ) {
+                            items(
+                                rows, key = { it.key },
+                                span = { r -> if (r is SidebarRow.Folder) androidx.compose.foundation.lazy.grid.GridItemSpan(maxLineSpan) else androidx.compose.foundation.lazy.grid.GridItemSpan(1) },
+                            ) { r ->
+                                when (r) {
+                                    is SidebarRow.Folder -> FolderRowView(r, thumbsByFolder[r.folder.id].orEmpty(), 1f, folderActions, Modifier.animateItem())
+                                    is SidebarRow.Item -> LibraryGridCard(r, playback, actions, Modifier.animateItem())
+                                }
+                            }
+                        }
+                    }
+                    else -> {
+                        val listState = rememberLazyListState()
+                        LazyColumn(
+                            state = listState,
+                            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+                            modifier = Modifier.fillMaxSize().smoothWheelScroll(listState),
+                        ) {
+                            items(rows, key = { it.key }) { r ->
+                                when (r) {
+                                    is SidebarRow.Folder -> FolderRowView(r, thumbsByFolder[r.folder.id].orEmpty(), f, folderActions, Modifier.animateItem())
+                                    is SidebarRow.Item -> LibraryRow(r, f, playback, actions, Modifier.animateItem())
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** Callbacks shared by rows, cards and their context menus. */
 internal class EntryActions(
     val open: (LibraryEntry) -> Unit,
@@ -668,16 +739,19 @@ internal class EntryActions(
 )
 
 /** Resolves an entry to tracks and starts / queues them. Network lookups are done on demand. */
+internal open class EntryPlayingHolder {
+    /** Set by the sidebar host; rows read them so only one collector exists. */
+    var nowState: androidx.compose.runtime.State<Any?>? = null
+    var stateState: androidx.compose.runtime.State<PlaybackState?>? = null
+}
+
 internal class EntryPlayback(
     private val yt: YouTubeMusicService,
     private val repo: LibraryRepository,
     private val cache: LibraryCache,
     private val controller: com.music.vivi.player.PlaybackController,
     private val say: (String) -> Unit,
-) {
-    /** Set by the sidebar host; rows read them so only one collector exists. */
-    var nowState: androidx.compose.runtime.State<Any?>? = null
-    var stateState: androidx.compose.runtime.State<PlaybackState?>? = null
+) : EntryPlayingHolder() {
 
     private suspend fun tracks(e: LibraryEntry): List<QueueTrack> = withContext(Dispatchers.IO) {
         when (e.kind) {
@@ -850,14 +924,14 @@ private fun EmptyState(loading: Boolean, searching: Boolean, onCreate: () -> Uni
 // ── Rows ─────────────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun entryPlaying(e: LibraryEntry, playback: EntryPlayback): Pair<Boolean, Boolean> {
+private fun entryPlaying(e: LibraryEntry, playback: EntryPlayingHolder): Pair<Boolean, Boolean> {
     val current = LibraryPlayback.playingKey == e.key && playback.nowState?.value != null
     return current to (current && playback.stateState?.value == PlaybackState.Playing)
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayback, actions: EntryActions, modifier: Modifier = Modifier) {
+private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayingHolder, actions: EntryActions, modifier: Modifier = Modifier) {
     val e = r.entry
     val nested = r.folderId != null
     val folderAccent = actions.folders.firstOrNull { it.id == r.folderId }?.let { folderAccentColor(it, MaterialTheme.colorScheme.primary) }
@@ -917,7 +991,7 @@ private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayback, ac
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun LibraryGridCard(r: SidebarRow.Item, playback: EntryPlayback, actions: EntryActions, modifier: Modifier = Modifier) {
+private fun LibraryGridCard(r: SidebarRow.Item, playback: EntryPlayingHolder, actions: EntryActions, modifier: Modifier = Modifier) {
     val e = r.entry
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
@@ -1076,13 +1150,16 @@ fun EqualizerBars(playing: Boolean, color: Color, modifier: Modifier = Modifier)
  */
 @Composable
 private fun rememberEntryDrop(e: LibraryEntry): Pair<Modifier, Float> {
-    val repo = koinInject<LibraryRepository>()
-    val yt = koinInject<YouTubeMusicService>()
-    val downloads = koinInject<com.music.vivi.compose.download.TrackDownloadService>()
     val controller = com.music.vivi.compose.LocalPlaybackController.current
-    val mod = if (e.isPlaylist || e.kind == EntryKind.LIKED || e.kind == EntryKind.DOWNLOADS) {
-        Modifier.trackDropTarget(e.key, accepts = { t -> canDropOnto(e, t) }) { t -> dropTrackOnto(e, t, repo, yt, controller, downloads) }
-    } else Modifier
+    // The Settings live preview shows sample rows: no services behind them, nothing to drop onto.
+    val mod = if (com.music.vivi.compose.ui.settings.preview.LocalSettingsPreview.current) Modifier else {
+        val repo = koinInject<LibraryRepository>()
+        val yt = koinInject<YouTubeMusicService>()
+        val downloads = koinInject<com.music.vivi.compose.download.TrackDownloadService>()
+        if (e.isPlaylist || e.kind == EntryKind.LIKED || e.kind == EntryKind.DOWNLOADS) {
+            Modifier.trackDropTarget(e.key, accepts = { t -> canDropOnto(e, t) }) { t -> dropTrackOnto(e, t, repo, yt, controller, downloads) }
+        } else Modifier
+    }
     val hover by animateFloatAsState(
         if (TrackDrag.hoverKey == e.key && !TrackDrag.hoverRejected) 1f else 0f,
         androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 420f), label = "dropHover",

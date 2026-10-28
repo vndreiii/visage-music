@@ -274,7 +274,8 @@ private fun QueuePanelBody(
     onSwitchMode: () -> Unit,
 ) {
     val controller = LocalPlaybackController.current
-    val history = koinInject<PlayHistoryRepository>()
+    // The Settings live preview renders this panel with sample data: no database behind it.
+    val history = if (com.music.vivi.compose.ui.settings.preview.LocalSettingsPreview.current) null else koinInject<PlayHistoryRepository>()
     val scope = rememberCoroutineScope()
     val nowPlaying by controller.nowPlaying.collectAsState()
     val queueTracks by controller.queueTracks.collectAsState()
@@ -285,7 +286,7 @@ private fun QueuePanelBody(
 
     LaunchedEffect(tab) {
         if (tab == QueueTab.Recent) {
-            recent = withContext(Dispatchers.IO) { history.recentDistinct(80) }
+            recent = withContext(Dispatchers.IO) { history?.recentDistinct(80).orEmpty() }
         }
     }
 

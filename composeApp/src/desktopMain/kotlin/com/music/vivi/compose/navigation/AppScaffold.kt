@@ -270,124 +270,89 @@ fun FrameWindowScope.AppScaffold(
                 .fillMaxSize()
                 .then(if (glassOn) Modifier else Modifier.background(MaterialTheme.colorScheme.background)),
         ) {
-            BoxWithConstraints(Modifier.fillMaxSize()) {
-                val libVisible = libraryState != LibrarySidebarState.HIDDEN
-                val libLeft = libVisible && sidebarCfg.librarySide == SidebarSide.LEFT
-                val libRight = libVisible && sidebarCfg.librarySide == SidebarSide.RIGHT
-                // On the fullscreen player the pinned queue floats over the page (its blurred backdrop absorbs it)
-                // instead of narrowing it, so the big cover never reflows.
-                val queueOverlay = current == Routes.NOW_PLAYING_FULLSCREEN
-                val queueLeft = queueRailOn && sidebarCfg.queueSide == SidebarSide.LEFT && !queueOverlay
-                val queueRight = queueRailOn && sidebarCfg.queueSide == SidebarSide.RIGHT && !queueOverlay
-                val libWidth = Sidebars.libraryWidthFor(
-                    available = maxWidth.value.toInt(),
-                    queueWidth = if (queueRailOn) SidebarConfig.QueueWidth else 0,
-                    desired = sidebarCfg.libraryWidthDp,
-                ).dp
-                // Round + inset the main pane whenever a sidebar is open (NP and every other page).
-                // Insets spring in and out together with the rails instead of jumping.
-                val leftFrac by animateFloatAsState(if (libLeft || queueLeft) 1f else 0f, VisageMotion.rail(), label = "insetLeft")
-                val rightFrac by animateFloatAsState(if (libRight || queueRight) 1f else 0f, VisageMotion.rail(), label = "insetRight")
-                val inset = maxOf(leftFrac, rightFrac)
-                Row(Modifier.fillMaxSize().then(if (overlayTopBar) Modifier.padding(top = com.music.vivi.compose.ui.glass.TopBarInset) else Modifier).padding(bottom = miniBarInset)) {
-                    // Artist names in any item subtitle (playlists, albums, queue, lists) open the artist page. Navigate
-                    // after the text's own press gesture has finished, not from inside it.
-                    val linkScope = androidx.compose.runtime.rememberCoroutineScope()
-                    // Remembered so a settings write (which recomposes this scope) does not hand every subtitle a new lambda.
-                    val artistClick = androidx.compose.runtime.remember(navController, linkScope) {
-                        { artistId: String ->
-                            linkScope.launch { kotlinx.coroutines.yield(); runCatching { navController.navigate(Routes.artist(artistId)) } }
-                            Unit
-                        }
-                    }
-                    val artistNameClick = androidx.compose.runtime.remember(navController, linkScope) {
-                        { name: String ->
-                            linkScope.launch { kotlinx.coroutines.yield(); runCatching { navController.navigate(Routes.searchResult(name)) } }
-                            Unit
-                        }
-                    }
-                    val navigateRoute = androidx.compose.runtime.remember(navController, linkScope) {
-                        { route: String ->
-                            linkScope.launch { kotlinx.coroutines.yield(); runCatching { navController.navigate(route) } }
-                            Unit
-                        }
-                    }
-                    androidx.compose.runtime.CompositionLocalProvider(
-                        com.music.vivi.compose.ui.component.LocalArtistClick provides artistClick,
-                        com.music.vivi.compose.ui.component.LocalArtistNameClick provides artistNameClick,
-                        com.music.vivi.compose.ui.component.LocalNavigate provides navigateRoute,
-                    ) {
+            // Artist names in any item subtitle (playlists, albums, queue, lists) open the artist page. Navigate
+            // after the text's own press gesture has finished, not from inside it.
+            val linkScope = androidx.compose.runtime.rememberCoroutineScope()
+            // Remembered so a settings write (which recomposes this scope) does not hand every subtitle a new lambda.
+            val artistClick = androidx.compose.runtime.remember(navController, linkScope) {
+                { artistId: String ->
+                    linkScope.launch { kotlinx.coroutines.yield(); runCatching { navController.navigate(Routes.artist(artistId)) } }
+                    Unit
+                }
+            }
+            val artistNameClick = androidx.compose.runtime.remember(navController, linkScope) {
+                { name: String ->
+                    linkScope.launch { kotlinx.coroutines.yield(); runCatching { navController.navigate(Routes.searchResult(name)) } }
+                    Unit
+                }
+            }
+            val navigateRoute = androidx.compose.runtime.remember(navController, linkScope) {
+                { route: String ->
+                    linkScope.launch { kotlinx.coroutines.yield(); runCatching { navController.navigate(route) } }
+                    Unit
+                }
+            }
+            // On the fullscreen player the pinned queue floats over the page (its blurred backdrop absorbs it)
+            // instead of narrowing it, so the big cover never reflows.
+            val queueOverlay = current == Routes.NOW_PLAYING_FULLSCREEN
+            androidx.compose.runtime.CompositionLocalProvider(
+                com.music.vivi.compose.ui.component.LocalArtistClick provides artistClick,
+                com.music.vivi.compose.ui.component.LocalArtistNameClick provides artistNameClick,
+                com.music.vivi.compose.ui.component.LocalNavigate provides navigateRoute,
+            ) {
+            SidebarShell(
+                cfg = sidebarCfg,
+                libraryState = libraryState,
+                queueLeft = queueRailOn && sidebarCfg.queueSide == SidebarSide.LEFT && !queueOverlay,
+                queueRight = queueRailOn && sidebarCfg.queueSide == SidebarSide.RIGHT && !queueOverlay,
+                queueWidthForLibrary = if (queueRailOn) SidebarConfig.QueueWidth else 0,
+                rowModifier = (if (overlayTopBar) Modifier.padding(top = com.music.vivi.compose.ui.glass.TopBarInset) else Modifier)
+                    .padding(bottom = miniBarInset),
+                librarySidebar = { side, state, width ->
                     AnimatedLibrarySidebar(
-                        state = if (sidebarCfg.librarySide == SidebarSide.LEFT) libraryState else LibrarySidebarState.HIDDEN,
-                        side = SidebarSide.LEFT,
-                        expandedWidth = libWidth,
+                        state = state,
+                        side = side,
+                        expandedWidth = width,
                         navController = navController,
                         onStateChange = ::setLibraryState,
                     )
+                },
+                queueRail = { visible, fromStart ->
                     AnimatedQueuePinnedRail(
-                        visible = queueLeft,
+                        visible = visible,
                         onDismiss = { closePinnedQueue() },
                         onExpandFullscreen = { openFullscreenQueue() },
-                        fromStart = true,
+                        fromStart = fromStart,
                     )
-                    Column(
-                        Modifier
-                            .weight(1f)
-                            .fillMaxSize()
-                            .then(
-                                if (inset > 0.001f) {
-                                    Modifier
-                                        .padding(
-                                            start = (8f * inset - 4f * leftFrac).dp,
-                                            top = (8f * inset).dp,
-                                            bottom = (8f * inset).dp,
-                                            end = (8f * inset - 4f * rightFrac).dp,
-                                        )
-                                        .clip(RoundedCornerShape((20f * inset).dp))
-                                } else {
-                                    Modifier
-                                },
-                            ),
-                    ) {
-                        Box(Modifier.weight(1f).fillMaxSize().trackMainPane()) {
-                            VisageNavHost(
-                                navController = navController,
-                                startDestination = if (sessionManager.isLoggedIn()) Routes.HOME else Routes.LIBRARY,
-                                onOpenPinnedQueue = { openPinnedQueue() },
-                                onOpenFullscreenQueue = { openFullscreenQueue() },
-                                queueOpen = queueRailOn || fullscreenQueue,
-                                onCloseQueue = { closePinnedQueue(); fullscreenQueue = false },
-                                modifier = Modifier.fillMaxSize().nestedScroll(backdropNested).glassSource(glassState),
-                            )
-                        }
+                },
+                overlay = {
+                    if (queueOverlay) {
+                        val overlayLeft = sidebarCfg.queueSide == SidebarSide.LEFT
+                        AnimatedQueuePinnedRail(
+                            visible = queueRailOn,
+                            onDismiss = { closePinnedQueue() },
+                            onExpandFullscreen = { openFullscreenQueue() },
+                            modifier = Modifier
+                                .align(if (overlayLeft) Alignment.CenterStart else Alignment.CenterEnd)
+                                .fillMaxHeight()
+                                .padding(8.dp),
+                            fromStart = overlayLeft,
+                        )
                     }
-                    AnimatedQueuePinnedRail(
-                        visible = queueRight,
-                        onDismiss = { closePinnedQueue() },
-                        onExpandFullscreen = { openFullscreenQueue() },
-                    )
-                    AnimatedLibrarySidebar(
-                        state = if (sidebarCfg.librarySide == SidebarSide.RIGHT) libraryState else LibrarySidebarState.HIDDEN,
-                        side = SidebarSide.RIGHT,
-                        expandedWidth = libWidth,
+                },
+            ) {
+                Box(Modifier.weight(1f).fillMaxSize().trackMainPane()) {
+                    VisageNavHost(
                         navController = navController,
-                        onStateChange = ::setLibraryState,
-                    )
-                                    }
-}
-                if (queueOverlay) {
-                    val overlayLeft = sidebarCfg.queueSide == SidebarSide.LEFT
-                    AnimatedQueuePinnedRail(
-                        visible = queueRailOn,
-                        onDismiss = { closePinnedQueue() },
-                        onExpandFullscreen = { openFullscreenQueue() },
-                        modifier = Modifier
-                            .align(if (overlayLeft) Alignment.CenterStart else Alignment.CenterEnd)
-                            .fillMaxHeight()
-                            .padding(8.dp),
-                        fromStart = overlayLeft,
+                        startDestination = if (sessionManager.isLoggedIn()) Routes.HOME else Routes.LIBRARY,
+                        onOpenPinnedQueue = { openPinnedQueue() },
+                        onOpenFullscreenQueue = { openFullscreenQueue() },
+                        queueOpen = queueRailOn || fullscreenQueue,
+                        onCloseQueue = { closePinnedQueue(); fullscreenQueue = false },
+                        modifier = Modifier.fillMaxSize().nestedScroll(backdropNested).glassSource(glassState),
                     )
                 }
+            }
             }
             if (!onNowPlaying && !miniAtRoot) {
                 // At window level (not inside the inset, rounded pane) so the pill sits flush on the bottom edge,

@@ -33,6 +33,7 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Keyboard
 import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -106,43 +107,25 @@ fun KeybindsSettingsScreen(navController: NavController) {
     }
 
     SettingsPage(title = "Keyboard shortcuts", onBack = { navController.popBackStack() }) {
-        Spacer(Modifier.height(12.dp))
-        Surface(shape = RoundedCornerShape(20.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(horizontal = 16.dp, vertical = 14.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Outlined.Keyboard, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(22.dp))
-                Spacer(Modifier.width(18.dp))
-                Column(Modifier.weight(1f).padding(end = 12.dp)) {
-                    Text("Enable keyboard shortcuts", style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        "Work from any page, except while typing in a text field.",
-                        style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(checked = keymap.masterEnabled, onCheckedChange = { keymap.masterEnabled = it })
-            }
-        }
-
-        Spacer(Modifier.height(16.dp))
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            VisageTextField(
-                value = query,
-                onValueChange = { query = it },
-                singleLine = true,
-                placeholder = { Text("Search actions or keys") },
-                leadingIcon = { Icon(Icons.Outlined.Search, null) },
-                modifier = Modifier.weight(1f),
+        SettingsSection("General") {
+            SwitchItem(
+                icon = Icons.Outlined.Keyboard,
+                title = "Shortcuts",
+                subtitle = "Work on every page except while typing. Esc cancels a rebind, Backspace clears it",
+                checked = keymap.masterEnabled,
+                onChecked = { keymap.masterEnabled = it },
             )
-            AnimatedContent(confirmReset, transitionSpec = { fadeIn(VisageMotion.fadeInSpec()) togetherWith fadeOut(VisageMotion.fadeOutSpec()) }, label = "resetAll") { confirming ->
-                if (!confirming) {
-                    OutlinedButton(onClick = { confirmReset = true }) {
-                        Icon(Icons.Outlined.RestartAlt, null, Modifier.size(18.dp)); Spacer(Modifier.width(8.dp)); Text("Reset all")
-                    }
-                } else {
-                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Button(onClick = { keymap.resetAll(); pending = null; confirmReset = false }) { Text("Reset everything") }
-                        TextButton(onClick = { confirmReset = false }) { Text("Cancel") }
-                    }
-                }
+            SettingsDivider()
+            // Search inside the page: matches action names, hints and the keys themselves.
+            Box(Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                VisageTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    singleLine = true,
+                    placeholder = { Text("Search actions or keys") },
+                    leadingIcon = { Icon(Icons.Outlined.Search, null) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
 
@@ -151,6 +134,7 @@ fun KeybindsSettingsScreen(navController: NavController) {
         ShortcutCategory.entries.forEach { category ->
             val actions = ShortcutAction.entries.filter { a ->
                 a.category == category && (q.isEmpty() || a.label.lowercase().contains(q) || category.label.lowercase().contains(q) ||
+                    a.hint?.lowercase()?.contains(q) == true ||
                     keymap.bindings(a).any { b -> b.display().lowercase().contains(q) })
             }
             if (actions.isEmpty()) return@forEach
@@ -181,12 +165,28 @@ fun KeybindsSettingsScreen(navController: NavController) {
                 modifier = Modifier.padding(24.dp),
             )
         }
-        Text(
-            "Esc cancels while rebinding, Backspace clears the binding you are editing. " +
-                "Single-key shortcuts are paused while you type in a text field.",
-            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 8.dp, top = 20.dp),
-        )
+
+        SettingsSection("Reset") {
+            SettingsNavItem(
+                icon = Icons.Outlined.RestartAlt,
+                title = "Reset all shortcuts",
+                subtitle = "Back to the defaults. Your own bindings are removed",
+                onClick = { confirmReset = true },
+            )
+        }
+        if (confirmReset) {
+            AlertDialog(
+                onDismissRequest = { confirmReset = false },
+                title = { Text("Reset all shortcuts?") },
+                text = { Text("Every action goes back to its default keys and is switched on. Bindings you made are lost.") },
+                confirmButton = {
+                    TextButton(onClick = { keymap.resetAll(); pending = null; confirmReset = false }) {
+                        Text("Reset", color = MaterialTheme.colorScheme.error)
+                    }
+                },
+                dismissButton = { TextButton(onClick = { confirmReset = false }) { Text("Cancel") } },
+            )
+        }
     }
 }
 
@@ -240,9 +240,9 @@ private fun ShortcutRow(
             Column(Modifier.weight(1f).padding(end = 12.dp)) {
                 Text(
                     action.label, style = MaterialTheme.typography.bodyLarge,
-                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.5f),
+                    color = if (enabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.38f),
                 )
-                action.hint?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                action.hint?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2) }
             }
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
