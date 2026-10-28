@@ -9,7 +9,7 @@ def enum_labels(name):
     out=[]
     for m in re.finditer(r'fun '+name+r'\.\w+\(\)[^=\n]*=\s*when\s*(?:\(\w*\))?\s*\{(.*?)\n\}',ALL,re.S):
         out+=re.findall(r'->\s*"([^"$]{1,40})"',m.group(1))
-    m=re.search(r'enum class '+name+r'\b[^{]*\{(.*?);',ALL,re.S)
+    m=re.search(r'enum class '+name+r'\b[^{]*\{(.*?)(?:;|\n\})',ALL,re.S)
     if m: out+=re.findall(r'\w+\("([^"$]{1,40})"',m.group(1))
     return out
 def options_in(seg):
