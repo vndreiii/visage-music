@@ -208,11 +208,11 @@ private fun MiniPlayerBarContent(
         if (d > 0L) (positionState.value.toFloat() / d.toFloat()).coerceIn(0f, 1f) else 0f
     }
 
+    // Always observe prefs: callers that pass an override skip the read below, and the background style (read straight
+    // from prefs) would then stay stale until this composable was rebuilt, e.g. by leaving Settings.
     @Suppress("UNUSED_EXPRESSION")
-    val miniStyle = styleOverride ?: run {
-        prefsTick // recompose when Appearance prefs change
-        resolveMiniPlayerStyle(prefs)
-    }
+    prefsTick
+    val miniStyle = styleOverride ?: resolveMiniPlayerStyle(prefs)
     val miniBg = backgroundStyleOverride ?: runCatching {
         PlayerBackgroundStyle.valueOf(
             prefs.getString(PrefKeys.MiniPlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name),
