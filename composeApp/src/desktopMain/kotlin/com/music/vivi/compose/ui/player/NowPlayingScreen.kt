@@ -449,6 +449,7 @@ private fun NowPlayingScreenContent(
                                     controller = controller,
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .volumeWheel()
                                         .morphAspect { coverMorph.aspect }
                                         .sharedBounds(
                                             sharedContentState = coverState,
@@ -785,6 +786,7 @@ private fun NowPlayingScreenContent(
                         Row(
                             Modifier
                                 .weight(1f)
+                                .volumeWheel()
                                 .padding(horizontal = 12.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(12.dp)

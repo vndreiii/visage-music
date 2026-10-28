@@ -403,7 +403,7 @@ private fun NowPlayingFullscreenContent(
                     ) {
                         AlbumGestureCard(
                             controller,
-                            Modifier.fillMaxWidth().heightOf { coverDim.value / coverMorph.aspect }.songSwapCover(swap),
+                            Modifier.fillMaxWidth().heightOf { coverDim.value / coverMorph.aspect }.songSwapCover(swap).volumeWheel(),
                         ) {
                             FullscreenCover(
                                 artworkUrl = coverTrack?.artworkUrl,
@@ -731,7 +731,7 @@ private fun VolumeGroup(
 ) {
     val ink = LocalPlayerInk.current
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth().volumeWheel(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
