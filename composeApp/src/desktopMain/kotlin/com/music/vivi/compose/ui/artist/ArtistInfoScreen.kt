@@ -14,6 +14,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.layout.height
+import com.music.vivi.compose.ui.component.horizontalWheelScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -167,27 +170,52 @@ fun ArtistInfoScreen(name: String, navController: NavController) {
                 )
             }
         }
-        items(list, key = { it.id }) { track ->
-            val active = playingId == "local:${track.id}"
-            Surface(
-                onClick = { play(list.indexOfFirst { it.id == track.id }.coerceAtLeast(0)) },
-                shape = RoundedCornerShape(12.dp),
-                color = if (active && isPlaying) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-            ) {
-                Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    LazyCoverImage(coverPath = track.cover_path, modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)))
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(track.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
-                        Text(
-                            listOfNotNull(track.artist_name.takeIf { it.isNotBlank() }, track.album_title).joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Clip,
-                            modifier = Modifier.visageMarquee(),
-                        )
+        if (list.isNotEmpty()) {
+            item(key = "songs") {
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    // Same shelf as Home's Quick picks: up to 4 rows, extra songs scroll sideways in whole columns.
+                    val gap = 8.dp
+                    val sidePad = 8.dp
+                    val usable = maxWidth - sidePad * 2
+                    val fitCols = ((usable + gap) / (280.dp + gap)).toInt().coerceAtLeast(1)
+                    val rows = ((list.size + fitCols - 1) / fitCols).coerceIn(1, 4)
+                    val colWidth = (usable - gap * (fitCols - 1)) / fitCols
+                    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+                    androidx.compose.foundation.lazy.grid.LazyHorizontalGrid(
+                        rows = androidx.compose.foundation.lazy.grid.GridCells.Fixed(rows),
+                        state = gridState,
+                        contentPadding = PaddingValues(horizontal = sidePad),
+                        horizontalArrangement = Arrangement.spacedBy(gap),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(com.music.vivi.compose.ui.component.ListItemHeight * rows)
+                            .horizontalWheelScroll(gridState),
+                    ) {
+                        itemsIndexed(items = list, key = { _, t -> t.id }) { i, track ->
+                            val active = playingId == "local:${track.id}"
+                            Surface(
+                                onClick = { play(i) },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (active && isPlaying) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                                modifier = Modifier.width(colWidth).height(com.music.vivi.compose.ui.component.ListItemHeight),
+                            ) {
+                                Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    LazyCoverImage(coverPath = track.cover_path, modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)))
+                                    Spacer(Modifier.width(14.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(track.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
+                                        Text(
+                                            listOfNotNull(track.artist_name.takeIf { it.isNotBlank() }, track.album_title).joinToString(" · "),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Clip,
+                                            modifier = Modifier.visageMarquee(),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
