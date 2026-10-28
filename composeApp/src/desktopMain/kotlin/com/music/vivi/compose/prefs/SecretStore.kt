@@ -5,24 +5,25 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.music.vivi.player.session.SecretBackend
-import com.music.vivi.player.session.SecretServiceBackend
+import com.music.vivi.player.session.AppSecretBackend
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 
 /**
- * App secrets (API keys) in the operating system's credential store: the freedesktop Secret Service / KWallet on Linux,
- * Credential Manager on Windows (large values are split by the backend). Never in settings.properties.
+ * App secrets (API keys), never in settings.properties. They live where the YouTube sign-in lives (see
+ * [AppSecretBackend]): the operating system's credential store (freedesktop Secret Service / KWallet on Linux,
+ * Credential Manager on Windows, large values split by the backend) and, when none is reachable, an encrypted file.
  *
  * - Reads are served from an in-memory cache, so composition and request code never wait on the keyring. The cache is
  *   Compose state ([get] inside a composable recomposes when a value changes) and is filled by [load] on a worker thread.
  * - Writes update the cache first and reach the keyring on a single worker thread, in order.
- * - With no keyring available (no Secret Service daemon, locked and unanswered, ...) values stay in memory for this
- *   session only and [status] is [Status.Unavailable] so the UI can say so. There is deliberately no file fallback.
+ * - [status] says where values are kept: [Status.Keyring] or [Status.EncryptedFile]. Only if even that fails
+ *   ([Status.Unavailable], e.g. an unwritable config dir) do values stay in memory for this session.
  *
  * Secret values are never logged.
  */
 class SecretStore(
-    private val backendFactory: () -> SecretBackend = { SecretServiceBackend.system() },
+    private val backendFactory: () -> SecretBackend = { AppSecretBackend },
     private val service: String = "visage",
     private val executor: Executor = defaultExecutor,
     private val clock: () -> Long = System::currentTimeMillis,
@@ -36,7 +37,9 @@ class SecretStore(
         Pending,
         /** Values are saved in the system keyring. */
         Keyring,
-        /** No usable keyring: values live in memory until the app closes. */
+        /** No keyring is reachable: values are saved in the encrypted file under the config dir. */
+        EncryptedFile,
+        /** Nothing could store them: values live in memory until the app closes. */
         Unavailable,
     }
 
@@ -126,8 +129,9 @@ class SecretStore(
         try {
             backendFactory().also {
                 backend = it
-                status = Status.Keyring
                 unavailableReason = null
+                // Fakes in tests carry no router; the real backend reports which store it ended up using.
+                status = if (it is AppSecretBackend && !it.inKeyring) Status.EncryptedFile else Status.Keyring
             }
         } catch (e: Exception) {
             markFailed(e)
@@ -141,7 +145,7 @@ class SecretStore(
         status = Status.Unavailable
         // The message of a keyring exception describes the failure, not the secret; still keep it to one short line.
         unavailableReason = e.message?.lineSequence()?.firstOrNull()?.take(160)
-        log("keyring unavailable (${unavailableReason ?: e::class.simpleName}); secrets stay in memory for this session")
+        log("secret store unavailable (${unavailableReason ?: e::class.simpleName}); secrets stay in memory for this session")
     }
 
     companion object {
