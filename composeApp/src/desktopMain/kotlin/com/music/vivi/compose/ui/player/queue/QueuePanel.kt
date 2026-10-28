@@ -291,8 +291,6 @@ private fun QueuePanelBody(
 
     Column(
         Modifier.fillMaxSize()
-            // Songs carried from search, lists or the library can be dropped on the queue.
-            .trackDropTarget("queue-panel") { t -> controller.addToQueue(t); "Added to queue" }
             .padding(16.dp),
     ) {
         Row(
@@ -468,7 +466,22 @@ private fun QueuePanelBody(
 
                 val drag = remember(listState) { QueueDragState(listState) }
                 val dropBase = queueIndex + 1
-                Box(Modifier.weight(1f)) {
+                // Where a carried song would land: the slot (0..upcoming) nearest the pointer, in list rows.
+                fun dropSlot(): Int {
+                    val y = TrackDrag.pointer.y - drag.windowOrigin.y
+                    val rows = listState.layoutInfo.visibleItemsInfo.filter { it.index < upcoming.size.coerceAtMost(shown) }
+                    val hit = rows.firstOrNull { y < it.offset + it.size / 2f }
+                    return (hit?.index ?: (rows.lastOrNull()?.index?.plus(1) ?: 0)).coerceIn(0, upcoming.size)
+                }
+                Box(
+                    Modifier.weight(1f)
+                        // Songs carried from search, lists or the library land at the slot under the pointer.
+                        .trackDropTarget("queue-panel") { t ->
+                            val at = dropBase + dropSlot()
+                            controller.insertIntoQueue(t, at)
+                            "Added to queue"
+                        },
+                ) {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().smoothWheelScroll(listState)
                         .onGloballyPositioned { drag.windowOrigin = it.positionInWindow() }
@@ -508,6 +521,19 @@ private fun QueuePanelBody(
                         }
                     }
                     items(placeholders, key = { "skeleton-$it" }) { QueueSkeletonRow(it) }
+                }
+                // Insertion marker while a song from outside is carried over the queue.
+                if (TrackDrag.hoverKey == "queue-panel" && !TrackDrag.hoverRejected && !drag.active) {
+                    val slot = dropSlot()
+                    val rows = listState.layoutInfo.visibleItemsInfo
+                    val markY = rows.firstOrNull { it.index == slot }?.offset?.toFloat()
+                        ?: rows.lastOrNull { it.index == slot - 1 }?.let { (it.offset + it.size).toFloat() } ?: 0f
+                    Box(
+                        Modifier.align(Alignment.TopStart).fillMaxWidth().padding(horizontal = 12.dp)
+                            .offset { androidx.compose.ui.unit.IntOffset(0, markY.toInt() - 1) }
+                            .height(3.dp)
+                            .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.RoundedCornerShape(2.dp)),
+                    )
                 }
                 DragGhost(drag)
                 }

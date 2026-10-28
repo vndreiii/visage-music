@@ -461,6 +461,27 @@ class DefaultPlaybackController(
         }
     }
 
+    override fun insertIntoQueue(track: QueueTrack, index: Int) {
+        if (track.videoId.isBlank()) return
+        scope.launch {
+            playMutex.withLock {
+                val tracks = _queueTracks.value.toMutableList()
+                val playingId = tracks.getOrNull(_queueIndex.value)?.videoId
+                if (tracks.isEmpty() || playingId == null) {
+                    setQueueLocked(listOf(track), 0)
+                    return@withLock
+                }
+                var at = index
+                val dupe = tracks.indexOfFirst { it.videoId == track.videoId && it.videoId != playingId }
+                if (dupe >= 0) { tracks.removeAt(dupe); if (dupe < at) at-- }
+                val cur = tracks.indexOfFirst { it.videoId == playingId }.coerceAtLeast(0)
+                tracks.add(at.coerceIn(cur + 1, tracks.size), track)
+                setQueueLocked(tracks, cur)
+            }
+            schedulePrefetchAfterCurrent()
+        }
+    }
+
     override fun moveQueueItem(from: Int, to: Int) {
         scope.launch {
             playMutex.withLock {
