@@ -27,8 +27,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -85,6 +93,58 @@ import com.music.vivi.compose.ui.player.playerControlsSurface
 import kotlin.math.PI
 import kotlin.math.sin
 
+
+/** Collapsed state of the preview frames, kept for the whole session (a frame stays closed when you come back to its page). */
+private val collapsedPreviews = mutableStateMapOf<String, Boolean>()
+
+/**
+ * The frame every live settings preview sits in: a rounded box with a "Preview" header that collapses it.
+ * [id] identifies the frame for its collapsed state. Local stand-in for the shared preview frame; swap it for that one
+ * when it lands (only this function changes).
+ */
+@Composable
+internal fun PreviewFrame(
+    id: String,
+    modifier: Modifier = Modifier,
+    caption: String? = null,
+    content: @Composable () -> Unit,
+) {
+    val collapsed = collapsedPreviews[id] == true
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        modifier
+            .fillMaxWidth()
+            .padding(bottom = 4.dp)
+            .clip(shape)
+            .background(MaterialTheme.colorScheme.surfaceContainerLowest)
+            .border(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f), shape),
+    ) {
+        Row(
+            Modifier.fillMaxWidth().clickable { collapsedPreviews[id] = !collapsed }.padding(start = 16.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Preview", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
+            Icon(
+                if (collapsed) Icons.Outlined.ExpandMore else Icons.Outlined.ExpandLess,
+                contentDescription = if (collapsed) "Show preview" else "Hide preview",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(20.dp),
+            )
+        }
+        AnimatedVisibility(!collapsed, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            Column(Modifier.padding(start = 12.dp, end = 12.dp, bottom = 12.dp)) {
+                Box(Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))) { content() }
+                if (caption != null) {
+                    Text(
+                        caption, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 4.dp, top = 8.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
 /** Rounded preview frame used next to every visual setting option. */
 @Composable
 fun MockupFrame(
@@ -119,14 +179,7 @@ fun LiveMiniPlayerHeroPreview(
     background: PlayerBackgroundStyle,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        tonalElevation = 2.dp,
-    ) {
+    PreviewFrame("miniPlayer", modifier, caption = "The real mini-player, with sample content") {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -182,20 +235,17 @@ fun LiveMiniPlayerHeroPreview(
 fun LivePlayerBackgroundHeroPreview(
     style: PlayerBackgroundStyle,
     modifier: Modifier = Modifier,
+    /** 0..1 darkening; null uses the Now Playing darkness setting. */
+    darkness: Float? = null,
+    id: String = "playerBackground",
+    caption: String? = "The real background over the track that is playing",
 ) {
     val controller = LocalPlaybackController.current
     val track by controller.nowPlaying.collectAsState()
     val artworkUrl = track?.artworkUrl
     val palette = rememberArtworkPalette(artworkUrl) ?: IdleArtworkPalette
 
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        tonalElevation = 2.dp,
-    ) {
+    PreviewFrame(id, modifier, caption = caption) {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -219,6 +269,7 @@ fun LivePlayerBackgroundHeroPreview(
                             canvasVideoUrl = null,
                             canvasPlaying = false,
                             showClearArtwork = true,
+                            darknessOverride = darkness,
                             modifier = Modifier.fillMaxSize(),
                         )
                         Row(
@@ -287,14 +338,7 @@ fun LiveSliderStyleHeroPreview(
     modifier: Modifier = Modifier,
 ) {
     var previewProgress by remember { mutableStateOf(0.42f) }
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        tonalElevation = 2.dp,
-    ) {
+    PreviewFrame("seekBar", modifier, caption = "The real seek bar; drag it") {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -332,14 +376,7 @@ fun LivePlayerButtonsHeroPreview(
     style: PlayerButtonsStyle,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        tonalElevation = 2.dp,
-    ) {
+    PreviewFrame("playerButtons", modifier, caption = null) {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -368,14 +405,7 @@ fun LiveTopNavHeroPreview(
     style: TopNavStyle,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        tonalElevation = 2.dp,
-    ) {
+    PreviewFrame("topNav", modifier, caption = "Tab labels as they appear in the top bar") {
         Box(
             Modifier
                 .fillMaxWidth()
@@ -768,17 +798,59 @@ fun ContrastMockup(
 }
 
 
+/**
+ * Now Playing preview: cover, title, seek bar and the real transport row, all driven by the player prefs passed in, so every
+ * control setting shows at once. The defaults keep the older "framed or not" call working.
+ */
 @Composable
-fun LivePlayerLayoutHeroPreview(framed: Boolean) {
-    var playing by remember { mutableStateOf(false) }
-    Surface(Modifier.fillMaxWidth().padding(12.dp), shape = RoundedCornerShape(24.dp), color = MaterialTheme.colorScheme.secondaryContainer) {
-        Column(Modifier.padding(16.dp).playerControlsSurface(framed), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text("Your next favourite", style = MaterialTheme.typography.titleLarge)
-            Text("Now Playing preview", style = MaterialTheme.typography.bodySmall)
-            com.music.vivi.compose.ui.player.TransportRow(
-                playing = playing, canPrev = true, canNext = true, enabledPlay = true,
-                onPrev = { playing = false }, onPlayPause = { playing = !playing }, onNext = { playing = true },
-            )
+fun LivePlayerLayoutHeroPreview(
+    framed: Boolean,
+    buttons: PlayerButtonsStyle = PlayerButtonsStyle.DEFAULT,
+    playPauseHeight: Dp = 56.dp,
+    slider: SliderStyle = SliderStyle.M3_EXPRESSIVE,
+    squiggly: Boolean = false,
+    squareCover: Boolean = false,
+    hideCover: Boolean = false,
+    limitWidth: Dp? = null,
+    artworkUrl: String? = null,
+    title: String = "Your next favourite",
+    artist: String = "Now Playing preview",
+) {
+    var playing by remember { mutableStateOf(true) }
+    var progress by remember { mutableStateOf(0.42f) }
+    PreviewFrame("playerControls", caption = "Cover, seek bar and buttons update as you change them") {
+        Box(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer).padding(16.dp), contentAlignment = Alignment.TopCenter) {
+            Column(
+                Modifier.then(if (limitWidth != null) Modifier.widthIn(max = limitWidth) else Modifier.fillMaxWidth()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (!hideCover) {
+                    val coverShape = RoundedCornerShape(if (squareCover) 4.dp else 20.dp)
+                    Box(
+                        Modifier.size(96.dp).clip(coverShape).background(MaterialTheme.colorScheme.primaryContainer),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (artworkUrl != null) AsyncImage(artworkUrl, null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    }
+                }
+                Column(Modifier.playerControlsSurface(framed), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1)
+                    Text(artist, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                    com.music.vivi.compose.ui.player.PlayerSeekBar(
+                        progress = progress, onScrub = { progress = it }, onScrubFinished = {},
+                        style = slider, squiggly = squiggly, isPlaying = playing,
+                        activeColor = MaterialTheme.colorScheme.primary,
+                        inactiveColor = MaterialTheme.colorScheme.outlineVariant,
+                        modifier = Modifier.fillMaxWidth().height(40.dp),
+                    )
+                    com.music.vivi.compose.ui.player.TransportRow(
+                        playing = playing, canPrev = true, canNext = true, enabledPlay = true,
+                        style = buttons, playPauseHeight = playPauseHeight,
+                        onPrev = { playing = false }, onPlayPause = { playing = !playing }, onNext = { playing = true },
+                    )
+                }
+            }
         }
     }
 }
