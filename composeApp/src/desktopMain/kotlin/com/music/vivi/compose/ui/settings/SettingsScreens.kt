@@ -67,6 +67,9 @@ import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.SmartDisplay
 import androidx.compose.material.icons.outlined.Tune
+import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.collectAsState
 import androidx.compose.material.icons.outlined.Wallpaper
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -567,92 +570,12 @@ fun AppearanceSettingsScreen(navController: NavController) {
     val currentMiniLayout = resolveMiniPlayerStyle(prefs)
     val miniBg = prefs.enumPref(PrefKeys.MiniPlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT)
     val topNav = prefs.enumPref(PrefKeys.TopNavStyle, TopNavStyle.ICON_ONLY)
+    val glass = prefs.getBoolean(PrefKeys.GlassBlur, com.music.vivi.compose.prefs.LookDefaults.GlassBlur)
+    val pageStyle = prefs.enumPref(PrefKeys.PageBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PageStyle)
+    val pageDarkness = prefs.getInt(PrefKeys.PageBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PageDarkness).coerceIn(0, 100)
 
     SettingsPage(title = "Interface", onBack = { navController.navigateUp() }) {
-        SettingsSection("More interface settings") {
-            InterfaceLinkItems(navController, skipRoute = Routes.SETTINGS_APPEARANCE)
-        }
-
-        SettingsSection("Home") {
-            val autoQuick = prefs.getBoolean(PrefKeys.QuickPicksAutoRefresh, true)
-            SwitchItem(
-                icon = Icons.Outlined.Refresh,
-                title = "Refresh Quick picks automatically",
-                subtitle = "A new set is built once the time below has passed; until then your last refresh stays",
-                checked = autoQuick,
-                onChecked = { prefs.setBoolean(PrefKeys.QuickPicksAutoRefresh, it) },
-            )
-            if (autoQuick) {
-                PrefSecondsSlider(
-                    title = "Every",
-                    value = prefs.getInt(PrefKeys.QuickPicksIntervalHours, 24)
-                        .coerceIn(1, 168).toFloat(),
-                    valueRange = 1f..168f,
-                    steps = 166,
-                    valueLabel = { h ->
-                        val hours = h.toInt()
-                        if (hours < 48) "${hours}h" else "${hours / 24}d ${hours % 24}h"
-                    },
-                    onCommit = { prefs.setInt(PrefKeys.QuickPicksIntervalHours, it.toInt().coerceIn(1, 168)) },
-                )
-            }
-            SettingsDivider()
-            SwitchItem(
-                icon = Icons.Outlined.Refresh,
-                title = "Manual refresh button",
-                subtitle = "Show the refresh button on the Quick picks shelf",
-                checked = prefs.getBoolean(PrefKeys.QuickPicksManualRefresh, true),
-                onChecked = { prefs.setBoolean(PrefKeys.QuickPicksManualRefresh, it) },
-            )
-        }
-
-        SettingsSection("Ring background") {
-            RingsControls(prefs, showIntro = true)
-        }
-
-        SettingsSection("Typography") {
-            FontPairingContent(prefs)
-        }
-
-        SettingsSection("Layout") {
-            SwitchItem(
-                icon = Icons.Outlined.Tune,
-                title = "Adwaita-Inspired",
-                subtitle = "Centered, compact settings and player controls. Keeps your colors and style.",
-                checked = prefs.getBoolean(PrefKeys.AdwaitaInspired, false),
-                onChecked = { prefs.setBoolean(PrefKeys.AdwaitaInspired, it) },
-            )
-            SettingsDivider()
-            SwitchItem(
-                icon = Icons.Outlined.Tune,
-                title = "Material 3 Expressive Blur",
-                subtitle = "Surfaces over other content (mini-player, player controls, queue tray) become translucent frosted glass. Same design, blurred backdrop.",
-                checked = prefs.getBoolean(PrefKeys.GlassBlur, com.music.vivi.compose.prefs.LookDefaults.GlassBlur),
-                onChecked = { prefs.setBoolean(PrefKeys.GlassBlur, it) },
-            )
-            if (prefs.getBoolean(PrefKeys.GlassBlur, com.music.vivi.compose.prefs.LookDefaults.GlassBlur)) {
-                SettingsDivider()
-                PrefSecondsSlider(
-                    title = "Page background ${com.music.vivi.compose.theme.backdropLevelName().lowercase()}",
-                    value = prefs.getInt(PrefKeys.PageBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PageDarkness).coerceIn(0, 100).toFloat(),
-                    valueRange = 0f..100f,
-                    steps = 19,
-                    valueLabel = { "${it.toInt()}%" },
-                    onCommit = { prefs.setInt(PrefKeys.PageBackgroundDarkness, it.toInt()) },
-                )
-                ChipChoiceRow(
-                    icon = Icons.Outlined.Wallpaper,
-                    title = "Page background style",
-                    options = PlayerBackgroundStyle.entries.map { it to it.label() },
-                    selected = prefs.enumPref(PrefKeys.PageBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PageStyle),
-                    onSelect = { prefs.setString(PrefKeys.PageBackgroundStyle, it.name) },
-                )
-                if (prefs.enumPref(PrefKeys.PageBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PageStyle) == PlayerBackgroundStyle.RINGS) RingsControls(prefs)
-            }
-        }
-
-        SettingsSection("Top bar") {
-            LiveTopNavHeroPreview(style = topNav)
+        SettingsSection("Top bar", preview = { LiveTopNavHeroPreview(style = topNav) }) {
             ChoiceRow(
                 icon = Icons.Outlined.Menu,
                 title = "Tab labels",
@@ -674,11 +597,10 @@ fun AppearanceSettingsScreen(navController: NavController) {
             )
         }
 
-        SettingsSection("Mini-player") {
-            LiveMiniPlayerHeroPreview(layout = currentMiniLayout, background = miniBg)
+        SettingsSection("Mini-player", preview = { LiveMiniPlayerHeroPreview(layout = currentMiniLayout, background = miniBg) }) {
             ChoiceRow(
                 icon = Icons.Outlined.SmartDisplay,
-                title = "Layout",
+                title = "Mini-player layout",
                 options = listOf(
                     MiniPlayerStyle.FULL_WIDTH_BAR to "Bar",
                     MiniPlayerStyle.FLOATING_PILL to "Pill",
@@ -692,32 +614,124 @@ fun AppearanceSettingsScreen(navController: NavController) {
                 },
             )
             SettingsDivider()
-            ChipChoiceRow(
+            SettingsDropdownRow(
                 icon = Icons.Outlined.Wallpaper,
-                title = "Background",
+                title = "Mini-player background",
                 options = PlayerBackgroundStyle.entries
                     .filter { it != PlayerBackgroundStyle.APPLE_MUSIC }
-                    .map { it to it.label() },
+                    .map { DropdownOption(it, it.label()) },
                 selected = miniBg,
                 onSelect = { prefs.setString(PrefKeys.MiniPlayerBackgroundStyle, it.name) },
             )
-            if (miniBg == PlayerBackgroundStyle.RINGS) RingsControls(prefs)
+            VisibleWhen(miniBg == PlayerBackgroundStyle.RINGS) { RingsControls(prefs) }
             PrefSecondsSlider(
                 title = com.music.vivi.compose.theme.backdropLevelName(),
                 value = prefs.getInt(PrefKeys.MiniPlayerBackgroundDarkness, 0).coerceIn(0, 100).toFloat(),
                 valueRange = 0f..100f,
                 steps = 19,
                 valueLabel = { "${it.toInt()}%" },
+                liveUpdate = true,
+                defaultValue = 0f,
                 onCommit = { prefs.setInt(PrefKeys.MiniPlayerBackgroundDarkness, it.toInt()) },
             )
             SettingsDivider()
             SwitchItem(
                 icon = Icons.Outlined.Contrast,
                 title = "Pure black mini-player",
-                subtitle = null,
+                subtitle = "Solid black instead of the tinted background",
                 checked = prefs.getBoolean(PrefKeys.PureBlackMiniPlayer, false),
                 onChecked = { prefs.setBoolean(PrefKeys.PureBlackMiniPlayer, it) },
             )
+        }
+
+        SettingsSection(
+            "Glass and backdrop",
+            preview = if (glass) {
+                {
+                    LivePlayerBackgroundHeroPreview(
+                        style = pageStyle, darkness = pageDarkness / 100f, id = "pageBackground",
+                        caption = "The page background behind every screen",
+                    )
+                }
+            } else null,
+        ) {
+            SwitchItem(
+                icon = Icons.Outlined.Tune,
+                title = "Material 3 Expressive Blur",
+                subtitle = "Mini-player, player controls and queue tray become frosted glass over a tinted page background",
+                checked = glass,
+                onChecked = { prefs.setBoolean(PrefKeys.GlassBlur, it) },
+            )
+            VisibleWhen(glass) {
+                SettingsDropdownRow(
+                    icon = Icons.Outlined.Wallpaper,
+                    title = "Page background",
+                    options = PlayerBackgroundStyle.entries.map { DropdownOption(it, it.label()) },
+                    selected = pageStyle,
+                    onSelect = { prefs.setString(PrefKeys.PageBackgroundStyle, it.name) },
+                )
+                VisibleWhen(pageStyle == PlayerBackgroundStyle.RINGS) { RingsControls(prefs) }
+                PrefSecondsSlider(
+                    title = "Page background ${com.music.vivi.compose.theme.backdropLevelName().lowercase()}",
+                    value = pageDarkness.toFloat(),
+                    valueRange = 0f..100f,
+                    steps = 19,
+                    valueLabel = { "${it.toInt()}%" },
+                    liveUpdate = true,
+                    defaultValue = com.music.vivi.compose.prefs.LookDefaults.PageDarkness.toFloat(),
+                    onCommit = { prefs.setInt(PrefKeys.PageBackgroundDarkness, it.toInt()) },
+                )
+            }
+            SettingsDivider()
+            SwitchItem(
+                icon = Icons.Outlined.Tune,
+                title = "Adwaita-Inspired",
+                subtitle = "Centered, compact settings and player controls; keeps your colors and style",
+                checked = prefs.getBoolean(PrefKeys.AdwaitaInspired, false),
+                onChecked = { prefs.setBoolean(PrefKeys.AdwaitaInspired, it) },
+            )
+        }
+
+        SettingsSection("Typography") {
+            FontPairingContent(prefs)
+        }
+
+        SettingsSection("Home") {
+            val autoQuick = prefs.getBoolean(PrefKeys.QuickPicksAutoRefresh, true)
+            SwitchItem(
+                icon = Icons.Outlined.Refresh,
+                title = "Refresh Quick picks automatically",
+                subtitle = "Build a new set once the interval has passed; until then your last refresh stays",
+                checked = autoQuick,
+                onChecked = { prefs.setBoolean(PrefKeys.QuickPicksAutoRefresh, it) },
+            )
+            VisibleWhen(autoQuick) {
+                PrefSecondsSlider(
+                    title = "Refresh interval",
+                    value = prefs.getInt(PrefKeys.QuickPicksIntervalHours, 24)
+                        .coerceIn(1, 168).toFloat(),
+                    valueRange = 1f..168f,
+                    steps = 166,
+                    valueLabel = { h ->
+                        val hours = h.toInt()
+                        if (hours < 48) "${hours}h" else "${hours / 24}d ${hours % 24}h"
+                    },
+                    defaultValue = 24f,
+                    onCommit = { prefs.setInt(PrefKeys.QuickPicksIntervalHours, it.toInt().coerceIn(1, 168)) },
+                )
+            }
+            SettingsDivider()
+            SwitchItem(
+                icon = Icons.Outlined.Refresh,
+                title = "Manual refresh button",
+                subtitle = "Show the refresh button on the Quick picks shelf",
+                checked = prefs.getBoolean(PrefKeys.QuickPicksManualRefresh, true),
+                onChecked = { prefs.setBoolean(PrefKeys.QuickPicksManualRefresh, it) },
+            )
+        }
+
+        SettingsSection("More interface settings") {
+            InterfaceLinkItems(navController, skipRoute = Routes.SETTINGS_APPEARANCE)
         }
     }
 }
@@ -731,18 +745,30 @@ fun NowPlayingSettingsScreen(navController: NavController) {
     val observe = rememberPrefsVersion(prefs)
     val playerBg = prefs.enumPref(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle)
     val canvasOn = prefs.getBoolean(PrefKeys.EnableCanvas, true)
+    val playerDarkness = prefs.getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100)
+    val limitWidth = prefs.getBoolean(PrefKeys.LimitPlayerControlsWidth, prefs.getBoolean(PrefKeys.AdwaitaInspired, false))
+    val slider = prefs.enumPref(PrefKeys.SliderStyle, SliderStyle.M3_EXPRESSIVE)
+    val track by com.music.vivi.compose.LocalPlaybackController.current.nowPlaying.collectAsState()
 
     SettingsPage(title = "Now Playing", onBack = { navController.navigateUp() }) {
-        SettingsSection("Fullscreen") {
-            SettingsNavItem(
-                icon = Icons.Outlined.OpenInFull,
-                title = "Fullscreen player",
-                subtitle = "Layout, cover, controls, auto-hide, background overrides",
-                onClick = { navController.navigate(Routes.SETTINGS_FULLSCREEN_PLAYER) },
-            )
-        }
-
-        SettingsSection("Cover") {
+        SettingsSection(
+            "Cover and controls",
+            preview = {
+                LivePlayerLayoutHeroPreview(
+                    framed = prefs.getBoolean(PrefKeys.UsePlayerV2, false),
+                    buttons = prefs.enumPref(PrefKeys.PlayerButtonsStyle, PlayerButtonsStyle.DEFAULT),
+                    playPauseHeight = prefs.getInt(PrefKeys.PlayPauseHeight, 56).dp,
+                    slider = slider,
+                    squiggly = prefs.getBoolean(PrefKeys.SquigglySlider, false),
+                    squareCover = prefs.getBoolean(PrefKeys.SquareCover, false),
+                    hideCover = prefs.getBoolean(PrefKeys.HidePlayerThumbnail, false),
+                    limitWidth = if (limitWidth) prefs.getInt(PrefKeys.PlayerControlsWidth, 600).dp else null,
+                    artworkUrl = track?.artworkUrl,
+                    title = track?.title ?: "Your next favourite",
+                    artist = track?.artist?.ifBlank { null } ?: "Now Playing preview",
+                )
+            },
+        ) {
             SwitchItem(
                 icon = Icons.Outlined.CropSquare,
                 title = "Square cover",
@@ -750,143 +776,15 @@ fun NowPlayingSettingsScreen(navController: NavController) {
                 checked = prefs.getBoolean(PrefKeys.SquareCover, false),
                 onChecked = { prefs.setBoolean(PrefKeys.SquareCover, it) },
             )
-        }
-
-        SettingsSection("Background") {
-            LivePlayerBackgroundHeroPreview(style = playerBg)
-            PrefSecondsSlider(
-                title = com.music.vivi.compose.theme.backdropLevelName(),
-                value = prefs.getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100).toFloat(),
-                valueRange = 0f..100f,
-                steps = 19,
-                valueLabel = { "${it.toInt()}%" },
-                onCommit = { prefs.setInt(PrefKeys.PlayerBackgroundDarkness, it.toInt()) },
-            )
-            ChipChoiceRow(
-                icon = Icons.Outlined.Wallpaper,
-                title = "Style",
-                options = PlayerBackgroundStyle.entries.map { it to it.label() },
-                selected = playerBg,
-                onSelect = { prefs.setString(PrefKeys.PlayerBackgroundStyle, it.name) },
-            )
-            if (playerBg == PlayerBackgroundStyle.RINGS) RingsControls(prefs)
             SettingsDivider()
             SwitchItem(
-                icon = Icons.Outlined.MovieFilter,
-                title = "Canvas video",
-                subtitle = "Animated album art in place of the cover when available, with any background",
-                checked = canvasOn,
-                onChecked = { prefs.setBoolean(PrefKeys.EnableCanvas, it) },
+                icon = Icons.Outlined.Contrast,
+                title = "Hide cover art",
+                subtitle = "Show the controls without the cover",
+                checked = prefs.getBoolean(PrefKeys.HidePlayerThumbnail, false),
+                onChecked = { prefs.setBoolean(PrefKeys.HidePlayerThumbnail, it) },
             )
-            AnimatedVisibility(canvasOn, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                Column {
-                    SettingsDivider()
-                    SwitchItem(
-                        icon = Icons.Outlined.SmartDisplay,
-                        title = "Use GPU for canvas",
-                        subtitle = "Off uses CPU decoding. GPU decoding may crash on incompatible drivers.",
-                        checked = prefs.getBoolean(PrefKeys.CanvasUseGpu, false),
-                        onChecked = { prefs.setBoolean(PrefKeys.CanvasUseGpu, it) },
-                    )
-                    SettingsDivider()
-                    SwitchItem(
-                        icon = Icons.Outlined.MovieFilter,
-                        title = "Ping-pong canvas",
-                        subtitle = "Play forward, then backward. Off uses a smooth forward loop.",
-                        checked = prefs.getBoolean(PrefKeys.CanvasPingPong, false),
-                        onChecked = { prefs.setBoolean(PrefKeys.CanvasPingPong, it) },
-                    )
-                    SettingsDivider()
-                    ChoiceRow(
-                        icon = Icons.Outlined.AutoAwesome,
-                        title = "Canvas source",
-                        options = listOf(
-                            CanvasSource.AUTO to "Auto",
-                            CanvasSource.APPLE_MUSIC to "Apple",
-                            CanvasSource.TIDAL to "Tidal",
-                            CanvasSource.VIVIMUSIC to "VIVI",
-                        ),
-                        selected = prefs.enumPref(PrefKeys.CanvasSource, CanvasSource.AUTO),
-                        onSelect = { prefs.setString(PrefKeys.CanvasSource, it.name) },
-                    )
-                }
-            }
-        }
-
-        SettingsSection("Music video") {
-            val videoOn = prefs.getBoolean(PrefKeys.PlayerVideoEnabled, false)
-            SwitchItem(
-                icon = Icons.Outlined.SmartDisplay,
-                title = "Play music videos",
-                subtitle = "Show the music video instead of the cover or canvas when one exists. " +
-                    "Uses more data and CPU; audio still plays from the normal stream. Local files and tracks without a video fall back to canvas or cover.",
-                checked = videoOn,
-                onChecked = { prefs.setBoolean(PrefKeys.PlayerVideoEnabled, it) },
-            )
-            AnimatedVisibility(videoOn, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
-                Column {
-                    SettingsDivider()
-                    val framing = com.music.vivi.compose.ui.player.video.VideoFraming.resolve(prefs.reader())
-                    ChoiceRow(
-                        icon = Icons.Outlined.OpenInFull,
-                        title = "Framing",
-                        options = com.music.vivi.compose.ui.player.video.VideoFraming.entries.map { it to it.name.replace("Original", "Original size") },
-                        selected = framing,
-                        onSelect = { prefs.setString(PrefKeys.PlayerVideoFraming, it.name) },
-                    )
-                    Text(
-                        when (framing) {
-                            com.music.vivi.compose.ui.player.video.VideoFraming.Fit -> "Fit: the video keeps its shape inside the square cover, with black bars."
-                            com.music.vivi.compose.ui.player.video.VideoFraming.Fill -> "Fill: the video is cropped to fill the square cover."
-                            com.music.vivi.compose.ui.player.video.VideoFraming.Original -> "Original size: the cover morphs into the video's own shape (usually 16:9) and shows it uncropped."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 56.dp, end = 16.dp, bottom = 12.dp),
-                    )
-                    SettingsDivider()
-                    ChoiceRow(
-                        icon = Icons.Outlined.Tune,
-                        title = "Quality (Auto adapts to your connection speed)",
-                        options = com.music.vivi.player.video.VideoQuality.entries.map { it to it.label },
-                        selected = com.music.vivi.player.video.VideoQuality.parse(prefs.getString(PrefKeys.PlayerVideoQuality, "AUTO")),
-                        onSelect = { prefs.setString(PrefKeys.PlayerVideoQuality, it.name) },
-                    )
-                }
-            }
-        }
-
-        SettingsSection("Play bar") {
-            val limitWidth = prefs.getBoolean(PrefKeys.LimitPlayerControlsWidth, prefs.getBoolean(PrefKeys.AdwaitaInspired, false))
-            SwitchItem(
-                icon = Icons.Outlined.Tune,
-                title = "Limit controls width",
-                subtitle = "Center the controls and limit their width; shrink to fit smaller windows",
-                checked = limitWidth,
-                onChecked = { prefs.setBoolean(PrefKeys.LimitPlayerControlsWidth, it) },
-            )
-            if (limitWidth) {
-                PrefSecondsSlider(
-                    title = "Maximum width",
-                    value = prefs.getInt(PrefKeys.PlayerControlsWidth, 600).toFloat(),
-                    valueRange = 400f..600f,
-                    steps = 9,
-                    valueLabel = { "${it.toInt()} dp" },
-                    onCommit = { prefs.setInt(PrefKeys.PlayerControlsWidth, it.toInt()) },
-                )
-            }
-            PrefSecondsSlider(
-                title = "Play / pause height",
-                value = prefs.getInt(PrefKeys.PlayPauseHeight, 56).toFloat(),
-                valueRange = 48f..96f,
-                steps = 5,
-                valueLabel = { "${it.toInt()} dp" },
-                onCommit = { prefs.setInt(PrefKeys.PlayPauseHeight, it.toInt()) },
-            )
-        }
-
-        SettingsSection("Layout & controls") {
-            LivePlayerLayoutHeroPreview(framed = prefs.getBoolean(PrefKeys.UsePlayerV2, false))
+            SettingsDivider()
             SwitchItem(
                 icon = Icons.Outlined.SmartDisplay,
                 title = "Framed controls",
@@ -895,30 +793,19 @@ fun NowPlayingSettingsScreen(navController: NavController) {
                 onChecked = { prefs.setBoolean(PrefKeys.UsePlayerV2, it) },
             )
             SettingsDivider()
-            SwitchItem(
-                icon = Icons.Outlined.Contrast,
-                title = "Hide cover art",
-                subtitle = null,
-                checked = prefs.getBoolean(PrefKeys.HidePlayerThumbnail, false),
-                onChecked = { prefs.setBoolean(PrefKeys.HidePlayerThumbnail, it) },
-            )
-            SettingsDivider()
-            val buttons = prefs.enumPref(PrefKeys.PlayerButtonsStyle, PlayerButtonsStyle.DEFAULT)
             ChoiceRow(
                 icon = Icons.Outlined.PlayCircle,
                 title = "Button color",
                 options = PlayerButtonsStyle.entries.map { it to it.titleLabel() },
-                selected = buttons,
+                selected = prefs.enumPref(PrefKeys.PlayerButtonsStyle, PlayerButtonsStyle.DEFAULT),
                 onSelect = { prefs.setString(PrefKeys.PlayerButtonsStyle, it.name) },
             )
             SettingsDivider()
-            val slider = prefs.enumPref(PrefKeys.SliderStyle, SliderStyle.M3_EXPRESSIVE)
-            LiveSliderStyleHeroPreview(style = slider, squiggly = prefs.getBoolean(PrefKeys.SquigglySlider, false))
-            ChipChoiceRow(
+            SettingsDropdownRow(
                 icon = Icons.Outlined.GraphicEq,
                 title = "Seek bar",
                 options = SliderStyle.entries.map {
-                    it to if (it == SliderStyle.M3_EXPRESSIVE) "M3 Expressive" else it.titleLabel()
+                    DropdownOption(it, if (it == SliderStyle.M3_EXPRESSIVE) "M3 Expressive" else it.titleLabel())
                 },
                 selected = slider,
                 onSelect = { prefs.setString(PrefKeys.SliderStyle, it.name) },
@@ -931,23 +818,138 @@ fun NowPlayingSettingsScreen(navController: NavController) {
                 selected = prefs.enumPref(PrefKeys.VolumeControlStyle, VolumeControlStyle.SLIDER),
                 onSelect = { prefs.setString(PrefKeys.VolumeControlStyle, it.name) },
             )
+            SettingsDivider()
+            SwitchItem(
+                icon = Icons.Outlined.Tune,
+                title = "Limit controls width",
+                subtitle = "Center the controls and limit their width; shrink to fit smaller windows",
+                checked = limitWidth,
+                onChecked = { prefs.setBoolean(PrefKeys.LimitPlayerControlsWidth, it) },
+            )
+            VisibleWhen(limitWidth) {
+                PrefSecondsSlider(
+                    title = "Maximum width",
+                    value = prefs.getInt(PrefKeys.PlayerControlsWidth, 600).toFloat(),
+                    valueRange = 400f..600f,
+                    steps = 9,
+                    valueLabel = { "${it.toInt()} dp" },
+                    liveUpdate = true,
+                    defaultValue = 600f,
+                    onCommit = { prefs.setInt(PrefKeys.PlayerControlsWidth, it.toInt()) },
+                )
+            }
+            PrefSecondsSlider(
+                title = "Play / pause height",
+                value = prefs.getInt(PrefKeys.PlayPauseHeight, 56).toFloat(),
+                valueRange = 48f..96f,
+                steps = 5,
+                valueLabel = { "${it.toInt()} dp" },
+                liveUpdate = true,
+                defaultValue = 56f,
+                onCommit = { prefs.setInt(PrefKeys.PlayPauseHeight, it.toInt()) },
+            )
         }
 
-        SettingsSection("Lyrics") {
-            SettingsNavItem(
-                icon = Icons.Outlined.Lyrics,
-                title = "Lyrics",
-                subtitle = "Style, word-by-word sync, glow, animation, background",
-                onClick = { navController.navigate(Routes.SETTINGS_LYRICS) },
+        SettingsSection(
+            "Background",
+            preview = { LivePlayerBackgroundHeroPreview(style = playerBg, darkness = playerDarkness / 100f) },
+        ) {
+            SettingsDropdownRow(
+                icon = Icons.Outlined.Wallpaper,
+                title = "Player background",
+                options = PlayerBackgroundStyle.entries.map { DropdownOption(it, it.label()) },
+                selected = playerBg,
+                onSelect = { prefs.setString(PrefKeys.PlayerBackgroundStyle, it.name) },
             )
-            SettingsDivider()
-            ChipChoiceRow(
-                icon = Icons.Outlined.AutoAwesome,
-                title = "Provider",
-                options = LyricsProvider.entries.map { it to it.label },
-                selected = prefs.enumPref(PrefKeys.LyricsProvider, LyricsProvider.LRCLIB),
-                onSelect = { prefs.setString(PrefKeys.LyricsProvider, it.name) },
+            VisibleWhen(playerBg == PlayerBackgroundStyle.RINGS) { RingsControls(prefs) }
+            PrefSecondsSlider(
+                title = com.music.vivi.compose.theme.backdropLevelName(),
+                value = playerDarkness.toFloat(),
+                valueRange = 0f..100f,
+                steps = 19,
+                valueLabel = { "${it.toInt()}%" },
+                liveUpdate = true,
+                defaultValue = com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness.toFloat(),
+                onCommit = { prefs.setInt(PrefKeys.PlayerBackgroundDarkness, it.toInt()) },
             )
+        }
+
+        SettingsSection("Canvas video") {
+            SwitchItem(
+                icon = Icons.Outlined.MovieFilter,
+                title = "Canvas video",
+                subtitle = "Animated album art in place of the cover when available, with any background",
+                checked = canvasOn,
+                onChecked = { prefs.setBoolean(PrefKeys.EnableCanvas, it) },
+            )
+            VisibleWhen(canvasOn) {
+                SettingsDivider()
+                ChoiceRow(
+                    icon = Icons.Outlined.AutoAwesome,
+                    title = "Canvas source",
+                    options = listOf(
+                        CanvasSource.AUTO to "Auto",
+                        CanvasSource.APPLE_MUSIC to "Apple",
+                        CanvasSource.TIDAL to "Tidal",
+                        CanvasSource.VIVIMUSIC to "VIVI",
+                    ),
+                    selected = prefs.enumPref(PrefKeys.CanvasSource, CanvasSource.AUTO),
+                    onSelect = { prefs.setString(PrefKeys.CanvasSource, it.name) },
+                )
+                SettingsDivider()
+                SwitchItem(
+                    icon = Icons.Outlined.MovieFilter,
+                    title = "Ping-pong canvas",
+                    subtitle = "Play forward, then backward; off uses a smooth forward loop",
+                    checked = prefs.getBoolean(PrefKeys.CanvasPingPong, false),
+                    onChecked = { prefs.setBoolean(PrefKeys.CanvasPingPong, it) },
+                )
+                AdvancedExpander(Icons.Outlined.Tune, "Advanced", "Hardware decoding") {
+                    SwitchItem(
+                        icon = Icons.Outlined.SmartDisplay,
+                        title = "Use GPU for canvas",
+                        subtitle = "Off uses CPU decoding; GPU decoding may crash on incompatible drivers",
+                        checked = prefs.getBoolean(PrefKeys.CanvasUseGpu, false),
+                        onChecked = { prefs.setBoolean(PrefKeys.CanvasUseGpu, it) },
+                    )
+                }
+            }
+        }
+
+        SettingsSection("Music video") {
+            val videoOn = prefs.getBoolean(PrefKeys.PlayerVideoEnabled, false)
+            SwitchItem(
+                icon = Icons.Outlined.SmartDisplay,
+                title = "Play music videos",
+                subtitle = "Replaces the cover or canvas when a video exists; uses more data and CPU",
+                checked = videoOn,
+                onChecked = { prefs.setBoolean(PrefKeys.PlayerVideoEnabled, it) },
+            )
+            VisibleWhen(videoOn) {
+                SettingsDivider()
+                val framing = com.music.vivi.compose.ui.player.video.VideoFraming.resolve(prefs.reader())
+                ChoiceRow(
+                    icon = Icons.Outlined.OpenInFull,
+                    title = "Video framing",
+                    subtitle = when (framing) {
+                        com.music.vivi.compose.ui.player.video.VideoFraming.Fit -> "Keeps the video's shape inside the square cover, with black bars"
+                        com.music.vivi.compose.ui.player.video.VideoFraming.Fill -> "Crops the video to fill the square cover"
+                        com.music.vivi.compose.ui.player.video.VideoFraming.Original -> "The cover morphs into the video's own shape, uncropped"
+                    },
+                    options = com.music.vivi.compose.ui.player.video.VideoFraming.entries.map { it to it.name.replace("Original", "Original size") },
+                    selected = framing,
+                    onSelect = { prefs.setString(PrefKeys.PlayerVideoFraming, it.name) },
+                )
+                SettingsDivider()
+                SettingsDropdownRow(
+                    icon = Icons.Outlined.Tune,
+                    title = "Video quality",
+                    subtitle = "Auto adapts to your connection speed",
+                    options = com.music.vivi.player.video.VideoQuality.entries.map { DropdownOption(it, it.label) },
+                    selected = com.music.vivi.player.video.VideoQuality.parse(prefs.getString(PrefKeys.PlayerVideoQuality, "AUTO")),
+                    onSelect = { prefs.setString(PrefKeys.PlayerVideoQuality, it.name) },
+                )
+            }
         }
 
         SettingsSection("Queue") {
@@ -969,6 +971,35 @@ fun NowPlayingSettingsScreen(navController: NavController) {
                 subtitle = "Restore the queue and position at startup",
                 checked = prefs.getBoolean(PrefKeys.PersistentQueue, true),
                 onChecked = { prefs.setBoolean(PrefKeys.PersistentQueue, it) },
+            )
+        }
+
+        SettingsSection("Lyrics") {
+            SettingsNavItem(
+                icon = Icons.Outlined.Lyrics,
+                title = "Lyrics",
+                subtitle = "Style, word-by-word sync, glow, animation, background",
+                onClick = { navController.navigate(Routes.SETTINGS_LYRICS) },
+            )
+            SettingsDivider()
+            val wordLevel = setOf(LyricsProvider.BETTER_LYRICS, LyricsProvider.PAXSENIX, LyricsProvider.YOULY_PLUS, LyricsProvider.MUSIXMATCH)
+            SettingsDropdownRow(
+                icon = Icons.Outlined.AutoAwesome,
+                title = "Lyrics provider",
+                options = LyricsProvider.entries
+                    .sortedBy { if (it in wordLevel) 0 else 1 }
+                    .map { DropdownOption(it, it.label, group = if (it in wordLevel) "Word-level" else "Line-level") },
+                selected = prefs.enumPref(PrefKeys.LyricsProvider, LyricsProvider.LRCLIB),
+                onSelect = { prefs.setString(PrefKeys.LyricsProvider, it.name) },
+            )
+        }
+
+        SettingsSection("Fullscreen") {
+            SettingsNavItem(
+                icon = Icons.Outlined.OpenInFull,
+                title = "Fullscreen player",
+                subtitle = "Layout, cover, controls, auto-hide, background overrides",
+                onClick = { navController.navigate(Routes.SETTINGS_FULLSCREEN_PLAYER) },
             )
         }
     }
@@ -1139,13 +1170,14 @@ fun PlayerSettingsScreen(navController: NavController) {
                 checked = crossfade,
                 onChecked = { prefs.setBoolean(PrefKeys.CrossfadeEnabled, it) },
             )
-            AnimatedVisibility(crossfade, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            VisibleWhen(crossfade) {
                 PrefSecondsSlider(
-                    title = "Length",
+                    title = "Crossfade length",
                     valueLabel = { "${it.toInt()} s" },
                     value = prefs.getInt(PrefKeys.CrossfadeSeconds, 3).toFloat(),
                     valueRange = 1f..10f,
                     steps = 8,
+                    defaultValue = 3f,
                     onCommit = { prefs.setInt(PrefKeys.CrossfadeSeconds, it.toInt().coerceIn(1, 10)) },
                 )
             }
@@ -1158,13 +1190,14 @@ fun PlayerSettingsScreen(navController: NavController) {
                 checked = playPauseFade,
                 onChecked = { prefs.setBoolean(PrefKeys.PlayPauseFadeEnabled, it) },
             )
-            AnimatedVisibility(playPauseFade, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+            VisibleWhen(playPauseFade) {
                 PrefSecondsSlider(
-                    title = "Length",
+                    title = "Fade length",
                     valueLabel = { String.format("%.1f s", it) },
                     value = prefs.getFloat(PrefKeys.PlayPauseFadeSeconds, 0.5f),
                     valueRange = 0.2f..3f,
                     steps = 27,
+                    defaultValue = 0.5f,
                     onCommit = {
                         prefs.setFloat(PrefKeys.PlayPauseFadeSeconds, (kotlin.math.round(it * 10f) / 10f).coerceIn(0.2f, 3f))
                     },
@@ -1172,28 +1205,33 @@ fun PlayerSettingsScreen(navController: NavController) {
             }
         }
 
-        SettingsSection("Integrations") {
+        SettingsSection("Discord") {
+            val rpc = prefs.getBoolean(PrefKeys.DiscordRpcEnabled, true)
             SwitchItem(
                 icon = Icons.Outlined.Groups,
                 title = "Discord Rich Presence",
                 subtitle = "Show what you're listening to",
-                checked = prefs.getBoolean(PrefKeys.DiscordRpcEnabled, true),
+                checked = rpc,
                 onChecked = { prefs.setBoolean(PrefKeys.DiscordRpcEnabled, it) },
             )
-            SwitchItem(
-                icon = Icons.Outlined.Groups,
-                title = "Discord: song button",
-                subtitle = "Add a button that opens the current song on YouTube Music",
-                checked = prefs.getBoolean(PrefKeys.DiscordRpcSongButton, false),
-                onChecked = { prefs.setBoolean(PrefKeys.DiscordRpcSongButton, it) },
-            )
-            SwitchItem(
-                icon = Icons.Outlined.Groups,
-                title = "Discord: VIsage button",
-                subtitle = "Add a button that opens the VIsage GitHub page",
-                checked = prefs.getBoolean(PrefKeys.DiscordRpcVisageButton, false),
-                onChecked = { prefs.setBoolean(PrefKeys.DiscordRpcVisageButton, it) },
-            )
+            VisibleWhen(rpc) {
+                SettingsDivider()
+                SwitchItem(
+                    icon = Icons.Outlined.Groups,
+                    title = "Discord: song button",
+                    subtitle = "Add a button that opens the current song on YouTube Music",
+                    checked = prefs.getBoolean(PrefKeys.DiscordRpcSongButton, false),
+                    onChecked = { prefs.setBoolean(PrefKeys.DiscordRpcSongButton, it) },
+                )
+                SettingsDivider()
+                SwitchItem(
+                    icon = Icons.Outlined.Groups,
+                    title = "Discord: VIsage button",
+                    subtitle = "Add a button that opens the VIsage GitHub page",
+                    checked = prefs.getBoolean(PrefKeys.DiscordRpcVisageButton, false),
+                    onChecked = { prefs.setBoolean(PrefKeys.DiscordRpcVisageButton, it) },
+                )
+            }
         }
     }
 }
@@ -1234,6 +1272,7 @@ fun DownloadsSettingsScreen(navController: NavController) {
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     label = { Text("Folder") },
+                    supportingText = { Text("Default: VIsage's own offline folder") },
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                     TextButton(onClick = {
@@ -1251,10 +1290,10 @@ fun DownloadsSettingsScreen(navController: NavController) {
             }
         }
 
-        SettingsSection("File") {
+        SettingsSection("Output") {
             ChoiceRow(
                 icon = Icons.Outlined.Download,
-                title = "Format",
+                title = "Download format",
                 options = DownloadAudioFormat.entries.map { it to it.label },
                 selected = prefs.enumPref(PrefKeys.DownloadFormat, DownloadAudioFormat.OPUS),
                 onSelect = { prefs.setString(PrefKeys.DownloadFormat, it.name) },
@@ -1262,7 +1301,7 @@ fun DownloadsSettingsScreen(navController: NavController) {
             SettingsDivider()
             ChoiceRow(
                 icon = Icons.Outlined.HighQuality,
-                title = "Quality",
+                title = "Download quality",
                 options = DownloadAudioQuality.entries.map { it to it.label },
                 selected = prefs.enumPref(PrefKeys.DownloadQuality, DownloadAudioQuality.BEST),
                 onSelect = { prefs.setString(PrefKeys.DownloadQuality, it.name) },
@@ -1296,23 +1335,18 @@ fun AccountSettingsScreen(navController: NavController) {
     var loginKey by remember { mutableStateOf(0) }
     SettingsPage(title = "Account", onBack = { navController.navigateUp() }) {
         AccountCard(account, error, onClick = null)
-        Text(
-            "Your session is stored on this device. Sign in again below if it expires.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 16.dp),
-        )
         if (account != null) {
-            Row(Modifier.padding(horizontal = 4.dp).padding(bottom = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                com.music.vivi.compose.ui.expressive.ExpressiveButton(
-                    text = "Manage Google account",
+            SettingsSection("Manage") {
+                SettingsNavItem(
+                    icon = Icons.Outlined.AccountCircle,
+                    title = "Manage Google account",
+                    subtitle = "Opens myaccount.google.com in your browser",
                     onClick = { openExternalUrl("https://myaccount.google.com/") },
-                    style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Tonal,
                 )
-                com.music.vivi.compose.ui.expressive.ExpressiveButton(
-                    text = "Sign out",
+                SettingsDivider()
+                SettingsRowFrame(
+                    Icons.AutoMirrored.Outlined.Logout, "Sign out", "Your session is stored on this device; this removes it",
                     onClick = { confirmSignOut = true },
-                    style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Outlined,
                 )
             }
         }
@@ -1330,22 +1364,26 @@ fun AccountSettingsScreen(navController: NavController) {
                 },
             )
         }
-        ManualCookieSection(
-            onImported = { info ->
-                account = info
-                error = null
-                loginKey++
-            },
-        )
-        androidx.compose.runtime.key(loginKey) { com.music.vivi.compose.ui.YtLoginPanel(
-            modifier = Modifier.padding(horizontal = 4.dp),
-            onLoggedIn = {
-                scope.launch {
+        SettingsSection("Cookie") {
+            ManualCookieSection(
+                onImported = { info ->
+                    account = info
                     error = null
-                    yt.accountInfo().onSuccess { account = it }.onFailure { error = it.message ?: it.toString() }
-                }
-            },
-        ) }
+                    loginKey++
+                },
+            )
+        }
+        SettingsSection("Sign in") {
+            androidx.compose.runtime.key(loginKey) { com.music.vivi.compose.ui.YtLoginPanel(
+                modifier = Modifier.padding(horizontal = 4.dp),
+                onLoggedIn = {
+                    scope.launch {
+                        error = null
+                        yt.accountInfo().onSuccess { account = it }.onFailure { error = it.message ?: it.toString() }
+                    }
+                },
+            ) }
+        }
     }
 }
 
@@ -1353,63 +1391,65 @@ fun AccountSettingsScreen(navController: NavController) {
 @Composable
 private fun ManualCookieSection(onImported: (AccountInfo) -> Unit) {
     val scope = androidx.compose.runtime.rememberCoroutineScope()
-    var expanded by remember { mutableStateOf(false) }
     var text by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
-    Column(Modifier.padding(horizontal = 4.dp).padding(bottom = 16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        com.music.vivi.compose.ui.expressive.ExpressiveButton(
-            text = if (expanded) "Hide cookie import" else "Import cookie manually",
-            onClick = { expanded = !expanded },
-            style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Tonal,
-        )
-        AnimatedVisibility(expanded) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    "Use this if signing in above gives you no recommendations or the wrong account " +
-                        "(common with accounts that were once Google+ or have a separate YouTube channel).\n\n" +
-                        "1. In your normal browser, open music.youtube.com and make sure you are on the right " +
-                        "account (profile picture → Switch account).\n" +
-                        "2. Open developer tools (F12) → Network tab, reload, and click any request to " +
-                        "music.youtube.com (e.g. one named \"browse\").\n" +
-                        "3. Under Request Headers, copy the whole value of \"cookie\" and paste it below. " +
-                        "A cookies.txt export of youtube.com also works.\n\n" +
-                        "The cookie is a login key: never share it. It is stored only on this device, " +
-                        "and signing out of Google in your browser invalidates it.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+    var showHelp by remember { mutableStateOf(false) }
+    AdvancedExpander(
+        Icons.Outlined.Tune, "Import cookie manually",
+        "Use it when sign-in shows no recommendations or the wrong account",
+    ) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            VisageTextField(
+                value = text,
+                onValueChange = { text = it },
+                label = { Text("Cookie") },
+                singleLine = true,
+                password = true,
+                supportingText = { Text("A login key: never share it. Stored only on this device") },
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                com.music.vivi.compose.ui.expressive.ExpressiveButton(
+                    text = if (busy) "Checking…" else "Import",
+                    enabled = text.isNotBlank() && !busy,
+                    onClick = {
+                        busy = true
+                        message = null
+                        scope.launch {
+                            com.music.vivi.player.login.ManualCookieImport.import(text)
+                                .onSuccess { info ->
+                                    text = ""
+                                    message = "Signed in as ${info.name}."
+                                    onImported(info)
+                                }
+                                .onFailure { message = it.message ?: it.toString() }
+                            busy = false
+                        }
+                    },
                 )
-                VisageTextField(
-                    value = text,
-                    onValueChange = { text = it },
-                    label = { Text("Cookie") },
-                    minLines = 3,
-                    maxLines = 6,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    com.music.vivi.compose.ui.expressive.ExpressiveButton(
-                        text = if (busy) "Checking…" else "Import",
-                        enabled = text.isNotBlank() && !busy,
-                        onClick = {
-                            busy = true
-                            message = null
-                            scope.launch {
-                                com.music.vivi.player.login.ManualCookieImport.import(text)
-                                    .onSuccess { info ->
-                                        text = ""
-                                        message = "Signed in as ${info.name}."
-                                        onImported(info)
-                                    }
-                                    .onFailure { message = it.message ?: it.toString() }
-                                busy = false
-                            }
-                        },
-                    )
-                    message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
-                }
+                TextButton(onClick = { showHelp = true }) { Text("How to find it") }
             }
+            message?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
+    }
+    if (showHelp) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showHelp = false },
+            title = { Text("Finding your cookie") },
+            text = {
+                Text(
+                    "1. In your normal browser, open music.youtube.com and make sure you are on the right " +
+                        "account (profile picture, Switch account).\n" +
+                        "2. Open developer tools (F12), Network tab, reload, and click any request to " +
+                        "music.youtube.com (for example one named \"browse\").\n" +
+                        "3. Under Request Headers, copy the whole value of \"cookie\" and paste it here. " +
+                        "A cookies.txt export of youtube.com also works.\n\n" +
+                        "Signing out of Google in your browser invalidates the cookie.",
+                )
+            },
+            confirmButton = { TextButton(onClick = { showHelp = false }) { Text("Close") } },
+        )
     }
 }
 
@@ -1492,6 +1532,8 @@ private fun SettingsGroupCard(content: @Composable ColumnScope.() -> Unit) {
 internal fun SettingsSection(
     title: String,
     @Suppress("UNUSED_PARAMETER") initiallyExpanded: Boolean = true,
+    /** Live preview shown between the heading and the card (see [PreviewFrame]). */
+    preview: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Column(Modifier.fillMaxWidth()) {
@@ -1502,6 +1544,10 @@ internal fun SettingsSection(
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(start = 8.dp, top = 24.dp, bottom = 8.dp),
         )
+        if (preview != null) {
+            preview()
+            Spacer(Modifier.height(8.dp))
+        }
         SettingsGroupCard(content)
     }
 }
@@ -1677,6 +1723,7 @@ internal fun <T> ChoiceRow(
     title: String,
     options: List<Pair<T, String>>,
     selected: T,
+    subtitle: String? = null,
     onSelect: (T) -> Unit,
 ) {
     var local by remember(selected) { mutableStateOf(selected) }
@@ -1691,10 +1738,10 @@ internal fun <T> ChoiceRow(
             )
         }
         if (inline) {
-            SettingsRowFrame(icon, title, null, onClick = null, extraText = options.joinToString(" ") { it.second }) { segmented(Modifier.widthIn(max = 380.dp)) }
+            SettingsRowFrame(icon, title, subtitle, onClick = null, extraText = options.joinToString(" ") { it.second }) { segmented(Modifier.widthIn(max = 380.dp)) }
         } else {
             Column {
-                SettingsRowFrame(icon, title, null, onClick = null, extraText = options.joinToString(" ") { it.second })
+                SettingsRowFrame(icon, title, subtitle, onClick = null, extraText = options.joinToString(" ") { it.second })
                 segmented(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
             }
         }
@@ -1734,6 +1781,10 @@ internal fun <T> ChipChoiceRow(
     }
 }
 
+/**
+ * A numeric setting: title and value on one line, the slider full width below. [liveUpdate] also commits while dragging, so
+ * previews follow the thumb. [defaultValue] adds a reset button that shows while the value differs from it.
+ */
 @Composable
 internal fun PrefSecondsSlider(
     title: String,
@@ -1742,27 +1793,69 @@ internal fun PrefSecondsSlider(
     steps: Int,
     valueLabel: (Float) -> String,
     onCommit: (Float) -> Unit,
+    liveUpdate: Boolean = false,
+    defaultValue: Float? = null,
 ) {
     var local by remember(value) { mutableFloatStateOf(value) }
-    Row(
-        Modifier.fillMaxWidth().padding(start = 56.dp, end = 16.dp, bottom = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(title, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    Column(Modifier.fillMaxWidth().padding(start = 56.dp, end = 16.dp, top = 4.dp, bottom = 8.dp)) {
+        Row(Modifier.fillMaxWidth().height(32.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                highlighted(title), style = MaterialTheme.typography.bodyLarge,
+                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f),
+            )
+            if (defaultValue != null && kotlin.math.abs(local - defaultValue) > 1e-4f) {
+                IconButton(onClick = { local = defaultValue; onCommit(defaultValue) }, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Outlined.Restore, "Reset to default", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
+                }
+            }
+            Text(
+                valueLabel(local),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                modifier = Modifier.widthIn(min = 56.dp),
+            )
+        }
         Slider(
             value = local.coerceIn(valueRange.start, valueRange.endInclusive),
-            onValueChange = { local = it },
+            onValueChange = { local = it; if (liveUpdate) onCommit(it) },
             onValueChangeFinished = { onCommit(local) },
             valueRange = valueRange,
             steps = steps,
-            modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-        )
-        Text(
-            valueLabel(local),
-            style = MaterialTheme.typography.labelLarge,
-            modifier = Modifier.widthIn(min = 40.dp),
+            modifier = Modifier.fillMaxWidth(),
         )
     }
+}
+
+/** Rows that belong to the switch/value above them: they slide in below it only while [visible]. */
+@Composable
+internal fun VisibleWhen(visible: Boolean, content: @Composable ColumnScope.() -> Unit) {
+    AnimatedVisibility(
+        visible,
+        enter = expandVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+        exit = shrinkVertically(spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut(),
+    ) { Column(content = content) }
+}
+
+/** A row that reveals secondary rows under it; collapsed by default. */
+@Composable
+internal fun AdvancedExpander(
+    icon: ImageVector,
+    title: String,
+    subtitle: String?,
+    initiallyOpen: Boolean = false,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    var open by remember { mutableStateOf(initiallyOpen) }
+    val turn by androidx.compose.animation.core.animateFloatAsState(if (open) 180f else 0f, label = "expander")
+    SettingsRowFrame(icon, title, subtitle, onClick = { open = !open }) {
+        Icon(
+            Icons.Outlined.ExpandMore, if (open) "Collapse" else "Expand",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.graphicsLayer { rotationZ = turn },
+        )
+    }
+    VisibleWhen(open, content)
 }
 
 private const val SUPPORT_URL = "https://ko-fi.com/vndreiii"
@@ -1781,39 +1874,38 @@ internal fun openExternalUrl(url: String) {
 }
 
 
-/** Spawn point and size of the Rings background; shown wherever the Rings style can be picked. */
+/** Spawn point and size of the Rings background; shown (collapsed) under every style picker that offers Rings. */
 @Composable
-internal fun RingsControls(prefs: DesktopPrefs, showIntro: Boolean = false) {
-    if (showIntro) {
-        Text(
-            "For the Rings background style (page, Now Playing, mini-player): where the rings spread from and how big they are.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 4.dp),
-        )
+internal fun RingsControls(prefs: DesktopPrefs, @Suppress("UNUSED_PARAMETER") showIntro: Boolean = false) {
+    AdvancedExpander(Icons.Outlined.Tune, "Ring placement", "Where the rings spread from and how big they are") {
+        RingsSliders(prefs)
     }
+}
+
+@Composable
+private fun RingsSliders(prefs: DesktopPrefs) {
     PrefSecondsSlider(
         title = "Spawn X", value = prefs.getFloat(PrefKeys.RingsOriginX, 0.20f), valueRange = 0f..1f, steps = 19,
-        valueLabel = { "${(it * 100).toInt()}%" }, onCommit = { prefs.setFloat(PrefKeys.RingsOriginX, it) },
+        valueLabel = { "${(it * 100).toInt()}%" }, liveUpdate = true, defaultValue = 0.20f, onCommit = { prefs.setFloat(PrefKeys.RingsOriginX, it) },
     )
     PrefSecondsSlider(
         title = "Spawn Y", value = prefs.getFloat(PrefKeys.RingsOriginY, 0.50f), valueRange = 0f..1f, steps = 19,
-        valueLabel = { "${(it * 100).toInt()}%" }, onCommit = { prefs.setFloat(PrefKeys.RingsOriginY, it) },
+        valueLabel = { "${(it * 100).toInt()}%" }, liveUpdate = true, defaultValue = 0.50f, onCommit = { prefs.setFloat(PrefKeys.RingsOriginY, it) },
     )
     PrefSecondsSlider(
         title = "Ring size", value = prefs.getFloat(PrefKeys.RingsScale, 1.6f), valueRange = 0.5f..5f, steps = 44,
-        valueLabel = { "%.1f×".format(it) }, onCommit = { prefs.setFloat(PrefKeys.RingsScale, it) },
+        valueLabel = { "%.1f×".format(it) }, liveUpdate = true, defaultValue = 1.6f, onCommit = { prefs.setFloat(PrefKeys.RingsScale, it) },
     )
     PrefSecondsSlider(
         title = "Ring opacity", value = prefs.getFloat(PrefKeys.RingsOpacity, 0.8f), valueRange = 0.1f..1f, steps = 17,
-        valueLabel = { "${(it * 100).toInt()}%" }, onCommit = { prefs.setFloat(PrefKeys.RingsOpacity, it) },
+        valueLabel = { "${(it * 100).toInt()}%" }, liveUpdate = true, defaultValue = 0.8f, onCommit = { prefs.setFloat(PrefKeys.RingsOpacity, it) },
     )
     PrefSecondsSlider(
         title = "Reaction level", value = prefs.getFloat(PrefKeys.RingsReaction, 1f), valueRange = 0f..2f, steps = 19,
-        valueLabel = { if (it <= 0f) "Off" else "${(it * 100).toInt()}%" }, onCommit = { prefs.setFloat(PrefKeys.RingsReaction, it) },
+        valueLabel = { if (it <= 0f) "Off" else "${(it * 100).toInt()}%" }, liveUpdate = true, defaultValue = 1f, onCommit = { prefs.setFloat(PrefKeys.RingsReaction, it) },
     )
     PrefSecondsSlider(
         title = "Smoothing", value = prefs.getFloat(PrefKeys.RingsSmoothing, 0f), valueRange = 0f..1f, steps = 19,
-        valueLabel = { if (it <= 0f) "Off" else "${(it * 100).toInt()}%" }, onCommit = { prefs.setFloat(PrefKeys.RingsSmoothing, it) },
+        valueLabel = { if (it <= 0f) "Off" else "${(it * 100).toInt()}%" }, liveUpdate = true, defaultValue = 0f, onCommit = { prefs.setFloat(PrefKeys.RingsSmoothing, it) },
     )
 }
