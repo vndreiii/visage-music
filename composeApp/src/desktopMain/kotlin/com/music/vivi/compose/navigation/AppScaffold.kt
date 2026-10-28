@@ -149,9 +149,11 @@ fun FrameWindowScope.AppScaffold(
     val libraryState = if (libraryAllowed) sidebarCfg.libraryState else LibrarySidebarState.HIDDEN
     val queueAuto = Sidebars.queueAutoOpenOnHome(current, sidebarCfg, queueDismissedOnHome)
     val queueRailOn = (pinnedQueue || queueAuto) && !fullscreenQueue && !onFullscreenPlayer
+    // The rail that opened itself on Home stays when you navigate (Search, Library, ...): it only goes when closed.
+    LaunchedEffect(queueAuto) { if (queueAuto && !onFullscreenPlayer) pinnedQueue = true }
     fun closePinnedQueue() {
         pinnedQueue = false
-        if (queueAuto) queueDismissedOnHome = true
+        if (sidebarCfg.queueOnHome) queueDismissedOnHome = true
     }
     fun setLibraryState(state: LibrarySidebarState) = prefs.setString(SidebarKeys.LibraryState, state.name)
     fun toggleLibrary() {
