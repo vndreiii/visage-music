@@ -41,6 +41,8 @@ import com.music.vivi.compose.navigation.Routes
 import com.music.vivi.compose.ui.component.NavigationTitle
 import com.music.vivi.compose.ui.component.rememberNowPlayingIds
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 import com.music.vivi.compose.ui.library.LazyCoverImage
 import com.music.vivi.compose.ui.motion.VisageMotion
 import com.music.vivi.database.LocalMusicRepository
@@ -113,7 +115,7 @@ fun ArtistInfoScreen(name: String, navController: NavController) {
     val state = rememberLazyListState()
     LazyColumn(
         state = state,
-        modifier = Modifier.fillMaxSize().smoothWheelScroll(state),
+        modifier = Modifier.fillMaxSize().pageScrollEdge { state.edgeProgress() }.smoothWheelScroll(state),
         contentPadding = PaddingValues(bottom = MiniPlayerClearance),
     ) {
         item(key = "toolbar") { ArtistBackBar { navController.navigateUp() } }

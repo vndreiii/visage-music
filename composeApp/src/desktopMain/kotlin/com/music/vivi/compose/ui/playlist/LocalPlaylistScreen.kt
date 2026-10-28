@@ -61,6 +61,8 @@ import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.VisageBackButton
 import com.music.vivi.compose.ui.component.rememberNowPlayingIds
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 import com.music.vivi.compose.ui.library.sidebar.toQueueTrack
 import com.music.vivi.database.LibraryRepository
 import com.music.vivi.database.Playlist
@@ -109,7 +111,7 @@ fun LocalPlaylistScreen(playlistId: String, navController: NavController) {
 
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize().smoothWheelScroll(listState),
+        modifier = Modifier.fillMaxSize().pageScrollEdge { listState.edgeProgress() }.smoothWheelScroll(listState),
         contentPadding = PaddingValues(bottom = MiniPlayerClearance),
     ) {
         item(key = "back") {

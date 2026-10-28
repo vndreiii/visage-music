@@ -12,6 +12,8 @@ import com.music.vivi.compose.ui.component.PageInset
 import com.music.vivi.compose.ui.component.PageHeaderBottomPadding
 import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
@@ -172,7 +174,7 @@ fun ArtistScreen(
             LazyColumn(
                 state = smoothScroll1,
                 modifier = Modifier.fillMaxSize()
-                    .smoothWheelScroll(smoothScroll1),
+                    .pageScrollEdge { smoothScroll1.edgeProgress() }.smoothWheelScroll(smoothScroll1),
                 contentPadding = PaddingValues(top = 12.dp, bottom = MiniPlayerClearance),
             ) {
                 item(key = "toolbar") { ArtistBackBar { navController.navigateUp() } }

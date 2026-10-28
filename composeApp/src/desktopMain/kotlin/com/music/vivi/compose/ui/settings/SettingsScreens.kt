@@ -143,6 +143,8 @@ import com.music.vivi.compose.theme.label
 import com.music.vivi.compose.theme.toKolor
 import com.music.vivi.compose.ui.component.InteractionCornerRadius
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 import com.music.vivi.compose.ui.player.canvas.CanvasSource
 import com.music.vivi.compose.ui.resolveMiniPlayerStyle
 import com.music.vivi.core.youtube.YouTubeMusicService
@@ -1449,7 +1451,7 @@ internal fun SettingsPage(
     val scroll = rememberScrollState()
     val viewport = remember(scroll) { SettingsViewport(scroll) }
     androidx.compose.runtime.CompositionLocalProvider(LocalSettingsViewport provides viewport) {
-    Box(Modifier.fillMaxSize().settingsViewport(viewport).smoothWheelScroll(scroll).verticalScroll(scroll), contentAlignment = Alignment.TopCenter) {
+    Box(Modifier.fillMaxSize().pageScrollEdge { scroll.edgeProgress() }.settingsViewport(viewport).smoothWheelScroll(scroll).verticalScroll(scroll), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier
                 .widthIn(max = if (adwaita) 600.dp else 760.dp)

@@ -8,6 +8,8 @@ import com.music.vivi.compose.ui.expressive.VisageTextField
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -157,7 +159,7 @@ fun OnlinePlaylistScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
-                    .smoothWheelScroll(listState),
+                    .pageScrollEdge { listState.edgeProgress() }.smoothWheelScroll(listState),
                 // Mini player floats over the list — keep last tracks reachable.
                 contentPadding = PaddingValues(bottom = MiniPlayerClearance),
             ) {

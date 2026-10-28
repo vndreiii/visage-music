@@ -4,6 +4,8 @@ import com.music.vivi.compose.ui.component.MiniPlayerClearance
 import com.music.vivi.compose.ui.onboarding.tourAnchor
 import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -1081,7 +1083,7 @@ private fun LikedList(
         val smoothScroll2 = androidx.compose.foundation.lazy.rememberLazyListState()
         LazyColumn(
             state = smoothScroll2,contentPadding = PaddingValues(bottom = MiniPlayerClearance),
-            modifier = Modifier.smoothWheelScroll(smoothScroll2),
+            modifier = Modifier.pageScrollEdge { smoothScroll2.edgeProgress() }.smoothWheelScroll(smoothScroll2),
         ) {
             items(songs, key = { it.id }) { song ->
                 YouTubeListItem(
@@ -1110,7 +1112,7 @@ private fun LocalTrackList(
     val smoothScroll3 = androidx.compose.foundation.lazy.rememberLazyListState()
     LazyColumn(
         state = smoothScroll3,contentPadding = PaddingValues(bottom = MiniPlayerClearance),
-        modifier = Modifier.smoothWheelScroll(smoothScroll3),
+        modifier = Modifier.pageScrollEdge { smoothScroll3.edgeProgress() }.smoothWheelScroll(smoothScroll3),
     ) {
         items(tracks, key = { it.id }) { track ->
             val id = "local:${track.id}"
@@ -1185,7 +1187,7 @@ private fun RecentMixedList(
     val smoothScroll4 = androidx.compose.foundation.lazy.rememberLazyListState()
     LazyColumn(
         state = smoothScroll4,contentPadding = PaddingValues(bottom = MiniPlayerClearance),
-        modifier = Modifier.smoothWheelScroll(smoothScroll4),
+        modifier = Modifier.pageScrollEdge { smoothScroll4.edgeProgress() }.smoothWheelScroll(smoothScroll4),
     ) {
         if (localRecent.isNotEmpty()) {
             item {
@@ -1256,7 +1258,7 @@ private fun OfflineList(
             val smoothScroll5 = androidx.compose.foundation.lazy.rememberLazyListState()
             LazyColumn(
                 state = smoothScroll5,contentPadding = PaddingValues(bottom = MiniPlayerClearance),
-                modifier = Modifier.smoothWheelScroll(smoothScroll5),
+                modifier = Modifier.pageScrollEdge { smoothScroll5.edgeProgress() }.smoothWheelScroll(smoothScroll5),
             ) {
                 items(tracks, key = { it.video_id }) { track ->
                     val id = "offline:${track.video_id}"
@@ -1336,7 +1338,7 @@ private fun LocalAlbumsGrid(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxSize()
-            .smoothWheelScroll(smoothScroll6),
+            .pageScrollEdge { smoothScroll6.edgeProgress() }.smoothWheelScroll(smoothScroll6),
     ) {
         items(albums, key = { "l-${it.id}" }) { album ->
             LocalCoverCard(
@@ -1378,7 +1380,7 @@ private fun LocalArtistsGrid(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxSize()
-            .smoothWheelScroll(smoothScroll7),
+            .pageScrollEdge { smoothScroll7.edgeProgress() }.smoothWheelScroll(smoothScroll7),
     ) {
         items(artists, key = { "l-${it.id}" }) { artist ->
             com.music.vivi.compose.ui.artist.ArtistTile(
@@ -1430,7 +1432,7 @@ private fun PlaylistsGrid(
                 contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = MiniPlayerClearance),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize().smoothWheelScroll(smoothScroll8),
+                modifier = Modifier.fillMaxSize().pageScrollEdge { smoothScroll8.edgeProgress() }.smoothWheelScroll(smoothScroll8),
             ) {
                 items(playlists, key = { it.id }) { pl ->
                     YouTubeGridItem(

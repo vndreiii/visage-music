@@ -53,6 +53,8 @@ import com.music.innertube.models.YTItem
 import com.music.vivi.compose.ui.component.YouTubeGridItem
 import com.music.vivi.compose.ui.component.horizontalWheelScroll
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 import com.music.vivi.database.LocalMusicRepository
 import com.music.vivi.database.Local_album
 import com.music.vivi.database.Local_artist
@@ -106,7 +108,7 @@ internal fun LibraryHomeFeed(
     LazyColumn(
         state = state,
         contentPadding = PaddingValues(bottom = MiniPlayerClearance),
-        modifier = Modifier.fillMaxSize().smoothWheelScroll(state),
+        modifier = Modifier.fillMaxSize().pageScrollEdge { state.edgeProgress() }.smoothWheelScroll(state),
     ) {
         item(key = "local-header") {
             SectionContainer(

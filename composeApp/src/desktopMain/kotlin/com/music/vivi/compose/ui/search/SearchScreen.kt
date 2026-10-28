@@ -5,6 +5,8 @@ import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -470,7 +472,7 @@ fun SearchScreen(navController: NavController) {
                     LazyColumn(
                         state = listState,
                         contentPadding = PaddingValues(bottom = MiniPlayerClearance),
-                        modifier = Modifier.smoothWheelScroll(listState),
+                        modifier = Modifier.pageScrollEdge { listState.edgeProgress() }.smoothWheelScroll(listState),
                     ) {
                         if (suggestions.isNotEmpty()) {
                             item {
@@ -521,7 +523,7 @@ fun SearchScreen(navController: NavController) {
                     LazyColumn(
                         state = listState,
                         contentPadding = PaddingValues(bottom = MiniPlayerClearance),
-                        modifier = Modifier.smoothWheelScroll(listState),
+                        modifier = Modifier.pageScrollEdge { listState.edgeProgress() }.smoothWheelScroll(listState),
                     ) {
                         if (filter == SearchFilterType.ALL) {
                             renderLocalHits(localHits) { i ->
@@ -606,7 +608,7 @@ fun SearchScreen(navController: NavController) {
                             LazyColumn(
                                 state = listState,
                                 contentPadding = PaddingValues(bottom = MiniPlayerClearance),
-                                modifier = Modifier.smoothWheelScroll(listState),
+                                modifier = Modifier.pageScrollEdge { listState.edgeProgress() }.smoothWheelScroll(listState),
                             ) {
                                 item {
                                     Text(

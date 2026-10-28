@@ -4,6 +4,8 @@ import com.music.vivi.compose.ui.component.MiniPlayerClearance
 import kotlinx.coroutines.yield
 import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 import kotlinx.coroutines.withContext
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.derivedStateOf
@@ -528,7 +530,7 @@ private fun HomeScreenContent(navController: NavController, vm: HomeViewModel) {
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize()
-                            .smoothWheelScroll(listState),
+                            .pageScrollEdge { listState.edgeProgress() }.smoothWheelScroll(listState),
                         contentPadding = PaddingValues(top = 4.dp, bottom = MiniPlayerClearance),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
