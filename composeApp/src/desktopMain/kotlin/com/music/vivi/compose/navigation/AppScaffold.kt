@@ -4,6 +4,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.layout.layout
 import kotlin.math.roundToInt
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -273,8 +274,11 @@ fun FrameWindowScope.AppScaffold(
                 val libVisible = libraryState != LibrarySidebarState.HIDDEN
                 val libLeft = libVisible && sidebarCfg.librarySide == SidebarSide.LEFT
                 val libRight = libVisible && sidebarCfg.librarySide == SidebarSide.RIGHT
-                val queueLeft = queueRailOn && sidebarCfg.queueSide == SidebarSide.LEFT
-                val queueRight = queueRailOn && sidebarCfg.queueSide == SidebarSide.RIGHT
+                // On the fullscreen player the pinned queue floats over the page (its blurred backdrop absorbs it)
+                // instead of narrowing it, so the big cover never reflows.
+                val queueOverlay = current == Routes.NOW_PLAYING_FULLSCREEN
+                val queueLeft = queueRailOn && sidebarCfg.queueSide == SidebarSide.LEFT && !queueOverlay
+                val queueRight = queueRailOn && sidebarCfg.queueSide == SidebarSide.RIGHT && !queueOverlay
                 val libWidth = Sidebars.libraryWidthFor(
                     available = maxWidth.value.toInt(),
                     queueWidth = if (queueRailOn) SidebarConfig.QueueWidth else 0,
@@ -371,6 +375,19 @@ fun FrameWindowScope.AppScaffold(
                     )
                                     }
 }
+                if (queueOverlay) {
+                    val overlayLeft = sidebarCfg.queueSide == SidebarSide.LEFT
+                    AnimatedQueuePinnedRail(
+                        visible = queueRailOn,
+                        onDismiss = { closePinnedQueue() },
+                        onExpandFullscreen = { openFullscreenQueue() },
+                        modifier = Modifier
+                            .align(if (overlayLeft) Alignment.CenterStart else Alignment.CenterEnd)
+                            .fillMaxHeight()
+                            .padding(8.dp),
+                        fromStart = overlayLeft,
+                    )
+                }
             }
             if (!onNowPlaying && !miniAtRoot) {
                 // At window level (not inside the inset, rounded pane) so the pill sits flush on the bottom edge,

@@ -2,57 +2,73 @@ package com.music.vivi.compose.ui.player
 
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import com.music.vivi.compose.prefs.FullscreenCoverSide
 
-/** Where the Now Playing stack and the lyrics column sit across the fullscreen page's content width. */
-internal data class LyricsSplit(
-    val stackLeft: Dp,
-    /** Width the stack gets: its natural width unless the window is too narrow to fit the lyrics next to it. */
-    val stackWidth: Dp,
-    val lyricsLeft: Dp,
-    val lyricsWidth: Dp,
+/**
+ * Rectangles (relative to the fullscreen content area) for the big cover / video and for the column that
+ * holds lyrics on top of the controls. [stacked] is the compact narrow-window fallback: cover above column.
+ */
+internal data class FullscreenSplit(
+    val coverX: Dp,
+    val coverY: Dp,
+    /** Side of the square cover slot (0 when the cover is hidden). */
+    val coverSize: Dp,
+    val columnX: Dp,
+    val columnY: Dp,
+    val columnWidth: Dp,
+    val columnHeight: Dp,
+    val stacked: Boolean,
 )
-
-/** Cover and controls widths after fitting the stack into a narrower width. */
-internal data class StackFit(val cover: Dp, val controls: Dp)
 
 internal object FullscreenLyricsLayout {
     val Gap = 48.dp
-    val PreferredLyricsWidth = 560.dp
-    val MinLyricsWidth = 380.dp
-    val MinStackWidth = 340.dp
-    private val MinControls = 320.dp
-    private val MinCover = 140.dp
-
-    /** Left edge of a [natural]-wide stack centred in [available] (the lyrics-off layout). */
-    fun centeredLeft(available: Dp, natural: Dp): Dp = ((available - natural) / 2f).coerceAtLeast(0.dp)
+    val StackedGap = 24.dp
+    /** Narrowest lyrics / controls column worth showing next to the cover. */
+    val MinColumn = 360.dp
+    val MaxColumn = 720.dp
+    val MinCover = 220.dp
+    /** The square never takes more than this share of the width. */
+    const val MaxCoverFraction = 0.6f
+    /** Smallest cover in the stacked fallback. */
+    val MinStackedCover = 140.dp
+    /** Share of the height the stacked fallback gives the cover. */
+    const val StackedCoverFraction = 0.36f
 
     /**
-     * Lyrics on: the stack keeps its [natural] width and slides left only as far as needed so a
-     * [PreferredLyricsWidth] column fits to its right. When even a flush-left stack leaves less than
-     * [MinLyricsWidth], the stack shrinks (down to [MinStackWidth]) to make room.
+     * Cover square as tall as the whole area ([height]) but at most [MaxCoverFraction] of [width], scaled by
+     * [scale]. It shrinks (never below [MinCover]) before it crowds the column below [MinColumn]; when even
+     * that does not fit the layout [FullscreenSplit.stacked] — cover above, column below.
      */
-    fun split(available: Dp, natural: Dp): LyricsSplit {
-        val centered = centeredLeft(available, natural)
-        val shift = (centered + natural + Gap + PreferredLyricsWidth - available).coerceAtLeast(0.dp)
-        val left = (centered - shift).coerceAtLeast(0.dp)
-        val roomRight = available - (left + natural + Gap)
-        if (roomRight >= MinLyricsWidth) {
-            return LyricsSplit(left, natural, left + natural + Gap, minOf(roomRight, PreferredLyricsWidth))
+    fun split(
+        width: Dp,
+        height: Dp,
+        side: FullscreenCoverSide,
+        coverShown: Boolean = true,
+        scale: Float = 1f,
+    ): FullscreenSplit {
+        if (!coverShown) {
+            val col = minOf(width, MaxColumn)
+            return FullscreenSplit(0.dp, 0.dp, 0.dp, (width - col) / 2f, 0.dp, col, height, false)
         }
-        val stack = minOf(natural, maxOf(MinStackWidth, available - Gap - MinLyricsWidth))
-        return LyricsSplit(0.dp, stack, stack + Gap, (available - stack - Gap).coerceAtLeast(0.dp))
-    }
-
-    /**
-     * Shrinks cover and controls so the stack is at most [target] wide. A vertical stack is as wide as
-     * its widest part; a side-by-side one is cover + [gap] + controls, giving up controls width first.
-     */
-    fun fit(cover: Dp, controls: Dp, gap: Dp, vertical: Boolean, target: Dp): StackFit {
-        if (vertical) return StackFit(minOf(cover, target), minOf(controls, maxOf(target, MinControls)))
-        val excess = cover + gap + controls - target
-        if (excess <= 0.dp) return StackFit(cover, controls)
-        val controlsGive = minOf(excess, (controls - MinControls).coerceAtLeast(0.dp))
-        val coverGive = minOf(excess - controlsGive, (cover - MinCover).coerceAtLeast(0.dp))
-        return StackFit(cover - coverGive, controls - controlsGive)
+        val desired = minOf(height, width * MaxCoverFraction) * scale
+        val room = width - Gap - MinColumn
+        if (room < MinCover) {
+            val cover = minOf(width, maxOf(MinStackedCover, height * StackedCoverFraction * scale))
+            val col = minOf(width, MaxColumn)
+            val colY = cover + StackedGap
+            return FullscreenSplit(
+                (width - cover) / 2f, 0.dp, cover,
+                (width - col) / 2f, colY, col, (height - colY).coerceAtLeast(0.dp), true,
+            )
+        }
+        val cover = minOf(maxOf(desired, MinCover), room)
+        val col = minOf(width - cover - Gap, MaxColumn)
+        val start = (width - (cover + Gap + col)) / 2f
+        val coverY = ((height - cover) / 2f).coerceAtLeast(0.dp)
+        return if (side == FullscreenCoverSide.LEFT) {
+            FullscreenSplit(start, coverY, cover, start + cover + Gap, 0.dp, col, height, false)
+        } else {
+            FullscreenSplit(start + col + Gap, coverY, cover, start, 0.dp, col, height, false)
+        }
     }
 }

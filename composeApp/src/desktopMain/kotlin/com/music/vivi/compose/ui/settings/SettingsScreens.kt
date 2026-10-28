@@ -123,7 +123,7 @@ import com.music.vivi.compose.prefs.FullscreenCanvasMode
 import com.music.vivi.compose.prefs.FullscreenCoverShape
 import com.music.vivi.compose.prefs.FullscreenFollow
 import com.music.vivi.compose.prefs.FullscreenKeys
-import com.music.vivi.compose.prefs.FullscreenLayout
+import com.music.vivi.compose.prefs.FullscreenCoverSide
 import com.music.vivi.compose.prefs.FullscreenSettings
 import com.music.vivi.compose.prefs.reader
 import com.music.vivi.compose.prefs.resetFullscreenPrefs
@@ -991,12 +991,11 @@ fun FullscreenPlayerSettingsScreen(navController: NavController) {
                 icon = Icons.Outlined.OpenInFull,
                 title = "Cover position",
                 options = listOf(
-                    FullscreenLayout.COVER_LEFT to "Left",
-                    FullscreenLayout.CENTERED to "Centered",
-                    FullscreenLayout.COVER_RIGHT to "Right",
+                    FullscreenCoverSide.LEFT to "Left",
+                    FullscreenCoverSide.RIGHT to "Right",
                 ),
-                selected = cfg.layout,
-                onSelect = { prefs.setString(FullscreenKeys.Layout, it.name) },
+                selected = cfg.coverSide,
+                onSelect = { prefs.setString(FullscreenKeys.CoverSide, it.name) },
             )
             SettingsDivider()
             ChoiceRow(

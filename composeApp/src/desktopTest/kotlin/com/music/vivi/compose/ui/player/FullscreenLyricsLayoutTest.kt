@@ -1,63 +1,76 @@
 package com.music.vivi.compose.ui.player
 
 import androidx.compose.ui.unit.dp
+import com.music.vivi.compose.prefs.FullscreenCoverSide
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class FullscreenLyricsLayoutTest {
-    private val L = FullscreenLyricsLayout
+    private val L = FullscreenLayoutAlias
+    private val left = FullscreenCoverSide.LEFT
+    private val right = FullscreenCoverSide.RIGHT
 
-    @Test fun `wide window keeps the stack natural and slides it left only as far as needed`() {
-        val s = L.split(available = 1800.dp, natural = 1100.dp)
-        assertEquals(1100.dp, s.stackWidth)
-        assertEquals(L.PreferredLyricsWidth, s.lyricsWidth)
-        assertEquals(1800.dp, s.lyricsLeft + s.lyricsWidth)
-        assertEquals(s.stackLeft + 1100.dp + L.Gap, s.lyricsLeft)
-        assertTrue(s.stackLeft < L.centeredLeft(1800.dp, 1100.dp))
+    @Test fun `cover is as tall as the area when the width allows`() {
+        val s = L.split(1800.dp, 900.dp, left)
+        assertEquals(900.dp, s.coverSize)
+        assertEquals(0.dp, s.coverY)
+        assertEquals(900.dp, s.columnHeight)
+        assertFalse(s.stacked)
     }
 
-    @Test fun `plenty of room leaves the stack centred`() {
-        val s = L.split(available = 3000.dp, natural = 600.dp)
-        assertEquals(L.centeredLeft(3000.dp, 600.dp), s.stackLeft)
-        assertEquals(L.PreferredLyricsWidth, s.lyricsWidth)
+    @Test fun `cover never exceeds 60 percent of the width`() {
+        val s = L.split(1300.dp, 900.dp, left)
+        assertEquals(780f, s.coverSize.value, 0.01f)
+        assertEquals(60f, s.coverY.value, 0.01f)
     }
 
-    @Test fun `tight window shrinks the lyrics column before the stack`() {
-        val s = L.split(available = 1200.dp, natural = 700.dp)
-        assertEquals(700.dp, s.stackWidth)
-        assertEquals(0.dp, s.stackLeft)
-        assertEquals(1200.dp - 700.dp - L.Gap, s.lyricsWidth)
-        assertTrue(s.lyricsWidth >= L.MinLyricsWidth)
+    @Test fun `column takes the rest capped and group is centred`() {
+        val s = L.split(1800.dp, 900.dp, left)
+        assertEquals(L.MaxColumn, s.columnWidth)
+        assertEquals(s.coverX + s.coverSize + L.Gap, s.columnX)
+        val start = s.coverX
+        assertEquals(1800.dp - (s.columnX + s.columnWidth), start)
     }
 
-    @Test fun `narrow window shrinks the stack to keep a usable lyrics column`() {
-        val s = L.split(available = 1000.dp, natural = 900.dp)
-        assertEquals(0.dp, s.stackLeft)
-        assertEquals(1000.dp - L.Gap - L.MinLyricsWidth, s.stackWidth)
-        assertEquals(L.MinLyricsWidth, s.lyricsWidth)
+    @Test fun `flipping the side mirrors cover and column`() {
+        val a = L.split(1800.dp, 900.dp, left)
+        val b = L.split(1800.dp, 900.dp, right)
+        assertEquals(a.coverSize, b.coverSize)
+        assertEquals(a.columnWidth, b.columnWidth)
+        assertEquals(b.columnX + b.columnWidth + L.Gap, b.coverX)
+        assertEquals(a.coverX, 1800.dp - (b.coverX + b.coverSize))
     }
 
-    @Test fun `very narrow window never overlaps or goes negative`() {
-        val s = L.split(available = 500.dp, natural = 900.dp)
-        assertEquals(L.MinStackWidth, s.stackWidth)
-        assertTrue(s.lyricsLeft >= s.stackLeft + s.stackWidth)
-        assertTrue(s.lyricsWidth >= 0.dp)
+    @Test fun `cover shrinks to leave a usable column`() {
+        val s = L.split(800.dp, 900.dp, left)
+        assertEquals(800.dp - L.Gap - L.MinColumn, s.coverSize)
+        assertEquals(L.MinColumn, s.columnWidth)
+        assertTrue(s.columnX >= s.coverX + s.coverSize)
+        assertFalse(s.stacked)
     }
 
-    @Test fun `fit leaves a side by side stack alone when it already fits`() {
-        assertEquals(StackFit(600.dp, 520.dp), L.fit(600.dp, 520.dp, 48.dp, false, 1200.dp))
+    @Test fun `very narrow window stacks cover above the column`() {
+        val s = L.split(500.dp, 900.dp, left)
+        assertTrue(s.stacked)
+        assertTrue(s.coverSize >= L.MinStackedCover && s.coverSize <= 500.dp)
+        assertEquals(s.coverSize + L.StackedGap, s.columnY)
+        assertEquals(900.dp - s.columnY, s.columnHeight)
+        assertTrue(s.columnWidth <= 500.dp)
     }
 
-    @Test fun `fit takes width from the controls first then the cover`() {
-        val a = L.fit(600.dp, 520.dp, 48.dp, false, 1100.dp)
-        assertEquals(StackFit(600.dp, 452.dp), a)
-        val b = L.fit(600.dp, 520.dp, 48.dp, false, 900.dp)
-        assertEquals(StackFit(532.dp, 320.dp), b)
+    @Test fun `hidden cover gives the column the page`() {
+        val s = L.split(1800.dp, 900.dp, left, coverShown = false)
+        assertEquals(0.dp, s.coverSize)
+        assertEquals(L.MaxColumn, s.columnWidth)
+        assertEquals((1800.dp - L.MaxColumn) / 2f, s.columnX)
     }
 
-    @Test fun `fit clamps a vertical stack to the target`() {
-        assertEquals(StackFit(400.dp, 400.dp), L.fit(520.dp, 520.dp, 32.dp, true, 400.dp))
-        assertEquals(StackFit(300.dp, 340.dp), L.fit(300.dp, 520.dp, 32.dp, true, 340.dp))
+    @Test fun `scale shrinks the cover but not below the floor`() {
+        assertEquals(450.dp, L.split(1800.dp, 900.dp, left, scale = 0.5f).coverSize)
+        assertEquals(L.MinCover, L.split(1800.dp, 300.dp, left, scale = 0.5f).coverSize)
     }
 }
+
+private val FullscreenLayoutAlias = FullscreenLyricsLayout

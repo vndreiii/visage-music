@@ -68,7 +68,7 @@ internal val SettingsIndex: List<SettingsEntry> = listOf(
     SettingsEntry("Background", "", "Fullscreen player", Routes.SETTINGS_FULLSCREEN_PLAYER, true, ""),
     SettingsEntry("Controls", "", "Fullscreen player", Routes.SETTINGS_FULLSCREEN_PLAYER, true, ""),
     SettingsEntry("Reset", "", "Fullscreen player", Routes.SETTINGS_FULLSCREEN_PLAYER, true, ""),
-    SettingsEntry("Cover position", "", "Fullscreen player", Routes.SETTINGS_FULLSCREEN_PLAYER, false, "Left · Centered · Right"),
+    SettingsEntry("Cover position", "", "Fullscreen player", Routes.SETTINGS_FULLSCREEN_PLAYER, false, "Left · Right"),
     SettingsEntry("Cover shape", "", "Fullscreen player", Routes.SETTINGS_FULLSCREEN_PLAYER, false, "Rounded · Soft · Square · Circle"),
     SettingsEntry("Cover size", "", "Fullscreen player", Routes.SETTINGS_FULLSCREEN_PLAYER, false, ""),
     SettingsEntry("Show lyrics by default", "Lyrics sit beside the player the first time you open it; after that it reopens the way you left it", "Fullscreen player", Routes.SETTINGS_FULLSCREEN_PLAYER, false, ""),

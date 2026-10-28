@@ -74,6 +74,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -83,7 +84,6 @@ import com.music.vivi.compose.LocalWindowState
 import com.music.vivi.compose.WindowFullscreen
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.FullscreenCoverShape
-import com.music.vivi.compose.prefs.FullscreenLayout
 import com.music.vivi.compose.prefs.FullscreenKeys
 import com.music.vivi.compose.prefs.FullscreenSettings
 import com.music.vivi.compose.prefs.QueuePanelMode
@@ -372,52 +372,25 @@ private fun NowPlayingFullscreenContent(
         ) {
             val w = maxWidth
             val h = maxHeight
-            val vertical = cfg.layout == FullscreenLayout.CENTERED
             val coverShown = !hideCover
-            val inlineH = if (inlineQueue) InlineQueueHeight else 0.dp
-            val baseGap = if (vertical) 32.dp else 48.dp
-            val autoCover = if (vertical) {
-                minOf(h - 380.dp - inlineH, w * 0.5f, 520.dp).coerceAtLeast(160.dp)
-            } else {
-                minOf(h, w * 0.42f, 600.dp)
-            }
-            val baseCover = autoCover * cfg.coverScale
-            // A real video should be big: as the cover morphs to the video's aspect, its width grows to
-            // fill most of the page (heights left for the controls when centred, space beside the controls otherwise).
-            val wideProgress = ((coverMorph.aspect - 1f) / 0.78f).coerceIn(0f, 1f)
-            val wideWidth = if (vertical) {
-                minOf(w, (h - 330.dp - inlineH) * coverMorph.aspect, 1500.dp)
-            } else {
-                minOf(w - 360.dp - baseGap, h * coverMorph.aspect, 1300.dp)
-            }.coerceAtLeast(baseCover)
-            val coverSize = baseCover + (wideWidth - baseCover) * wideProgress
-            val ctrlLimit = if (cfg.limitControlsWidth) cfg.controlsMaxWidthDp.dp else 520.dp
-            val idleCtrlW = when {
-                vertical || hideCover -> minOf(ctrlLimit, w)
-                else -> minOf(ctrlLimit, (w - coverSize - baseGap).coerceAtLeast(320.dp))
-            }
-            // The stack is the same size with or without lyrics; lyrics only slide it left (or, in a window too
-            // narrow for that, shrink it just enough to leave a usable lyrics column).
-            val coverNat = if (coverShown) coverSize else 0.dp
-            val gapNat = if (coverShown) baseGap else 0.dp
-            val naturalW = if (vertical) maxOf(coverNat, idleCtrlW) else coverNat + gapNat + idleCtrlW
-            val split = FullscreenLyricsLayout.split(w, naturalW)
-            val fit = FullscreenLyricsLayout.fit(
-                coverNat, idleCtrlW, gapNat, vertical, if (showLyrics) split.stackWidth else naturalW,
-            )
+            val ctrlLimit = if (cfg.limitControlsWidth) cfg.controlsMaxWidthDp.dp else Dp.Infinity
+            // Big cover / video in one column, lyrics over the controls in the other. The queue overlays this
+            // (it never narrows it), so the geometry only depends on the window and the cover side.
+            val split = FullscreenLyricsLayout.split(w, h, cfg.coverSide, coverShown, cfg.coverScale)
             val spring = VisageMotion.glide<Dp>()
-            val coverDim = animateDpAsState(fit.cover, spring, label = "fsCoverDim")
-            val ctrlW = animateDpAsState(fit.controls, spring, label = "fsCtrlW")
-            val coverGap = animateDpAsState(gapNat, spring, label = "fsCoverGap")
-            val stackLeft = animateDpAsState(
-                if (showLyrics) split.stackLeft else FullscreenLyricsLayout.centeredLeft(w, naturalW),
-                spring,
-                label = "fsStackLeft",
-            )
+            val coverX = animateDpAsState(split.coverX, spring, label = "fsCoverX")
+            val coverY = animateDpAsState(split.coverY, spring, label = "fsCoverY")
+            val coverDim = animateDpAsState(split.coverSize, spring, label = "fsCoverDim")
+            val colX = animateDpAsState(split.columnX, spring, label = "fsColX")
+            val colY = animateDpAsState(split.columnY, spring, label = "fsColY")
+            val colW = animateDpAsState(split.columnWidth, spring, label = "fsColW")
+            val colH = animateDpAsState(split.columnHeight, spring, label = "fsColH")
+            // 0 = lyrics open (controls under them), 1 = closed (controls centred in the column).
+            val lyricsClosed = animateFloatAsState(if (showLyrics) 0f else 1f, VisageMotion.glide(), label = "fsLyricsClosed")
 
             val coverContent: @Composable () -> Unit = {
                 Box(
-                    Modifier.widthOf { coverDim.value }.heightOf { coverDim.value / coverMorph.aspect },
+                    Modifier.widthOf { coverDim.value }.heightOf { coverDim.value },
                     contentAlignment = Alignment.Center,
                 ) {
                     PlainAnimatedVisibility(
@@ -426,7 +399,10 @@ private fun NowPlayingFullscreenContent(
                         exit = fadeOut() + scaleOut(targetScale = 0.92f),
                         label = "fsCover",
                     ) {
-                        AlbumGestureCard(controller, Modifier.fillMaxSize().songSwapCover(swap)) {
+                        AlbumGestureCard(
+                            controller,
+                            Modifier.fillMaxWidth().heightOf { coverDim.value / coverMorph.aspect }.songSwapCover(swap),
+                        ) {
                             FullscreenCover(
                                 artworkUrl = coverTrack?.artworkUrl,
                                 seed = coverTrack?.videoId ?: coverTrack?.title ?: "none",
@@ -453,7 +429,7 @@ private fun NowPlayingFullscreenContent(
             val controlsContent: @Composable () -> Unit = {
                 Column(
                     Modifier
-                        .widthOf { ctrlW.value }
+                        .fillMaxWidth()
                         .songSwapControls(swap)
                         .playerControlsSurface(cfg.framedControls),
                 ) {
@@ -593,42 +569,45 @@ private fun NowPlayingFullscreenContent(
             }
 
             Box(Modifier.fillMaxSize()) {
-                Box(
-                    Modifier.fillMaxHeight().offset { IntOffset(stackLeft.value.roundToPx(), 0) },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    if (vertical) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            coverContent()
-                            Spacer(Modifier.heightOf { coverGap.value })
-                            controlsContent()
-                        }
-                    } else {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (cfg.layout == FullscreenLayout.COVER_LEFT) {
-                                coverContent(); Spacer(Modifier.widthOf { coverGap.value }); controlsContent()
-                            } else {
-                                controlsContent(); Spacer(Modifier.widthOf { coverGap.value }); coverContent()
+                Box(Modifier.offset { IntOffset(coverX.value.roundToPx(), coverY.value.roundToPx()) }) { coverContent() }
+                val ctrlLimitPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+                    if (ctrlLimit == Dp.Infinity) Int.MAX_VALUE else ctrlLimit.roundToPx()
+                }
+                val lyricsGapPx = with(androidx.compose.ui.platform.LocalDensity.current) { 16.dp.roundToPx() }
+                // Lyrics fill the column above the controls; with lyrics closed the controls glide to the middle.
+                androidx.compose.ui.layout.Layout(
+                    content = {
+                        Box(Modifier.layoutId("lyrics")) {
+                            PlainAnimatedVisibility(
+                                visible = showLyrics,
+                                enter = fadeIn() + slideInHorizontally { it / 8 },
+                                exit = fadeOut() + slideOutHorizontally { it / 8 },
+                                label = "fsLyrics",
+                            ) {
+                                LyricsPanel(
+                                    onClose = { setLyrics(false) },
+                                    modifier = Modifier.fillMaxSize(),
+                                )
                             }
                         }
-                    }
-                }
-                Box(
-                    Modifier
-                        .fillMaxHeight()
-                        .offset { IntOffset(split.lyricsLeft.roundToPx(), 0) }
-                        .width(split.lyricsWidth),
-                ) {
-                    PlainAnimatedVisibility(
-                        visible = showLyrics,
-                        enter = fadeIn() + slideInHorizontally { it / 8 },
-                        exit = fadeOut() + slideOutHorizontally { it / 8 },
-                        label = "fsLyrics",
-                    ) {
-                        LyricsPanel(
-                            onClose = { setLyrics(false) },
-                            modifier = Modifier.fillMaxSize(),
-                        )
+                        Box(Modifier.layoutId("ctrl")) { controlsContent() }
+                    },
+                    modifier = Modifier
+                        .offset { IntOffset(colX.value.roundToPx(), colY.value.roundToPx()) }
+                        .widthOf { colW.value }
+                        .heightOf { colH.value },
+                ) { measurables, c ->
+                    val ctrlW = minOf(c.maxWidth, ctrlLimitPx)
+                    val ctrl = measurables.first { it.layoutId == "ctrl" }
+                        .measure(androidx.compose.ui.unit.Constraints(ctrlW, ctrlW, 0, c.maxHeight))
+                    val lyricsH = (c.maxHeight - ctrl.height - lyricsGapPx).coerceAtLeast(0)
+                    val lyrics = measurables.first { it.layoutId == "lyrics" }
+                        .measure(androidx.compose.ui.unit.Constraints(c.maxWidth, c.maxWidth, lyricsH, lyricsH))
+                    val ctrlBottom = c.maxHeight - ctrl.height
+                    val ctrlY = (ctrlBottom + (ctrlBottom / 2 - ctrlBottom) * lyricsClosed.value).toInt()
+                    layout(c.maxWidth, c.maxHeight) {
+                        lyrics.place(0, 0)
+                        ctrl.place((c.maxWidth - ctrlW) / 2, ctrlY)
                     }
                 }
             }
