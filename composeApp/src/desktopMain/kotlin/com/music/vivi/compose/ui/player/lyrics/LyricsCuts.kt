@@ -200,9 +200,7 @@ internal fun LyricsCutsScene(
         while (true) withFrameNanos { wall.floatValue = (it - t0) / 1_000_000_000f }
     }
 
-    val effect = remember {
-        RuntimeEffect.makeForShader(CUTS_SKSL)
-    }
+    val effect = CUTS_EFFECT
     val shaderBuilder = remember(effect) {
         RuntimeShaderBuilder(effect)
     }
@@ -431,3 +429,6 @@ internal fun LyricsCutsScene(
         }
     }
 }
+
+/** Compiled once per process; re-entering the Cuts scene (the `y` key) must not re-parse the SkSL. */
+private val CUTS_EFFECT: RuntimeEffect by lazy { RuntimeEffect.makeForShader(CUTS_SKSL) }

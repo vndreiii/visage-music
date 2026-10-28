@@ -159,11 +159,15 @@ private abstract class CliProvider : LyricsAiProvider {
     abstract fun command(cfg: AiConfig, prompt: String): List<String>
     open fun feedStdin(prompt: String): String? = prompt
 
+    /** Called with the scratch directory before launch, e.g. to drop in a config that denies tools. */
+    open fun prepare(dir: java.nio.file.Path) {}
+
     override fun complete(prompt: String, cfg: AiConfig): String {
         // A scratch directory keeps the agent away from the user's projects; the lyrics are untrusted text,
         // so tools are switched off wherever the CLI allows it (see each provider's command).
         val dir = Files.createTempDirectory("visage-ai-")
         try {
+            prepare(dir)
             val pb = ProcessBuilder(command(cfg, prompt)).directory(dir.toFile()).redirectErrorStream(false)
             val p = try {
                 pb.start()
@@ -184,7 +188,7 @@ private abstract class CliProvider : LyricsAiProvider {
             if (p.exitValue() != 0) error("$label: ${err.toString().trim().lines().lastOrNull().orEmpty().take(150).ifBlank { "exit ${p.exitValue()}" }}")
             return out
         } finally {
-            runCatching { Files.deleteIfExists(dir) }
+            runCatching { dir.toFile().deleteRecursively() }
         }
     }
 }
@@ -196,7 +200,7 @@ private object ClaudeCodeProvider : CliProvider() {
     override val suggestedModels = listOf("haiku", "sonnet", "opus")
     override fun command(cfg: AiConfig, prompt: String) = listOf(
         "claude", "-p", "--model", cfg.model.ifBlank { "haiku" },
-        "--tools", "", "--no-session-persistence", "--disable-slash-commands",
+        "--tools", "", "--strict-mcp-config", "--no-session-persistence", "--disable-slash-commands",
     )
 }
 
@@ -210,7 +214,15 @@ private object OpenCodeProvider : CliProvider() {
         p.waitFor(20, TimeUnit.SECONDS)
         return lines.ifEmpty { error("opencode listed no models") }
     }
-    override fun command(cfg: AiConfig, prompt: String) = listOf("opencode", "run", "--pure", "-m", cfg.model.ifBlank { "opencode/big-pickle" }, prompt)
+    // The lyrics are untrusted: an opencode.json in the scratch cwd denies every tool so an injected line cannot act.
+    override fun prepare(dir: java.nio.file.Path) {
+        Files.writeString(
+            dir.resolve("opencode.json"),
+            """{"permission":{"bash":"deny","edit":"deny","webfetch":"deny","external_directory":"deny"},""" +
+                """"tools":{"bash":false,"edit":false,"write":false,"read":false,"patch":false,"webfetch":false,"glob":false,"grep":false,"list":false}}""",
+        )
+    }
+    override fun command(cfg: AiConfig, prompt: String) = listOf("opencode", "run", "--pure", "-m", cfg.model.ifBlank { "opencode/big-pickle" }, "--", prompt)
     override fun feedStdin(prompt: String): String? = null
 }
 
