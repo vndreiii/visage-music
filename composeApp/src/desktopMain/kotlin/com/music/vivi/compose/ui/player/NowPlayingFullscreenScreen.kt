@@ -36,7 +36,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.outlined.Person
 import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Lyrics
@@ -455,22 +454,18 @@ private fun NowPlayingFullscreenContent(
                                 )
                             } else {
                                 PrefVertical(cfg.showArtist) {
-                                    Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Outlined.Person, "Artist", tint = ink.text(0.65f), modifier = Modifier.size(18.dp))
-                                        Spacer(Modifier.width(6.dp))
-                                        ArtistLinks(
-                                            credits = credits,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = ink.text(0.8f),
-                                            hoverColor = ink.text(),
-                                            onOpen = {
-                                                WindowFullscreen.exit(windowState)
-                                                navController.openArtistByName(it)
-                                            },
-                                            maxLines = 2,
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                    }
+                                    ArtistLinks(
+                                        credits = credits,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        color = ink.text(0.8f),
+                                        hoverColor = ink.text(),
+                                        onOpen = {
+                                            WindowFullscreen.exit(windowState)
+                                            navController.openArtistByName(it)
+                                        },
+                                        maxLines = 2,
+                                        modifier = Modifier.padding(top = 2.dp),
+                                    )
                                 }
                             }
                             val album = track?.album.orEmpty()
