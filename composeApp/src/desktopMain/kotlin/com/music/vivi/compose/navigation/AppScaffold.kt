@@ -294,13 +294,22 @@ fun FrameWindowScope.AppScaffold(
                     // Artist names in any item subtitle (playlists, albums, queue, lists) open the artist page. Navigate
                     // after the text's own press gesture has finished, not from inside it.
                     val linkScope = androidx.compose.runtime.rememberCoroutineScope()
-                    androidx.compose.runtime.CompositionLocalProvider(
-                        com.music.vivi.compose.ui.component.LocalArtistClick provides { artistId: String ->
+                    // Remembered so a settings write (which recomposes this scope) does not hand every subtitle a new lambda.
+                    val artistClick = androidx.compose.runtime.remember(navController, linkScope) {
+                        { artistId: String ->
                             linkScope.launch { kotlinx.coroutines.yield(); runCatching { navController.navigate(Routes.artist(artistId)) } }
-                        },
-                        com.music.vivi.compose.ui.component.LocalArtistNameClick provides { name: String ->
+                            Unit
+                        }
+                    }
+                    val artistNameClick = androidx.compose.runtime.remember(navController, linkScope) {
+                        { name: String ->
                             linkScope.launch { kotlinx.coroutines.yield(); runCatching { navController.navigate(Routes.searchResult(name)) } }
-                        },
+                            Unit
+                        }
+                    }
+                    androidx.compose.runtime.CompositionLocalProvider(
+                        com.music.vivi.compose.ui.component.LocalArtistClick provides artistClick,
+                        com.music.vivi.compose.ui.component.LocalArtistNameClick provides artistNameClick,
                     ) {
                     AnimatedLibrarySidebar(
                         state = if (sidebarCfg.librarySide == SidebarSide.LEFT) libraryState else LibrarySidebarState.HIDDEN,

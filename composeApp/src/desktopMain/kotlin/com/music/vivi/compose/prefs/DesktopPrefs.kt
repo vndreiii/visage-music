@@ -14,6 +14,13 @@ class DesktopPrefs(
     private val props = Properties()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
 
+    /** Keys changed in memory but not yet on disk. */
+    private val dirty = HashMap<String, String>()
+    private var flushPending = false
+    private val writer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "prefs-writer").apply { isDaemon = true }
+    }
+
     init {
         if (file.exists()) {
             file.inputStream().use { props.load(it) }
@@ -39,15 +46,34 @@ class DesktopPrefs(
     fun getString(key: String, default: String): String =
         props.getProperty(key) ?: default
 
-    @Synchronized
+    init {
+        Runtime.getRuntime().addShutdownHook(Thread { flush() })
+    }
+
     fun setString(key: String, value: String) {
-        if (props.getProperty(key) == value) return
+        synchronized(this) {
+            if (props.getProperty(key) == value) return
+            props.setProperty(key, value)
+            dirty[key] = value
+            // Writes are coalesced: a slider drag or wheel burst would otherwise rewrite the file per event.
+            if (!flushPending) {
+                flushPending = true
+                writer.schedule({ flush() }, 250, java.util.concurrent.TimeUnit.MILLISECONDS)
+            }
+        }
+        listeners.forEach { it() }
+    }
+
+    @Synchronized
+    fun flush() {
+        flushPending = false
+        if (dirty.isEmpty()) return
         // Another running copy of the app may have saved since we loaded; merge its changes instead of
         // overwriting the whole file with our older snapshot (that is how a folder list could vanish).
         reloadFromDisk()
-        props.setProperty(key, value)
-        persist()
-        listeners.forEach { it() }
+        dirty.forEach { (k, v) -> props.setProperty(k, v) }
+        dirty.clear()
+        runCatching { persist() }
     }
 
     fun getBoolean(key: String, default: Boolean): Boolean =
