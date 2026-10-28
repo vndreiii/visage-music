@@ -985,13 +985,6 @@ internal fun TransportRow(
                 horizontalArrangement = Arrangement.Center,
             ) {
                 PlayPauseIcon(playing = playing, tint = playFg, iconSize = 28.dp)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    if (playing) "Pause" else "Play",
-                    color = playFg,
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.titleMedium,
-                )
             }
         }
         TransportPill(
