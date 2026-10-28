@@ -307,9 +307,16 @@ fun FrameWindowScope.AppScaffold(
                             Unit
                         }
                     }
+                    val navigateRoute = androidx.compose.runtime.remember(navController, linkScope) {
+                        { route: String ->
+                            linkScope.launch { kotlinx.coroutines.yield(); runCatching { navController.navigate(route) } }
+                            Unit
+                        }
+                    }
                     androidx.compose.runtime.CompositionLocalProvider(
                         com.music.vivi.compose.ui.component.LocalArtistClick provides artistClick,
                         com.music.vivi.compose.ui.component.LocalArtistNameClick provides artistNameClick,
+                        com.music.vivi.compose.ui.component.LocalNavigate provides navigateRoute,
                     ) {
                     AnimatedLibrarySidebar(
                         state = if (sidebarCfg.librarySide == SidebarSide.LEFT) libraryState else LibrarySidebarState.HIDDEN,

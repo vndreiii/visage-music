@@ -54,6 +54,7 @@ import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import com.music.vivi.compose.ui.dnd.TrackDrag
 import com.music.vivi.compose.ui.dnd.carryOnDrag
+import com.music.vivi.compose.ui.dnd.trackDropTarget
 import kotlin.math.roundToInt
 import androidx.compose.ui.input.pointer.positionChange
 import kotlinx.coroutines.withTimeoutOrNull
@@ -288,7 +289,12 @@ private fun QueuePanelBody(
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(
+        Modifier.fillMaxSize()
+            // Songs carried from search, lists or the library can be dropped on the queue.
+            .trackDropTarget("queue-panel") { t -> controller.addToQueue(t); "Added to queue" }
+            .padding(16.dp),
+    ) {
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,

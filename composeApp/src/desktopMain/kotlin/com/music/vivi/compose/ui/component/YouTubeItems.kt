@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import com.music.vivi.compose.ui.dnd.carrySong
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
@@ -162,14 +165,19 @@ fun YouTubeGridItem(
 ) {
     val thumbShape =
         if (item is ArtistItem) CircleShape else RoundedCornerShape(ThumbnailCornerRadius)
+    val menu = rememberItemMenuState()
+    var heightPx by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(InteractionCornerRadius),
         color = Color.Transparent,
         // 16:9 covers keep the shelf's cover height, so they are wider instead of a tiny letterbox in a square cell.
         modifier = (if (fillWidth) modifier.fillMaxWidth() else modifier.width(GridThumbnailHeight * thumbnailRatio.coerceAtLeast(1f) + 16.dp))
+            .onSizeChanged { heightPx = it.height }
+            .itemSecondaryClick(menu)
             .carrySong(item),
     ) {
+        ItemContextMenu(item, menu, heightPx, onClick)
         Column(
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
             horizontalAlignment = if (item is ArtistItem) Alignment.CenterHorizontally else Alignment.Start,
@@ -244,6 +252,8 @@ fun YouTubeListItem(
 ) {
     val shape =
         if (item is ArtistItem) CircleShape else RoundedCornerShape(ThumbnailCornerRadius)
+    val menu = rememberItemMenuState()
+    var heightPx by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
     Surface(
         shape = RoundedCornerShape(12.dp),
         color = if (isActive) {
@@ -256,8 +266,11 @@ fun YouTubeListItem(
             .padding(horizontal = 8.dp)
             .fillMaxWidth()
             .height(ListItemHeight)
+            .onSizeChanged { heightPx = it.height }
+            .itemSecondaryClick(menu)
             .carrySong(item),
     ) {
+        ItemContextMenu(item, menu, heightPx, onClick)
         Row(
             modifier = Modifier
                 .fillMaxWidth()
