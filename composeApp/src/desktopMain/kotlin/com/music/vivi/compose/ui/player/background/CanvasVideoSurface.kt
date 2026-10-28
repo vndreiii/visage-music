@@ -206,6 +206,10 @@ class CanvasVideo private constructor(val url: String, private val useGpu: Boole
                 return@synchronized
             }
             if (!crossing && slots[active].ended) startCrossfade(CROSSFADE_SEC)
+            if (startWatchdog.check(slots[active].frame != null, System.currentTimeMillis()) == CanvasStartWatchdog.Action.RESTART) {
+                System.err.println("CanvasVideo: no frame yet, restarting decoder")
+                startRenderers()
+            }
             if (crossing) {
                 crossElapsed += ((now - lastTickNs) / 1e9).coerceIn(0.0, 0.1)
                 if (crossElapsed >= crossDuration) finishCrossfade() else publish()
@@ -241,14 +245,29 @@ class CanvasVideo private constructor(val url: String, private val useGpu: Boole
         old.renderer?.apply { setHeld(true); rewind() }
     }
 
+    private val startWatchdog = CanvasStartWatchdog()
+
+    /** (Re)create both decoders from scratch; used on first open and when the stream never produced a frame. */
+    private fun startRenderers() {
+        for (slot in slots) {
+            slot.renderer?.close()
+            slot.frame = null
+            slot.ended = false
+            slot.renderer = runCatching { MpvVideoRenderer(url, slot, maxEdge = 512, startHeld = slot.index != active, useGpu = useGpu) }
+                .onFailure { System.err.println("CanvasVideo: ${it.message}") }
+                .getOrNull()
+            slot.renderer?.setPaused(paused)
+        }
+        recorded.clear()
+        positions.clear()
+        recordedBytes = 0
+        startWatchdog.started(System.currentTimeMillis())
+    }
+
     private fun acquire() = synchronized(lock) {
         refs++
         if (ticker == null) {
-            if (cached == null) for (slot in slots) {
-                slot.renderer = runCatching { MpvVideoRenderer(url, slot, maxEdge = 512, startHeld = slot.index != active, useGpu = useGpu) }
-                    .onFailure { System.err.println("CanvasVideo: ${it.message}") }
-                    .getOrNull()
-            }
+            if (cached == null) startRenderers()
             lastTickNs = System.nanoTime()
             ticker = watchdog.scheduleAtFixedRate({ tick() }, 0, 16, TimeUnit.MILLISECONDS)
         }
