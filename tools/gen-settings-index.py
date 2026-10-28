@@ -31,6 +31,9 @@ fnroute={
 'DownloadsSettingsScreen':('SETTINGS_DOWNLOADS','Downloads'),
 'AccountSettingsScreen':('SETTINGS_ACCOUNT','Account'),
 'LyricsSettingsScreen':('SETTINGS_LYRICS','Lyrics'),
+'TranslateLanguageRow':('SETTINGS_LYRICS','Lyrics'),
+'LyricsAiProviderSettings':('SETTINGS_LYRICS','Lyrics'),
+'ProviderFields':('SETTINGS_LYRICS','Lyrics'),
 'SongSwapSettingsScreen':('SETTINGS_SONG_SWAP','Song swappings'),
 'LocalOfflineSettingsScreen':('SETTINGS_LOCAL_OFFLINE','Local files'),
 'DiagnosticsScreen':('SETTINGS_DIAGNOSTICS','Diagnostics'),
@@ -40,7 +43,7 @@ fnroute={
 'RingsControls':('SETTINGS_APPEARANCE','Interface'),
 'InterfaceLinkItems':('HUB','Settings'),
 }
-POSITIONAL=re.compile(r'\b(?:SwitchItem|ChipChoiceRow|ChoiceRow|LiveSlider|SettingsRowFrame|Item)\(\s*(?:(?:Icons\.\w+\.\w+|null|\w+)\s*,\s*)?"((?:[^"\\]|\\.)*)"(?:\s*,\s*"((?:[^"\\]|\\.)*)")?')
+POSITIONAL=re.compile(r'\b(?:SwitchItem|ChipChoiceRow|ChoiceRow|SettingsDropdownRow|LiveSlider|SettingsRowFrame|Item)\(\s*(?:(?:Icons\.\w+\.\w+|null|\w+)\s*,\s*)?"((?:[^"\\]|\\.)*)"(?:\s*,\s*"((?:[^"\\]|\\.)*)")?')
 str_=r'"((?:[^"\\]|\\.)*)"'
 # Every settings screen must be mapped, otherwise its settings silently go missing from search.
 _missing=[]

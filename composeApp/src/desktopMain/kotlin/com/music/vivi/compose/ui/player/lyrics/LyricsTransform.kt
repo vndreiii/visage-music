@@ -31,12 +31,8 @@ import java.time.Duration
 /** Provider id for the free public Google endpoint; any other id names a [LyricsAiProvider]. */
 const val GOOGLE_FREE = "google"
 
-/** Languages offered as translation targets: code to name. */
-val TranslateLanguages: List<Pair<String, String>> = listOf(
-    "en" to "English", "es" to "Spanish", "fr" to "French", "de" to "German", "pt" to "Portuguese", "it" to "Italian",
-    "ru" to "Russian", "ja" to "Japanese", "ko" to "Korean", "zh-CN" to "Chinese", "id" to "Indonesian",
-    "tr" to "Turkish", "ar" to "Arabic", "hi" to "Hindi", "nl" to "Dutch", "pl" to "Polish", "vi" to "Vietnamese", "tl" to "Filipino",
-)
+/** Languages offered as translation targets: code to English name (the name goes into the AI prompt). See [LyricsLanguages]. */
+val TranslateLanguages: List<Pair<String, String>> = LyricsLanguages.all.map { it.code to it.english }
 
 /** What to add under each lyric line. */
 data class LyricsTransformOptions(
@@ -176,13 +172,14 @@ object LyricsTransform {
     }
 }
 
-fun com.music.vivi.compose.prefs.DesktopPrefs.lyricsTransformOptions(): LyricsTransformOptions {
+fun com.music.vivi.compose.prefs.DesktopPrefs.lyricsTransformOptions(
+    secrets: com.music.vivi.compose.prefs.SecretStore = com.music.vivi.compose.prefs.Secrets.store,
+): LyricsTransformOptions {
     val k = com.music.vivi.compose.prefs.PrefKeys
     // Earlier builds stored "GOOGLE" / "GEMINI"; ids are lower-case now.
     val provider = getString(k.LyricsTranslateProvider, GOOGLE_FREE).lowercase()
     val p = LyricsAiProviders.byId(provider)
-    var ai = if (p != null) LyricsAiProviders.config(this, p) else AiConfig("", "", "")
-    if (p?.id == "gemini" && ai.key.isBlank()) ai = ai.copy(key = getString(k.LyricsGeminiKey, "").trim())
+    val ai = if (p != null) LyricsAiProviders.config(this, p, secrets) else AiConfig("", "", "")
     return LyricsTransformOptions(
         romanize = getBoolean(k.LyricsRomanize, false),
         translate = getBoolean(k.LyricsAutoTranslate, false),

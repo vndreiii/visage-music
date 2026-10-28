@@ -40,7 +40,7 @@ object TagManagerHost {
             prefs = prefs,
             writer = writer,
             lookup = NativeTagLookup {
-                prefs.getString(PrefKeys.TagAcoustidKey, "").ifBlank { System.getenv("VISAGE_ACOUSTID_KEY").orEmpty() }.ifBlank { null }
+                com.music.vivi.compose.prefs.Secrets.store.get(com.music.vivi.compose.prefs.Secrets.AcoustidKey).ifBlank { System.getenv("VISAGE_ACOUSTID_KEY").orEmpty() }.ifBlank { null }
             },
             backupRoot = File(AppPaths.data(), "tag-backups"),
             refreshLibrary = {

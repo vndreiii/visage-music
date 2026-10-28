@@ -1,6 +1,9 @@
 package com.music.vivi.compose.ui.player.lyrics
 
 import com.music.vivi.compose.prefs.DesktopPrefs
+import com.music.vivi.compose.prefs.PrefKeys
+import com.music.vivi.compose.prefs.SecretStore
+import com.music.vivi.compose.prefs.Secrets
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
@@ -32,8 +35,17 @@ interface LyricsAiProvider {
     val needsKey: Boolean get() = true
     val keyHint: String get() = ""
 
-    /** Non-null when the endpoint (or command) is user-editable. */
+    /** Heading this provider is listed under in the picker (see [LyricsAiProviders.Groups]). */
+    val group: String get() = LyricsAiProviders.Groups.CLOUD
+
+    /** One line shown beside the name in the picker. */
+    val hint: String get() = if (needsKey) "needs API key" else "no key needed"
+
+    /** Non-null when the endpoint (or command) is user-editable; the label of that field. */
     val baseUrlLabel: String? get() = null
+
+    /** Extra explanation under the endpoint field. */
+    val baseUrlHelp: String? get() = null
     val defaultBaseUrl: String get() = ""
     val suggestedModels: List<String>
 
@@ -74,6 +86,7 @@ private object GeminiProvider : LyricsAiProvider {
     override val id = "gemini"
     override val label = "Gemini"
     override val keyHint = "Free key at aistudio.google.com"
+    override val hint = "free key from AI Studio"
     override val suggestedModels = listOf("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.5-pro", "gemini-2.0-flash")
 
     override fun listModels(cfg: AiConfig): List<String> {
@@ -129,6 +142,8 @@ private class OpenAiCompatProvider(
     override val needsKey: Boolean = true,
     override val keyHint: String = "",
     editableUrl: Boolean = false,
+    override val group: String = LyricsAiProviders.Groups.CLOUD,
+    override val hint: String = if (needsKey) "needs API key" else "runs on this machine",
     private val extraHeaders: Map<String, String> = emptyMap(),
 ) : LyricsAiProvider {
     override val baseUrlLabel: String? = if (editableUrl) "API base URL" else null
@@ -200,6 +215,8 @@ private object ClaudeCodeProvider : CliProvider() {
     override val id = "claude-code"
     override val label = "Claude Code (local)"
     override val keyHint = "Uses your claude login; no key needed"
+    override val group = LyricsAiProviders.Groups.AGENTS
+    override val hint = "uses your claude login"
     override val suggestedModels = listOf("haiku", "sonnet", "opus")
     override fun command(cfg: AiConfig, prompt: String) = listOf(
         "claude", "-p", "--model", cfg.model.ifBlank { "haiku" },
@@ -210,6 +227,8 @@ private object ClaudeCodeProvider : CliProvider() {
 private object OpenCodeProvider : CliProvider() {
     override val id = "opencode"
     override val label = "opencode (local)"
+    override val group = LyricsAiProviders.Groups.AGENTS
+    override val hint = "uses your opencode setup"
     override val suggestedModels = listOf("opencode/big-pickle")
     override fun listModels(cfg: AiConfig): List<String> {
         val p = ProcessBuilder("opencode", "models").redirectErrorStream(true).start()
@@ -232,7 +251,10 @@ private object OpenCodeProvider : CliProvider() {
 private object CustomCommandProvider : CliProvider() {
     override val id = "custom-cmd"
     override val label = "Custom command"
-    override val baseUrlLabel = "Command (prompt on stdin, answer on stdout; {model} is replaced)"
+    override val group = LyricsAiProviders.Groups.LOCAL
+    override val hint = "any command that reads stdin"
+    override val baseUrlLabel = "Command"
+    override val baseUrlHelp = "The prompt arrives on stdin and the answer is read from stdout; {model} is replaced by the model below"
     override val defaultBaseUrl = "ollama run {model}"
     override val suggestedModels = listOf("llama3.2")
     override fun command(cfg: AiConfig, prompt: String): List<String> =
@@ -240,6 +262,15 @@ private object CustomCommandProvider : CliProvider() {
 }
 
 object LyricsAiProviders {
+    /** Picker headings, in display order after "Free". */
+    object Groups {
+        const val FREE = "Free"
+        const val CLOUD = "Cloud APIs"
+        const val LOCAL = "Local"
+        const val AGENTS = "Local agents / CLI"
+        val order = listOf(FREE, CLOUD, LOCAL, AGENTS)
+    }
+
     val all: List<LyricsAiProvider> = listOf(
         GeminiProvider,
         OpenAiCompatProvider(
@@ -254,11 +285,12 @@ object LyricsAiProviders {
         OpenAiCompatProvider("deepseek", "DeepSeek", "https://api.deepseek.com/v1", listOf("deepseek-chat"), keyHint = "Key from platform.deepseek.com"),
         OpenAiCompatProvider(
             "ollama", "Ollama (local)", "http://localhost:11434/v1", listOf("llama3.2"),
-            needsKey = false, editableUrl = true,
+            needsKey = false, editableUrl = true, group = LyricsAiProviders.Groups.LOCAL, hint = "runs on this machine",
         ),
         OpenAiCompatProvider(
             "openai-compat", "Custom OpenAI-compatible", "http://localhost:1234/v1", emptyList(),
-            needsKey = false, keyHint = "Optional", editableUrl = true,
+            needsKey = false, keyHint = "Optional", editableUrl = true, group = LyricsAiProviders.Groups.LOCAL,
+            hint = "LM Studio, vLLM, llama.cpp and similar",
         ),
         ClaudeCodeProvider,
         OpenCodeProvider,
@@ -269,11 +301,23 @@ object LyricsAiProviders {
 
     private fun k(id: String, field: String) = "lyricsAi.$id.$field"
 
-    fun config(prefs: DesktopPrefs, p: LyricsAiProvider) = AiConfig(
-        key = prefs.getString(k(p.id, "key"), "").trim(),
+    /** Reads model / endpoint from prefs and the API key from the secret store's in-memory cache (never the settings file). */
+    fun config(prefs: DesktopPrefs, p: LyricsAiProvider, secrets: SecretStore = Secrets.store) = AiConfig(
+        key = secrets.get(Secrets.lyricsAiKey(p.id)).trim(),
         model = prefs.getString(k(p.id, "model"), p.suggestedModels.firstOrNull().orEmpty()).trim(),
         baseUrl = prefs.getString(k(p.id, "url"), p.defaultBaseUrl).trim(),
     )
 
-    fun save(prefs: DesktopPrefs, p: LyricsAiProvider, field: String, value: String) = prefs.setString(k(p.id, field), value.trim())
+    /** Saves model / url to prefs. Keys go through [saveKey]. */
+    fun save(prefs: DesktopPrefs, p: LyricsAiProvider, field: String, value: String) {
+        require(field != "key") { "API keys are stored with saveKey, not in prefs" }
+        prefs.setString(k(p.id, field), value.trim())
+    }
+
+    /** Stores the API key in the secret store; a stale plain-text copy from an older build is removed so it cannot come back. */
+    fun saveKey(prefs: DesktopPrefs, p: LyricsAiProvider, value: String, secrets: SecretStore = Secrets.store) {
+        secrets.set(Secrets.lyricsAiKey(p.id), value)
+        prefs.remove(k(p.id, "key"))
+        if (p.id == "gemini") prefs.remove(PrefKeys.LyricsGeminiKey)
+    }
 }

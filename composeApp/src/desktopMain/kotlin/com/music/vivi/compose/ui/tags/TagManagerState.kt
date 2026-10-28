@@ -108,7 +108,7 @@ class TagManagerState(
     var autoTotal by mutableStateOf(0)
     var autoNote by mutableStateOf<String?>(null)
     private var autoJob: Job? = null
-    private val tagger = AutoTagger(lookup) { t -> if (Fingerprinter.available && !prefs.getString(PrefKeys.TagAcoustidKey, "").isBlank()) Fingerprinter.fingerprint(t.path) else null }
+    private val tagger = AutoTagger(lookup) { t -> if (Fingerprinter.available && com.music.vivi.compose.prefs.Secrets.store.has(com.music.vivi.compose.prefs.Secrets.AcoustidKey)) Fingerprinter.fingerprint(t.path) else null }
 
     // writing
     var busy by mutableStateOf(false)

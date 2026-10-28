@@ -31,7 +31,12 @@ import org.koin.dsl.module
 import org.koin.java.KoinJavaComponent.getKoin
 
 val desktopModule = module {
-    single { DesktopPrefs() }
+    single {
+        DesktopPrefs().also {
+            // API keys live in the system keyring; this moves any plain-text ones out of settings.properties and fills the cache.
+            com.music.vivi.compose.prefs.Secrets.start(it, com.music.vivi.compose.ui.player.lyrics.LyricsAiProviders.all.map { p -> p.id })
+        }
+    }
     single { com.music.vivi.compose.local.QueuePersistence(get(), get()) }
     single { com.music.vivi.compose.download.TrackDownloadService(get(), get()) }
     single { com.music.vivi.compose.local.LocalLibraryBootstrap(get(), get()) }

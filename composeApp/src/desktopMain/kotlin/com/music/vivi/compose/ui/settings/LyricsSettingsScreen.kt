@@ -211,11 +211,7 @@ fun LyricsSettingsScreen(navController: NavController) {
                         if (it) commit(live.copy(showTranslation = true))
                     }
                     SettingsDivider()
-                    ChipChoiceRow(
-                        Icons.Outlined.Translate, "Translate into",
-                        com.music.vivi.compose.ui.player.lyrics.TranslateLanguages,
-                        prefs.getString(PrefKeys.LyricsTranslateLang, "en"),
-                    ) { prefs.setString(PrefKeys.LyricsTranslateLang, it) }
+                    TranslateLanguageRow(prefs)
                     SettingsDivider()
                     LyricsAiProviderSettings(prefs)
                 }

@@ -14,8 +14,8 @@ class DesktopPrefs(
     private val props = Properties()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
 
-    /** Keys changed in memory but not yet on disk. */
-    private val dirty = HashMap<String, String>()
+    /** Keys changed in memory but not yet on disk; a null value is a removal. */
+    private val dirty = HashMap<String, String?>()
     private var flushPending = false
     private val writer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "prefs-writer").apply { isDaemon = true }
@@ -64,6 +64,28 @@ class DesktopPrefs(
         listeners.forEach { it() }
     }
 
+    /** Deletes [key] (and from the file at the next flush). Used for values that moved elsewhere, such as API keys. */
+    fun remove(key: String) {
+        synchronized(this) {
+            if (!props.containsKey(key)) return
+            props.remove(key)
+            dirty[key] = null
+            if (!flushPending) {
+                flushPending = true
+                writer.schedule({ flush() }, 250, java.util.concurrent.TimeUnit.MILLISECONDS)
+            }
+        }
+        listeners.forEach { it() }
+    }
+
+    /** Stored keys that start with [prefix]. */
+    @Synchronized
+    fun keysWithPrefix(prefix: String): List<String> =
+        props.stringPropertyNames().filter { it.startsWith(prefix) }.sorted()
+
+    /** Tells listeners that something outside the prefs (the secret store) changed. */
+    fun notifyChanged() = listeners.forEach { it() }
+
     @Synchronized
     fun flush() {
         flushPending = false
@@ -71,7 +93,7 @@ class DesktopPrefs(
         // Another running copy of the app may have saved since we loaded; merge its changes instead of
         // overwriting the whole file with our older snapshot (that is how a folder list could vanish).
         reloadFromDisk()
-        dirty.forEach { (k, v) -> props.setProperty(k, v) }
+        dirty.forEach { (k, v) -> if (v == null) props.remove(k) else props.setProperty(k, v) }
         dirty.clear()
         runCatching { persist() }
     }
@@ -147,7 +169,7 @@ object PrefKeys {
     const val TagBackupEnabled = "tagBackupEnabled"
     /** Tag Manager: write ID3v2.3 instead of 2.4 in MP3/WAV (default off). */
     const val TagId3v23 = "tagId3v23"
-    /** Optional AcoustID application key; fingerprint lookup runs only with this and `fpcalc`. */
+    /** Legacy plain-text AcoustID key; now kept in the system keyring (see [Secrets.AcoustidKey]). */
     const val TagAcoustidKey = "tagAcoustidKey"
     const val DarkMode = "darkMode"
     const val PureBlack = "pureBlack"
@@ -240,6 +262,7 @@ object PrefKeys {
     const val LyricsAutoTranslate = "lyricsAutoTranslate"
     const val LyricsTranslateLang = "lyricsTranslateLang"
     const val LyricsTranslateProvider = "lyricsTranslateProvider"
+    /** Legacy plain-text Gemini key; moved into the system keyring by [com.music.vivi.compose.prefs.SecretMigration]. */
     const val LyricsGeminiKey = "lyricsGeminiKey"
     const val LyricsGeminiModel = "lyricsGeminiModel"
     const val LyricsShowBackgroundVocals = "lyricsShowBackgroundVocals"
