@@ -94,27 +94,21 @@ fun DiagnosticsScreen(navController: NavController) {
     val systemText = remember(system) { system.joinToString("\n") { "${it.first}: ${it.second}" } }
 
     SettingsPage(title = "Diagnostics", onBack = { navController.navigateUp() }) {
-        DiagnosticsCard("System") {
-            system.forEach { (k, v) ->
-                Row(Modifier.fillMaxWidth().padding(vertical = 3.dp)) {
-                    Text(k, Modifier.width(130.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    SelectionContainer {
-                        Text(v, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-                    }
-                }
+        SettingsSection("System") {
+            system.forEachIndexed { i, (k, v) ->
+                if (i > 0) SettingsDivider()
+                SettingsRowFrame(null, k, v, onClick = null)
             }
         }
-        DiagnosticsCard("Log") {
-            ConnectedButtonGroup(
-                options = listOf(LogFilter.All to "All", LogFilter.Errors to "Errors only"),
-                selected = filter,
-                onSelect = { filter = it },
-                modifier = Modifier.width(280.dp),
-            )
+        SettingsSection("Log") {
+            ChoiceRow(
+                Icons.Outlined.BugReport, "Show",
+                listOf(LogFilter.All to "All", LogFilter.Errors to "Errors only"), filter,
+            ) { filter = it }
             Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.surfaceContainerHighest,
-                modifier = Modifier.fillMaxWidth().height(320.dp),
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).height(320.dp),
             ) {
                 val scroll = rememberScrollState()
                 // Follow the newest lines.
@@ -130,71 +124,40 @@ fun DiagnosticsScreen(navController: NavController) {
                     )
                 }
             }
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                ExpressiveButton(
-                    text = if (copied == "log") "Copied" else "Copy log",
-                    onClick = {
-                        CrashReporter.copyToClipboard(AppLog.snapshot(2_000))
-                        copied = "log"
-                    },
-                    style = ExpressiveStyle.Outlined,
-                    leadingIcon = if (copied == "log") Icons.Outlined.CheckCircle else Icons.Outlined.ContentCopy,
-                )
-                ExpressiveButton(
-                    text = if (copied == "sys") "Copied" else "Copy system info",
-                    onClick = {
-                        CrashReporter.copyToClipboard(systemText)
-                        copied = "sys"
-                    },
-                    style = ExpressiveStyle.Outlined,
-                    leadingIcon = if (copied == "sys") Icons.Outlined.CheckCircle else Icons.Outlined.ContentCopy,
-                )
-                ExpressiveButton(
-                    text = "Open log folder",
-                    onClick = CrashReporter::openLogFolder,
-                    style = ExpressiveStyle.Text,
-                    leadingIcon = Icons.Outlined.FolderOpen,
-                )
-                ExpressiveButton(
-                    text = "Report a problem",
-                    onClick = {
-                        val report = CrashReport(
-                            id = 0,
-                            title = "Manual report",
-                            explanation = "",
-                            exceptionSummary = "User report",
-                            stackTrace = "",
-                            thread = Thread.currentThread().name,
-                            timeMs = System.currentTimeMillis(),
-                            fatal = false,
-                        )
-                        CrashReporter.copyToClipboard(CrashReporter.fullReport(report, 400))
-                        CrashReporter.openInBrowser(CrashReporter.issueUrl(report).replace("%5Bcrash%5D", "%5Bbug%5D"))
-                    },
-                    style = ExpressiveStyle.Tonal,
-                    leadingIcon = Icons.Outlined.BugReport,
-                )
-            }
         }
-        Text(
-            "Reporting copies the full log to your clipboard and opens the issue form; paste it there.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 12.dp),
-        )
+        SettingsSection("Share") {
+            SettingsRowFrame(
+                if (copied == "log") Icons.Outlined.CheckCircle else Icons.Outlined.ContentCopy,
+                if (copied == "log") "Copied" else "Copy log", "The last 2000 log lines",
+                onClick = { CrashReporter.copyToClipboard(AppLog.snapshot(2_000)); copied = "log" },
+            )
+            SettingsDivider()
+            SettingsRowFrame(
+                if (copied == "sys") Icons.Outlined.CheckCircle else Icons.Outlined.ContentCopy,
+                if (copied == "sys") "Copied" else "Copy system info", "Version, OS, Java and native helpers",
+                onClick = { CrashReporter.copyToClipboard(systemText); copied = "sys" },
+            )
+            SettingsDivider()
+            SettingsRowFrame(Icons.Outlined.FolderOpen, "Open log folder", null, onClick = CrashReporter::openLogFolder)
+            SettingsDivider()
+            SettingsRowFrame(
+                Icons.Outlined.BugReport, "Report a problem", "Copies the full log, then opens the issue form to paste it into",
+                onClick = {
+                    val report = CrashReport(
+                        id = 0,
+                        title = "Manual report",
+                        explanation = "",
+                        exceptionSummary = "User report",
+                        stackTrace = "",
+                        thread = Thread.currentThread().name,
+                        timeMs = System.currentTimeMillis(),
+                        fatal = false,
+                    )
+                    CrashReporter.copyToClipboard(CrashReporter.fullReport(report, 400))
+                    CrashReporter.openInBrowser(CrashReporter.issueUrl(report).replace("%5Bcrash%5D", "%5Bbug%5D"))
+                },
+            )
+        }
     }
 }
 
-@Composable
-private fun DiagnosticsCard(title: String, content: @Composable () -> Unit) {
-    Surface(
-        shape = MaterialTheme.shapes.large,
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-    ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            content()
-        }
-    }
-}

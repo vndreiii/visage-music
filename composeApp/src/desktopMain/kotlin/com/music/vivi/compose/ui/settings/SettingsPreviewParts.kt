@@ -67,6 +67,7 @@ internal fun PreviewSettingsPage(
     previewCaption: String,
     previewHeight: androidx.compose.ui.unit.Dp,
     preview: @Composable () -> Unit,
+    sized: Boolean = true,
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     val prefs = koinInject<DesktopPrefs>()
@@ -82,7 +83,7 @@ internal fun PreviewSettingsPage(
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val pinned = maxWidth >= 720.dp
-        val frame: @Composable () -> Unit = { PreviewFrame(previewKey, previewCaption, previewHeight, preview) }
+        val frame: @Composable () -> Unit = { PreviewFrame(previewKey, previewCaption, previewHeight, preview, sized) }
         Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
             Column(Modifier.widthIn(max = maxW).fillMaxWidth().padding(horizontal = pad).padding(top = if (adwaita) 16.dp else 8.dp)) {
                 SettingsBackHeader(title = title, onBack = onBack)
@@ -113,6 +114,7 @@ internal fun PreviewFrame(
     caption: String,
     height: androidx.compose.ui.unit.Dp,
     content: @Composable () -> Unit,
+    sized: Boolean = true,
 ) {
     val prefs = koinInject<DesktopPrefs>()
     var open by remember { mutableStateOf(prefs.getBoolean(key, true)) }
@@ -138,7 +140,7 @@ internal fun PreviewFrame(
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
                 modifier = Modifier.fillMaxWidth().padding(bottom = 4.dp),
             ) {
-                Box(Modifier.fillMaxWidth().padding(8.dp).height(height)) {
+                Box(Modifier.fillMaxWidth().padding(8.dp).then(if (sized) Modifier.height(height) else Modifier)) {
                     content()
                 }
             }

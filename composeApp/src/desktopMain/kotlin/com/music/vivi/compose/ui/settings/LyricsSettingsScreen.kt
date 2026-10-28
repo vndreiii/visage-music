@@ -97,7 +97,7 @@ import com.music.vivi.compose.ui.player.lyrics.saveLyricsConfig
 import org.koin.compose.koinInject
 
 /** Sample song for the live preview: word-synced, line-synced (estimated), background vocal, translation, kana line, long gap. */
-private const val PREVIEW_LRC = """
+internal const val PREVIEW_LRC = """
 [00:01.00]<00:01.00>City <00:01.50>lights <00:02.10>are <00:02.50>fading <00:03.30>slow<00:04.00>
 [00:04.20]<00:04.20>Hold <00:04.70>the <00:05.00>night <00:05.60>a <00:05.80>little <00:06.50>longer<00:07.40>
 [00:07.60]Every heartbeat sings along
@@ -110,7 +110,7 @@ private const val PREVIEW_LRC = """
 private const val PREVIEW_LOOP_MS = 27_000L
 
 @Composable
-private fun rememberPreviewClock(): State<Float> {
+internal fun rememberPreviewClock(): State<Float> {
     val t = remember { mutableFloatStateOf(0f) }
     LaunchedEffect(Unit) {
         val start = withFrameNanos { it }
@@ -120,7 +120,7 @@ private fun rememberPreviewClock(): State<Float> {
 }
 
 /** A small generated cover saved once as a file, so "Blurred cover" has something to blur in the preview. */
-private val previewCoverUrl: String? by lazy {
+internal val previewCoverUrl: String? by lazy {
     runCatching {
         val img = java.awt.image.BufferedImage(256, 256, java.awt.image.BufferedImage.TYPE_INT_RGB)
         val g = img.createGraphics()
@@ -212,7 +212,10 @@ fun LyricsSettingsScreen(navController: NavController) {
             SettingsDivider()
             ChoiceRow(Icons.Outlined.FormatBold, "Weight", LyricsWeight.entries.map { it to it.label }, live.weight) { commit(live.copy(weight = it)) }
             SettingsDivider()
-            ChoiceRow(Icons.Outlined.TextFormat, "Case", LyricsTextCase.entries.map { it to it.label }, live.textCase) { commit(live.copy(textCase = it)) }
+            SettingsDropdownRow(
+                Icons.Outlined.TextFormat, "Case",
+                options = LyricsTextCase.entries.map { DropdownOption(it, it.label) }, selected = live.textCase,
+            ) { commit(live.copy(textCase = it)) }
             SettingsDivider()
             ChoiceRow(
                 Icons.Outlined.FormatAlignCenter, "Alignment",
@@ -234,9 +237,10 @@ fun LyricsSettingsScreen(navController: NavController) {
         }
 
         SettingsSection("Lines") {
-            ChoiceRow(Icons.Outlined.ViewDay, "Lines shown", LyricsVisibility.entries.map { it to it.label }, live.visibility) {
-                commit(live.copy(visibility = it))
-            }
+            SettingsDropdownRow(
+                Icons.Outlined.ViewDay, "Lines shown",
+                options = LyricsVisibility.entries.map { DropdownOption(it, it.label) }, selected = live.visibility,
+            ) { commit(live.copy(visibility = it)) }
             SettingsDivider()
             SwitchItem(Icons.Outlined.BlurOn, "Fade edges", "Soft fade at the top and bottom", live.fadeEdges) { commit(live.copy(fadeEdges = it)) }
             SettingsDivider()
