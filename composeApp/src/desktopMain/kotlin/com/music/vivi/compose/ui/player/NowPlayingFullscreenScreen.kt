@@ -76,6 +76,7 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
@@ -374,18 +375,17 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
             }
             val lyricsMainW = (w * 0.46f).coerceAtMost(560.dp)
             val spring = VisageMotion.glide<Dp>()
-            val mainW by animateDpAsState(if (showLyrics) lyricsMainW else w, spring, label = "fsMainW")
-            val ctrlW by animateDpAsState(
+            val mainW = animateDpAsState(if (showLyrics) lyricsMainW else w, spring, label = "fsMainW")
+            val ctrlW = animateDpAsState(
                 if (showLyrics) minOf(ctrlLimit, lyricsMainW) else idleCtrlW, spring, label = "fsCtrlW",
             )
-            val coverDim by animateDpAsState(if (coverShown) coverSize else 0.dp, spring, label = "fsCoverDim")
-            val coverGap by animateDpAsState(if (coverShown) baseGap else 0.dp, spring, label = "fsCoverGap")
-            val paneGap by animateDpAsState(if (showLyrics) 32.dp else 0.dp, spring, label = "fsPaneGap")
-            val lyricsW = (w - mainW - paneGap).coerceAtLeast(0.dp)
-
+            val coverDim = animateDpAsState(if (coverShown) coverSize else 0.dp, spring, label = "fsCoverDim")
+            val coverGap = animateDpAsState(if (coverShown) baseGap else 0.dp, spring, label = "fsCoverGap")
+            val paneGap = animateDpAsState(if (showLyrics) 32.dp else 0.dp, spring, label = "fsPaneGap")
+            
             val coverContent: @Composable () -> Unit = {
                 val coverH = coverSize / coverMorph.aspect
-                val slotMod = if (vertical) Modifier.width(coverSize).height(coverDim * (coverH / coverSize)) else Modifier.width(coverDim).height(coverH)
+                val slotMod = if (vertical) Modifier.width(coverSize).heightOf { coverDim.value * (coverH / coverSize) } else Modifier.widthOf { coverDim.value }.height(coverH)
                 Box(slotMod, contentAlignment = Alignment.Center) {
                     PlainAnimatedVisibility(
                         visible = coverShown,
@@ -413,8 +413,8 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
                 val cardShape = RoundedCornerShape(20.dp)
                 Box(
                     Modifier
-                        .width(ctrlW)
-                        .height(minOf(ctrlW * 9f / 16f, h - 340.dp).coerceAtLeast(120.dp))
+                        .widthOf { ctrlW.value }
+                        .heightOf { minOf(ctrlW.value * 9f / 16f, h - 340.dp).coerceAtLeast(120.dp) }
                         // Same swap layer as the controls below it, so the two move in step instead of colliding.
                         .songSwapControls(swap)
                         .shadow(24.dp, cardShape, clip = false)
@@ -427,10 +427,18 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
                 }
             }
 
+            // Stable lists: TransportRow can skip while the layout springs run.
+            val previousPreview = remember(queueIndex, queueTracks) {
+                queuePreviewIndices(queueIndex, queueTracks.size, true, 3).map { it to queueTracks[it] }
+            }
+            val nextPreview = remember(queueIndex, queueTracks) {
+                queuePreviewIndices(queueIndex, queueTracks.size, false, 3).map { it to queueTracks[it] }
+            }
+
             val controlsContent: @Composable () -> Unit = {
                 Column(
                     Modifier
-                        .width(ctrlW)
+                        .widthOf { ctrlW.value }
                         .songSwapControls(swap)
                         .playerControlsSurface(cfg.framedControls),
                 ) {
@@ -517,8 +525,8 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
                             onPrev = { if (canPrev) controller.previous() },
                             onPlayPause = { if (playing) controller.pause() else controller.play() },
                             onNext = { controller.next() },
-                            previousTracks = queuePreviewIndices(queueIndex, queueTracks.size, true, 3).map { it to queueTracks[it] },
-                            nextTracks = queuePreviewIndices(queueIndex, queueTracks.size, false, 3).map { it to queueTracks[it] },
+                            previousTracks = previousPreview,
+                            nextTracks = nextPreview,
                             onPickTrack = { index -> scope.launch(Dispatchers.IO) { controller.playQueue(queueTracks, index) } },
                         )
                         Spacer(Modifier.height(20.dp))
@@ -573,7 +581,7 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
             }
 
             Row(Modifier.fillMaxSize()) {
-                Box(Modifier.width(mainW).fillMaxHeight(), contentAlignment = Alignment.Center) {
+                Box(Modifier.widthOf { mainW.value }.fillMaxHeight(), contentAlignment = Alignment.Center) {
                     if (showLyrics) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             PlainAnimatedVisibility(
@@ -592,21 +600,21 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
                     } else if (vertical) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             coverContent()
-                            Spacer(Modifier.height(coverGap))
+                            Spacer(Modifier.heightOf { coverGap.value })
                             controlsContent()
                         }
                     } else {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             if (cfg.layout == FullscreenLayout.COVER_LEFT) {
-                                coverContent(); Spacer(Modifier.width(coverGap)); controlsContent()
+                                coverContent(); Spacer(Modifier.widthOf { coverGap.value }); controlsContent()
                             } else {
-                                controlsContent(); Spacer(Modifier.width(coverGap)); coverContent()
+                                controlsContent(); Spacer(Modifier.widthOf { coverGap.value }); coverContent()
                             }
                         }
                     }
                 }
-                Spacer(Modifier.width(paneGap))
-                Box(Modifier.width(lyricsW).fillMaxHeight()) {
+                Spacer(Modifier.widthOf { paneGap.value })
+                Box(Modifier.widthOf { (w - mainW.value - paneGap.value).coerceAtLeast(0.dp) }.fillMaxHeight()) {
                     PlainAnimatedVisibility(
                         visible = showLyrics,
                         enter = fadeIn() + slideInHorizontally { it / 8 },
@@ -775,4 +783,18 @@ private fun VolumeGroup(
             )
         }
     }
+}
+
+/** Fixed width read in the layout phase, so an animated value never recomposes the screen. */
+private fun Modifier.widthOf(width: () -> Dp): Modifier = layout { m, c ->
+    val px = width().roundToPx().coerceIn(c.minWidth, c.maxWidth.coerceAtLeast(c.minWidth))
+    val p = m.measure(c.copy(minWidth = px, maxWidth = px))
+    layout(p.width, p.height) { p.place(0, 0) }
+}
+
+/** Fixed height read in the layout phase, so an animated value never recomposes the screen. */
+private fun Modifier.heightOf(height: () -> Dp): Modifier = layout { m, c ->
+    val px = height().roundToPx().coerceIn(c.minHeight, c.maxHeight.coerceAtLeast(c.minHeight))
+    val p = m.measure(c.copy(minHeight = px, maxHeight = px))
+    layout(p.width, p.height) { p.place(0, 0) }
 }

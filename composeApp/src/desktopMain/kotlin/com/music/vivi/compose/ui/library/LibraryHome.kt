@@ -38,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -92,17 +93,24 @@ internal fun LibraryHomeFeed(
     androidx.compose.runtime.LaunchedEffect(resetTick) {
         if (resetTick > 0) state.animateScrollToItem(0)
     }
-    val mixes = remember(local.tracks, local.rediscover, local.genres) {
-        buildMixes(local.tracks, local.rediscover, local.genres)
+    // Derived collections are built off the UI thread (they walk every track).
+    val mixes by androidx.compose.runtime.produceState(emptyList<LibraryMix>(), local.tracks, local.rediscover, local.genres) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { buildMixes(local.tracks, local.rediscover, local.genres) }
     }
     val artistCovers = remember(local.albums) {
         local.albums.filter { it.artist_id != null && it.cover_path != null }
             .groupBy { it.artist_id!! }
             .mapValues { it.value.first().cover_path }
     }
-    val genreCoverMap = remember(local.tracks) { genreCovers(local.tracks) }
-    val yearCoverMap = remember(local.tracks) { yearCovers(local.tracks) }
-    val composerCoverMap = remember(local.tracks) { composerCovers(local.tracks) }
+    val genreCoverMap by androidx.compose.runtime.produceState(emptyMap<String, List<String>>(), local.tracks) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { genreCovers(local.tracks) }
+    }
+    val yearCoverMap by androidx.compose.runtime.produceState(emptyMap<String, List<String>>(), local.tracks) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { yearCovers(local.tracks) }
+    }
+    val composerCoverMap by androidx.compose.runtime.produceState(emptyMap<String, List<String>>(), local.tracks) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { composerCovers(local.tracks) }
+    }
     val hasLocal = local.tracks.isNotEmpty()
 
     LazyColumn(

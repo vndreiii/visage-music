@@ -649,13 +649,17 @@ private fun TrackContextMenu(tracks: List<TagTrack>, onDismiss: () -> Unit) {
             text = { Text("Copy path") },
             onClick = {
                 onDismiss()
-                com.music.vivi.compose.ui.component.SystemClipboard.copy(tracks.joinToString("\n") { it.path })
+                com.music.vivi.compose.ui.component.SystemClipboard.copyAsync(tracks.joinToString("\n") { it.path })
             },
         )
     }
 }
 
 private fun revealInFileManager(path: String) {
+    Thread({ revealInFileManagerBlocking(path) }, "reveal-in-file-manager").apply { isDaemon = true }.start()
+}
+
+private fun revealInFileManagerBlocking(path: String) {
     runCatching {
         val f = File(path)
         if (com.music.vivi.nativelib.HostOs.isWindows) {
@@ -666,7 +670,9 @@ private fun revealInFileManager(path: String) {
                     "dbus-send", "--session", "--dest=org.freedesktop.FileManager1", "--type=method_call",
                     "/org/freedesktop/FileManager1", "org.freedesktop.FileManager1.ShowItems",
                     "array:string:${f.toURI()}", "string:",
-                ).start().waitFor() == 0
+                ).start().let { p ->
+                    if (p.waitFor(3, java.util.concurrent.TimeUnit.SECONDS)) p.exitValue() == 0 else { p.destroyForcibly(); false }
+                }
             }.getOrDefault(false)
             if (!ok) ProcessBuilder("xdg-open", f.parent ?: "/").start()
         }

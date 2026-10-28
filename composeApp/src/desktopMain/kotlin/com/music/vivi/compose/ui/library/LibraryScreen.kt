@@ -397,7 +397,9 @@ fun LibraryScreen(navController: NavController) {
     val (playingId, isPlaying) = rememberNowPlayingIds()
 
     val scanner = koinInject<LocalMusicScanner>()
-    val scanProgress by scanner.progress.collectAsState()
+    // Only `running` matters here; reading the whole progress would recompose this screen once per scanned file.
+    val scanProgressState = scanner.progress.collectAsState()
+    val scanning by remember { androidx.compose.runtime.derivedStateOf { scanProgressState.value.running } }
     val downloadStatus by downloads.status.collectAsState()
     
     var tab by rememberSaveable { mutableStateOf(LibraryTab.Home) }
@@ -438,12 +440,12 @@ fun LibraryScreen(navController: NavController) {
     LaunchedEffect(Unit) { cache.refreshIfStale() }
     // Scan finished or a download finished/failed: local index changed, force a reload.
     var firstMutationPass by remember { mutableStateOf(true) }
-    LaunchedEffect(scanProgress.running, downloadStatus) {
+    LaunchedEffect(scanning, downloadStatus) {
         firstMutationPass = false
         // Download status is remembered in the cache so a change made while Library was closed is caught.
         val changed = cache.lastDownloadStatus != downloadStatus
         cache.lastDownloadStatus = downloadStatus
-        if (changed && !scanProgress.running && cache.hasLoadedLocal) cache.loadLocal()
+        if (changed && !scanning && cache.hasLoadedLocal) cache.loadLocal()
     }
     val likeMutations by libraryRepo.mutations.collectAsState()
     LaunchedEffect(likeMutations) { if (likeMutations != 0L) cache.refreshLiked() }
@@ -528,7 +530,7 @@ fun LibraryScreen(navController: NavController) {
             // Full content width: same 16dp inset as the cards and the first tab chip.
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
         )
-        if (refreshing || scanProgress.running) {
+        if (refreshing || scanning) {
             LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
         }
         localError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
@@ -623,31 +625,33 @@ fun LibraryScreen(navController: NavController) {
                 },
             )
             selectedTab == LibraryTab.Albums -> LocalAlbumsGrid(
-                albums = local.albums.filter { matchesAll(words, it.title, it.artist_name) },
-                ytAlbums = ytData.albums.filter { matchesAll(words, it.title, it.artists?.joinToString(" ") { a -> a.name }.orEmpty()) },
+                albums = remember(words, local.albums) { local.albums.filter { matchesAll(words, it.title, it.artist_name) } },
+                ytAlbums = remember(words, ytData.albums) { ytData.albums.filter { matchesAll(words, it.title, it.artists?.joinToString(" ") { a -> a.name }.orEmpty()) } },
                 onLocalAlbum = ::openAlbum,
                 onYtAlbum = { onYtItem(it, emptyList()) },
             )
             selectedTab == LibraryTab.Artists -> LocalArtistsGrid(
-                artists = local.artists.filter { matchesAll(words, it.name) },
-                ytArtists = ytData.artists.filter { matchesAll(words, it.title) },
+                artists = remember(words, local.artists) { local.artists.filter { matchesAll(words, it.name) } },
+                ytArtists = remember(words, ytData.artists) { ytData.artists.filter { matchesAll(words, it.title) } },
                 onLocalArtist = ::openArtist,
                 onYtArtist = { onYtItem(it, emptyList()) },
             )
             selectedTab == LibraryTab.Playlists -> PlaylistsGrid(
-                playlists = ytData.playlists.filter { matchesAll(words, it.title) },
+                playlists = remember(words, ytData.playlists) { ytData.playlists.filter { matchesAll(words, it.title) } },
                 onItem = { onYtItem(it, emptyList()) },
             )
             selectedTab == LibraryTab.Songs -> LikedList(
-                songs = ytData.songs.filter { matchesAll(words, it.title, it.artists.joinToString(" ") { a -> a.name }, it.album?.name.orEmpty()) },
+                songs = remember(words, ytData.songs) { ytData.songs.filter { matchesAll(words, it.title, it.artists.joinToString(" ") { a -> a.name }, it.album?.name.orEmpty()) } },
                 playingId = playingId,
                 isPlaying = isPlaying,
                 onItemClick = onYtItem,
                 emptyMessage = "No songs in library yet",
             )
             selectedTab == LibraryTab.Local -> LocalTrackList(
-                tracks = if (words.isEmpty()) local.tracks else local.tracks.filter {
-                    matchesAll(words, it.title, it.artist_name, it.album_title.orEmpty(), it.genre.orEmpty())
+                tracks = remember(words, local.tracks) {
+                    if (words.isEmpty()) local.tracks else local.tracks.filter {
+                        matchesAll(words, it.title, it.artist_name, it.album_title.orEmpty(), it.genre.orEmpty())
+                    }
                 },
                 playingId = playingId,
                 isPlaying = isPlaying,

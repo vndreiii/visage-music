@@ -22,6 +22,15 @@ object SystemClipboard {
         return viaAwt(text)
     }
 
+    private val executor = java.util.concurrent.Executors.newSingleThreadExecutor { r ->
+        Thread(r, "clipboard").apply { isDaemon = true }
+    }
+
+    /** [copy] off the calling (UI) thread; [onDone] runs on the clipboard thread with the result. */
+    fun copyAsync(text: String, onDone: (Boolean) -> Unit = {}) {
+        executor.execute { onDone(copy(text)) }
+    }
+
     private fun pipe(cmd: List<String>, text: String): Boolean = runCatching {
         val p = ProcessBuilder(cmd).redirectErrorStream(true).redirectOutput(ProcessBuilder.Redirect.DISCARD).start()
         p.outputStream.use { it.write(text.toByteArray()) }

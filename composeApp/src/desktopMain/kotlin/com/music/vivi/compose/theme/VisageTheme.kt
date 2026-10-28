@@ -173,15 +173,10 @@ fun VisageTheme(
         else -> prefsSeed
     }
 
-    // Crossfade seed → regenerates the full Monet scheme fluidly (500–800ms).
-    val seed by animateColorAsState(
-        targetValue = targetSeed,
-        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.colorShift(),
-        label = "themeSeedCrossfade",
-    )
-
-    val scheme = remember(
-        seed,
+    // The scheme is generated once per target seed; the crossfade just lerps the colour roles of the
+    // previous scheme into the new one (no MaterialKolor work per frame).
+    val targetScheme = remember(
+        targetSeed,
         dark,
         theme.pureBlack,
         theme.paletteStyle,
@@ -194,7 +189,7 @@ fun VisageTheme(
         val base = visageColorScheme(
             darkTheme = dark,
             pureBlack = theme.pureBlack,
-            seed = seed,
+            seed = targetSeed,
             style = theme.paletteStyle,
             contrastLevel = theme.contrastLevel,
         )
@@ -209,6 +204,32 @@ fun VisageTheme(
             base
         }
         (if (theme.pureBlack && dark) applied.withPureBlack(true) else applied).withAaaContrast(dark)
+    }
+
+    var fromScheme by remember { mutableStateOf(targetScheme) }
+    var toScheme by remember { mutableStateOf(targetScheme) }
+    var lastSeed by remember { mutableStateOf(targetSeed) }
+    val fraction = remember { androidx.compose.animation.core.Animatable(1f) }
+    androidx.compose.runtime.LaunchedEffect(targetScheme) {
+        if (targetScheme === toScheme) return@LaunchedEffect
+        val seedChanged = targetSeed != lastSeed
+        lastSeed = targetSeed
+        if (!seedChanged) {
+            // dark/light, contrast, pure black ...: switch at once like before
+            fromScheme = targetScheme; toScheme = targetScheme
+            fraction.snapTo(1f)
+        } else {
+            fromScheme = if (fraction.value >= 1f) toScheme else lerpScheme(fromScheme, toScheme, fraction.value)
+            toScheme = targetScheme
+            fraction.snapTo(0f)
+            fraction.animateTo(1f, com.music.vivi.compose.ui.motion.VisageMotion.colorShift())
+        }
+    }
+    val f = fraction.value
+    val scheme = when {
+        targetScheme !== toScheme && targetSeed == lastSeed -> targetScheme
+        f >= 1f -> toScheme
+        else -> lerpScheme(fromScheme, toScheme, f)
     }
 
     CompositionLocalProvider(LocalArtworkPalette provides artworkPalette) {
@@ -253,5 +274,33 @@ val VisageEmphasizedTypography: androidx.compose.material3.Typography = androidx
         labelLarge = t.labelLarge.copy(fontWeight = semi),
         labelMedium = t.labelMedium.copy(fontWeight = medium),
         labelSmall = t.labelSmall.copy(fontWeight = medium),
+    )
+}
+
+
+/** Linear blend of every colour role (the scheme itself is only generated once per seed). */
+private fun lerpScheme(a: ColorScheme, b: ColorScheme, t: Float): ColorScheme {
+    fun l(x: Color, y: Color) = androidx.compose.ui.graphics.lerp(x, y, t)
+    return b.copy(
+        primary = l(a.primary, b.primary), onPrimary = l(a.onPrimary, b.onPrimary),
+        primaryContainer = l(a.primaryContainer, b.primaryContainer), onPrimaryContainer = l(a.onPrimaryContainer, b.onPrimaryContainer),
+        inversePrimary = l(a.inversePrimary, b.inversePrimary),
+        secondary = l(a.secondary, b.secondary), onSecondary = l(a.onSecondary, b.onSecondary),
+        secondaryContainer = l(a.secondaryContainer, b.secondaryContainer), onSecondaryContainer = l(a.onSecondaryContainer, b.onSecondaryContainer),
+        tertiary = l(a.tertiary, b.tertiary), onTertiary = l(a.onTertiary, b.onTertiary),
+        tertiaryContainer = l(a.tertiaryContainer, b.tertiaryContainer), onTertiaryContainer = l(a.onTertiaryContainer, b.onTertiaryContainer),
+        background = l(a.background, b.background), onBackground = l(a.onBackground, b.onBackground),
+        surface = l(a.surface, b.surface), onSurface = l(a.onSurface, b.onSurface),
+        surfaceVariant = l(a.surfaceVariant, b.surfaceVariant), onSurfaceVariant = l(a.onSurfaceVariant, b.onSurfaceVariant),
+        surfaceTint = l(a.surfaceTint, b.surfaceTint),
+        inverseSurface = l(a.inverseSurface, b.inverseSurface), inverseOnSurface = l(a.inverseOnSurface, b.inverseOnSurface),
+        error = l(a.error, b.error), onError = l(a.onError, b.onError),
+        errorContainer = l(a.errorContainer, b.errorContainer), onErrorContainer = l(a.onErrorContainer, b.onErrorContainer),
+        outline = l(a.outline, b.outline), outlineVariant = l(a.outlineVariant, b.outlineVariant),
+        scrim = l(a.scrim, b.scrim),
+        surfaceBright = l(a.surfaceBright, b.surfaceBright), surfaceDim = l(a.surfaceDim, b.surfaceDim),
+        surfaceContainer = l(a.surfaceContainer, b.surfaceContainer), surfaceContainerHigh = l(a.surfaceContainerHigh, b.surfaceContainerHigh),
+        surfaceContainerHighest = l(a.surfaceContainerHighest, b.surfaceContainerHighest),
+        surfaceContainerLow = l(a.surfaceContainerLow, b.surfaceContainerLow), surfaceContainerLowest = l(a.surfaceContainerLowest, b.surfaceContainerLowest),
     )
 }

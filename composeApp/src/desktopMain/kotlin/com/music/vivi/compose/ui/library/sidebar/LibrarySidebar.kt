@@ -368,9 +368,14 @@ private fun LibraryPanel(
     var renaming by remember { mutableStateOf<LibraryEntry?>(null) }
     var deleting by remember { mutableStateOf<LibraryEntry?>(null) }
 
+    // Collected once for the whole sidebar (State objects only, read inside the rows), not once per row.
+    val nowState = controller.nowPlaying.collectAsState()
+    val stateState = controller.state.collectAsState()
     val playback = remember(yt, repo, cache, controller) {
         EntryPlayback(yt, repo, cache, controller) { toast = it }
     }
+    playback.nowState = nowState
+    playback.stateState = stateState
     val actions = remember(navController, playback) {
         EntryActions(
             open = { e ->
@@ -611,8 +616,12 @@ private fun LibraryPanel(
     )
     renaming?.let { e ->
         // "Edit": the same card as New playlist, with the playlist's current name, description and photo.
-        val current = remember(e.id) { runCatching { repo.getPlaylist(e.id) }.getOrNull() }
-        PlaylistDialog(
+        // Loaded off the UI thread; the dialog opens once the row is in.
+        val loaded by produceState(false to (null as com.music.vivi.database.Playlist?), e.id) {
+            value = true to withContext(Dispatchers.IO) { runCatching { repo.getPlaylist(e.id) }.getOrNull() }
+        }
+        val current = loaded.second
+        if (loaded.first) PlaylistDialog(
             title = "Edit playlist", confirm = "Save",
             initialName = e.title,
             initialDescription = current?.description.orEmpty(),
@@ -667,6 +676,10 @@ internal class EntryPlayback(
     private val controller: com.music.vivi.player.PlaybackController,
     private val say: (String) -> Unit,
 ) {
+    /** Set by the sidebar host; rows read them so only one collector exists. */
+    var nowState: androidx.compose.runtime.State<Any?>? = null
+    var stateState: androidx.compose.runtime.State<PlaybackState?>? = null
+
     private suspend fun tracks(e: LibraryEntry): List<QueueTrack> = withContext(Dispatchers.IO) {
         when (e.kind) {
             EntryKind.LIKED -> cache.ytData.value.songs.map { it.toQueueTrack() }
@@ -838,12 +851,9 @@ private fun EmptyState(loading: Boolean, searching: Boolean, onCreate: () -> Uni
 // ── Rows ─────────────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun rememberEntryPlaying(e: LibraryEntry): Pair<Boolean, Boolean> {
-    val controller = LocalPlaybackController.current
-    val now by controller.nowPlaying.collectAsState()
-    val st by controller.state.collectAsState()
-    val current = LibraryPlayback.playingKey == e.key && now != null
-    return current to (current && st == PlaybackState.Playing)
+private fun entryPlaying(e: LibraryEntry, playback: EntryPlayback): Pair<Boolean, Boolean> {
+    val current = LibraryPlayback.playingKey == e.key && playback.nowState?.value != null
+    return current to (current && playback.stateState?.value == PlaybackState.Playing)
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -855,7 +865,7 @@ private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayback, ac
     val dim by animateFloatAsState(if (r.hidden) 0.5f else 1f, VisageMotion.effectsDefault(), label = "hiddenDim")
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
-    val (isCurrent, isPlaying) = rememberEntryPlaying(e)
+    val (isCurrent, isPlaying) = entryPlaying(e, playback)
     var menu by remember { mutableStateOf(false) }
     val bg by animateFloatAsState(if (hovered || isCurrent) 1f else 0f, VisageMotion.effectsDefault(), label = "rowBg")
     // A queue row carried over this playlist drops into it.
@@ -912,7 +922,7 @@ private fun LibraryGridCard(r: SidebarRow.Item, playback: EntryPlayback, actions
     val e = r.entry
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
-    val (isCurrent, isPlaying) = rememberEntryPlaying(e)
+    val (isCurrent, isPlaying) = entryPlaying(e, playback)
     var menu by remember { mutableStateOf(false) }
     val (dropTarget, dropHover) = rememberEntryDrop(e)
     val primary = MaterialTheme.colorScheme.primary
