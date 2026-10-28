@@ -1023,7 +1023,7 @@ fun FullscreenPlayerSettingsScreen(navController: NavController) {
             SwitchItem(
                 icon = Icons.Outlined.Lyrics,
                 title = "Show lyrics by default",
-                subtitle = "Open the fullscreen player with the lyrics panel visible",
+                subtitle = "Lyrics sit beside the player the first time you open it; after that it reopens the way you left it",
                 checked = cfg.lyricsByDefault,
                 onChecked = { prefs.setBoolean(FullscreenKeys.LyricsByDefault, it) },
             )

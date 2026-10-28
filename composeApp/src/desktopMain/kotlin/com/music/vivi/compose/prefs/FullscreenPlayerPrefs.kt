@@ -34,6 +34,8 @@ object FullscreenKeys {
     const val ShowAlbum = "fsShowAlbum"
     const val ShowQueueButton = "fsShowQueueButton"
     const val LyricsByDefault = "fsLyricsByDefault"
+    /** Last lyrics open/closed choice made on the fullscreen player; absent until the first toggle. */
+    const val LyricsOpen = "fsLyricsOpen"
     const val ShowVolume = "fsShowVolume"
     const val ShowShuffle = "fsShowShuffle"
     const val ShowRepeat = "fsShowRepeat"
@@ -85,7 +87,7 @@ data class FullscreenSettings(
             FullscreenKeys.ShowArtist to "true",
             FullscreenKeys.ShowAlbum to "true",
             FullscreenKeys.ShowQueueButton to "true",
-            FullscreenKeys.LyricsByDefault to "false",
+            FullscreenKeys.LyricsByDefault to "true",
             FullscreenKeys.ShowVolume to "true",
             FullscreenKeys.ShowShuffle to "true",
             FullscreenKeys.ShowRepeat to "true",

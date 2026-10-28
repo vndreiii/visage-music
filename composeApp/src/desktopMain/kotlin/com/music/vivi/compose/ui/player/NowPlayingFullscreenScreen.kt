@@ -26,10 +26,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredHeight
-import androidx.compose.foundation.layout.requiredSize
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -67,7 +65,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -78,6 +75,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.music.vivi.compose.LocalPlaybackController
@@ -86,7 +84,9 @@ import com.music.vivi.compose.WindowFullscreen
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.FullscreenCoverShape
 import com.music.vivi.compose.prefs.FullscreenLayout
+import com.music.vivi.compose.prefs.FullscreenKeys
 import com.music.vivi.compose.prefs.FullscreenSettings
+import com.music.vivi.compose.prefs.QueuePanelMode
 import com.music.vivi.compose.prefs.PlayerBackgroundStyle
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.compose.prefs.VolumeControlStyle
@@ -191,7 +191,13 @@ private fun PrefVertical(visible: Boolean, content: @Composable () -> Unit) {
  * seek bar, controls width, ...) with optional overrides from Settings -> Fullscreen player.
  */
 @Composable
-fun NowPlayingFullscreenScreen(navController: NavController) {
+fun NowPlayingFullscreenScreen(
+    navController: NavController,
+    onOpenPinnedQueue: (() -> Unit)? = null,
+    onOpenFullscreenQueue: (() -> Unit)? = null,
+    queueOpen: Boolean = false,
+    onCloseQueue: (() -> Unit)? = null,
+) {
     val prefs = koinInject<DesktopPrefs>()
     val prefsVersion = com.music.vivi.compose.ui.settings.rememberPrefsVersion(prefs)
     val cfg = remember(prefsVersion) { FullscreenSettings.resolve(prefs.reader()) }
@@ -201,12 +207,18 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
         darkness = prefs.getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100) / 100f,
         framedControls = cfg.framedControls,
     ) {
-        NowPlayingFullscreenContent(navController)
+        NowPlayingFullscreenContent(navController, onOpenPinnedQueue, onOpenFullscreenQueue, queueOpen, onCloseQueue)
     }
 }
 
 @Composable
-private fun NowPlayingFullscreenContent(navController: NavController) {
+private fun NowPlayingFullscreenContent(
+    navController: NavController,
+    onOpenPinnedQueue: (() -> Unit)?,
+    onOpenFullscreenQueue: (() -> Unit)?,
+    queueOpen: Boolean,
+    onCloseQueue: (() -> Unit)?,
+) {
     val ink = LocalPlayerInk.current
     val controller = LocalPlaybackController.current
     val windowState = LocalWindowState.current
@@ -251,11 +263,23 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
         queueTracks.mapIndexedNotNull { i, t -> if (i > queueIndex) i to t else null }
     }
 
-    var showLyrics by remember { mutableStateOf(cfg.lyricsByDefault) }
-    com.music.vivi.compose.keys.ShortcutEventEffect { e ->
-        if (e == com.music.vivi.compose.keys.ShortcutEvent.ToggleLyrics) showLyrics = !showLyrics
+    // Opens the way it was left; the first time it follows "Show lyrics by default" (on unless turned off).
+    var showLyrics by remember { mutableStateOf(prefs.getBoolean(FullscreenKeys.LyricsOpen, cfg.lyricsByDefault)) }
+    fun setLyrics(open: Boolean) {
+        showLyrics = open
+        prefs.setBoolean(FullscreenKeys.LyricsOpen, open)
     }
-    var showQueue by remember { mutableStateOf(false) }
+    com.music.vivi.compose.keys.ShortcutEventEffect { e ->
+        if (e == com.music.vivi.compose.keys.ShortcutEvent.ToggleLyrics) setLyrics(!showLyrics)
+    }
+    // The queue follows the app-wide Queue setting (Settings -> Player): side panel and sheet are owned by the
+    // app scaffold, inline sits under the controls.
+    val queueMode = remember(prefsVersion) {
+        runCatching { QueuePanelMode.valueOf(prefs.getString(PrefKeys.QueuePanelMode, QueuePanelMode.PINNED_RIGHT.name)) }
+            .getOrDefault(QueuePanelMode.PINNED_RIGHT)
+    }
+    var underPlaybarOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
+    val inlineQueue = queueMode == QueuePanelMode.UNDER_PLAYBAR && underPlaybarOpen
 
     // Canvas video (same resolver as Now Playing).
     var canvasArt by remember { mutableStateOf<com.music.vivi.canvas.CanvasArtwork?>(null) }
@@ -349,12 +373,11 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
             val w = maxWidth
             val h = maxHeight
             val vertical = cfg.layout == FullscreenLayout.CENTERED
-            val coverShown = !hideCover && !showLyrics
-            // With lyrics open the cover slot is gone; a playing music video takes the room above the controls.
-            val lyricsVideo = showLyrics && !hideCover && trackVideo != null
+            val coverShown = !hideCover
+            val inlineH = if (inlineQueue) InlineQueueHeight else 0.dp
             val baseGap = if (vertical) 32.dp else 48.dp
             val autoCover = if (vertical) {
-                minOf(h - 380.dp, w * 0.5f, 520.dp).coerceAtLeast(160.dp)
+                minOf(h - 380.dp - inlineH, w * 0.5f, 520.dp).coerceAtLeast(160.dp)
             } else {
                 minOf(h, w * 0.42f, 600.dp)
             }
@@ -363,7 +386,7 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
             // fill most of the page (heights left for the controls when centred, space beside the controls otherwise).
             val wideProgress = ((coverMorph.aspect - 1f) / 0.78f).coerceIn(0f, 1f)
             val wideWidth = if (vertical) {
-                minOf(w, (h - 330.dp) * coverMorph.aspect, 1500.dp)
+                minOf(w, (h - 330.dp - inlineH) * coverMorph.aspect, 1500.dp)
             } else {
                 minOf(w - 360.dp - baseGap, h * coverMorph.aspect, 1300.dp)
             }.coerceAtLeast(baseCover)
@@ -373,27 +396,37 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
                 vertical || hideCover -> minOf(ctrlLimit, w)
                 else -> minOf(ctrlLimit, (w - coverSize - baseGap).coerceAtLeast(320.dp))
             }
-            val lyricsMainW = (w * 0.46f).coerceAtMost(560.dp)
-            val spring = VisageMotion.glide<Dp>()
-            val mainW = animateDpAsState(if (showLyrics) lyricsMainW else w, spring, label = "fsMainW")
-            val ctrlW = animateDpAsState(
-                if (showLyrics) minOf(ctrlLimit, lyricsMainW) else idleCtrlW, spring, label = "fsCtrlW",
+            // The stack is the same size with or without lyrics; lyrics only slide it left (or, in a window too
+            // narrow for that, shrink it just enough to leave a usable lyrics column).
+            val coverNat = if (coverShown) coverSize else 0.dp
+            val gapNat = if (coverShown) baseGap else 0.dp
+            val naturalW = if (vertical) maxOf(coverNat, idleCtrlW) else coverNat + gapNat + idleCtrlW
+            val split = FullscreenLyricsLayout.split(w, naturalW)
+            val fit = FullscreenLyricsLayout.fit(
+                coverNat, idleCtrlW, gapNat, vertical, if (showLyrics) split.stackWidth else naturalW,
             )
-            val coverDim = animateDpAsState(if (coverShown) coverSize else 0.dp, spring, label = "fsCoverDim")
-            val coverGap = animateDpAsState(if (coverShown) baseGap else 0.dp, spring, label = "fsCoverGap")
-            val paneGap = animateDpAsState(if (showLyrics) 32.dp else 0.dp, spring, label = "fsPaneGap")
-            
+            val spring = VisageMotion.glide<Dp>()
+            val coverDim = animateDpAsState(fit.cover, spring, label = "fsCoverDim")
+            val ctrlW = animateDpAsState(fit.controls, spring, label = "fsCtrlW")
+            val coverGap = animateDpAsState(gapNat, spring, label = "fsCoverGap")
+            val stackLeft = animateDpAsState(
+                if (showLyrics) split.stackLeft else FullscreenLyricsLayout.centeredLeft(w, naturalW),
+                spring,
+                label = "fsStackLeft",
+            )
+
             val coverContent: @Composable () -> Unit = {
-                val coverH = coverSize / coverMorph.aspect
-                val slotMod = if (vertical) Modifier.width(coverSize).heightOf { coverDim.value * (coverH / coverSize) } else Modifier.widthOf { coverDim.value }.height(coverH)
-                Box(slotMod, contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier.widthOf { coverDim.value }.heightOf { coverDim.value / coverMorph.aspect },
+                    contentAlignment = Alignment.Center,
+                ) {
                     PlainAnimatedVisibility(
                         visible = coverShown,
                         enter = fadeIn() + scaleIn(initialScale = 0.92f),
                         exit = fadeOut() + scaleOut(targetScale = 0.92f),
                         label = "fsCover",
                     ) {
-                        AlbumGestureCard(controller, Modifier.requiredWidth(coverSize).requiredHeight(coverH).songSwapCover(swap)) {
+                        AlbumGestureCard(controller, Modifier.fillMaxSize().songSwapCover(swap)) {
                             FullscreenCover(
                                 artworkUrl = coverTrack?.artworkUrl,
                                 seed = coverTrack?.videoId ?: coverTrack?.title ?: "none",
@@ -405,24 +438,6 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
                                 modifier = Modifier.fillMaxSize(),
                             )
                         }
-                    }
-                }
-            }
-
-            val lyricsVideoCard: @Composable () -> Unit = {
-                val cardShape = RoundedCornerShape(20.dp)
-                Box(
-                    Modifier
-                        .widthOf { ctrlW.value }
-                        .heightOf { minOf(ctrlW.value * 9f / 16f, h - 340.dp).coerceAtLeast(120.dp) }
-                        // Same swap layer as the controls below it, so the two move in step instead of colliding.
-                        .songSwapControls(swap)
-                        .shadow(24.dp, cardShape, clip = false)
-                        .clip(cardShape)
-                        .background(Color.Black),
-                ) {
-                    trackVideo?.let {
-                        com.music.vivi.compose.ui.player.video.MusicVideoSurface(video = it, modifier = Modifier.fillMaxSize())
                     }
                 }
             }
@@ -443,16 +458,6 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
                         .playerControlsSurface(cfg.framedControls),
                 ) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                        PrefHorizontal(showLyrics && !hideCover && !lyricsVideo) {
-                            CoverImage(
-                                model = track?.artworkUrl,
-                                seed = track?.videoId ?: "none",
-                                modifier = Modifier
-                                    .padding(end = 14.dp, top = 4.dp)
-                                    .size(72.dp)
-                                    .clip(RoundedCornerShape(14.dp)),
-                            )
-                        }
                         Column(Modifier.weight(1f)) {
                             Text(
                                 track?.title ?: "Nothing playing",
@@ -576,28 +581,23 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
                                 }
                             }
                         }
+                        PrefVertical(inlineQueue) {
+                            QueuePillStrip(
+                                upcoming = upcoming,
+                                onPlayIndex = { index -> scope.launch(Dispatchers.IO) { controller.playQueue(queueTracks, index) } },
+                                modifier = Modifier.fillMaxWidth().height(InlineQueueHeight).padding(top = 16.dp),
+                            )
+                        }
                     }
                 }
             }
 
-            Row(Modifier.fillMaxSize()) {
-                Box(Modifier.widthOf { mainW.value }.fillMaxHeight(), contentAlignment = Alignment.Center) {
-                    if (showLyrics) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            PlainAnimatedVisibility(
-                                visible = lyricsVideo,
-                                enter = fadeIn(),
-                                exit = fadeOut(),
-                                label = "fsLyricsVideo",
-                            ) {
-                                Column {
-                                    lyricsVideoCard()
-                                    Spacer(Modifier.height(20.dp))
-                                }
-                            }
-                            controlsContent()
-                        }
-                    } else if (vertical) {
+            Box(Modifier.fillMaxSize()) {
+                Box(
+                    Modifier.fillMaxHeight().offset { IntOffset(stackLeft.value.roundToPx(), 0) },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    if (vertical) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                             coverContent()
                             Spacer(Modifier.heightOf { coverGap.value })
@@ -613,8 +613,12 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
                         }
                     }
                 }
-                Spacer(Modifier.widthOf { paneGap.value })
-                Box(Modifier.widthOf { (w - mainW.value - paneGap.value).coerceAtLeast(0.dp) }.fillMaxHeight()) {
+                Box(
+                    Modifier
+                        .fillMaxHeight()
+                        .offset { IntOffset(split.lyricsLeft.roundToPx(), 0) }
+                        .width(split.lyricsWidth),
+                ) {
                     PlainAnimatedVisibility(
                         visible = showLyrics,
                         enter = fadeIn() + slideInHorizontally { it / 8 },
@@ -622,35 +626,10 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
                         label = "fsLyrics",
                     ) {
                         LyricsPanel(
-                            onClose = { showLyrics = false },
+                            onClose = { setLyrics(false) },
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
-                }
-            }
-        }
-
-        // Up-next overlay.
-        Box(Modifier.fillMaxSize().padding(top = 96.dp, end = 32.dp, bottom = 32.dp), contentAlignment = Alignment.CenterEnd) {
-            PlainAnimatedVisibility(
-                visible = showQueue,
-                enter = fadeIn() + slideInHorizontally { it / 2 },
-                exit = fadeOut() + slideOutHorizontally { it / 2 },
-                label = "fsQueue",
-            ) {
-                Column(
-                    Modifier
-                        .width(380.dp)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(Color.Black.copy(alpha = 0.5f))
-                        .padding(20.dp),
-                ) {
-                    QueuePillStrip(
-                        upcoming = upcoming,
-                        onPlayIndex = { index -> scope.launch(Dispatchers.IO) { controller.playQueue(queueTracks, index) } },
-                        modifier = Modifier.fillMaxSize(),
-                    )
                 }
             }
         }
@@ -667,11 +646,19 @@ private fun NowPlayingFullscreenContent(navController: NavController) {
             Spacer(Modifier.weight(1f))
             PrefHorizontal(cfg.showQueueButton) {
                 Row {
-                    ToolIconButton(Icons.AutoMirrored.Outlined.QueueMusic, "Queue", active = showQueue) { showQueue = !showQueue }
+                    ToolIconButton(Icons.AutoMirrored.Outlined.QueueMusic, "Queue", active = inlineQueue || queueOpen) {
+                        when {
+                            queueOpen -> onCloseQueue?.invoke()
+                            queueMode == QueuePanelMode.FULLSCREEN -> onOpenFullscreenQueue?.invoke()
+                            queueMode == QueuePanelMode.PINNED_RIGHT ->
+                                onOpenPinnedQueue?.invoke() ?: onOpenFullscreenQueue?.invoke()
+                            else -> underPlaybarOpen = !underPlaybarOpen
+                        }
+                    }
                     Spacer(Modifier.width(10.dp))
                 }
             }
-            ToolIconButton(Icons.Outlined.Lyrics, "Lyrics", active = showLyrics) { showLyrics = !showLyrics }
+            ToolIconButton(Icons.Outlined.Lyrics, "Lyrics", active = showLyrics) { setLyrics(!showLyrics) }
         }
 
         // Clock stays visible while the controls are hidden.
@@ -784,6 +771,8 @@ private fun VolumeGroup(
         }
     }
 }
+
+private val InlineQueueHeight = 220.dp
 
 /** Fixed width read in the layout phase, so an animated value never recomposes the screen. */
 private fun Modifier.widthOf(width: () -> Dp): Modifier = layout { m, c ->

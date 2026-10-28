@@ -112,7 +112,6 @@ fun FrameWindowScope.AppScaffold(
     val backStack by navController.currentBackStackEntryAsState()
     val current = backStack?.destination?.route
     val onNowPlaying = current == Routes.NOW_PLAYING || current == Routes.NOW_PLAYING_FULLSCREEN
-    val onFullscreenPlayer = current == Routes.NOW_PLAYING_FULLSCREEN
     LaunchedEffect(Unit) { com.music.vivi.compose.ui.search.ContentRegion.apply(prefs) }
     var pinnedQueue by remember { mutableStateOf(false) }
     var fullscreenQueue by remember { mutableStateOf(false) }
@@ -124,12 +123,6 @@ fun FrameWindowScope.AppScaffold(
     }
     @Suppress("UNUSED_VARIABLE")
     val observePrefs = prefsTick
-    LaunchedEffect(onFullscreenPlayer) {
-        if (onFullscreenPlayer) {
-            pinnedQueue = false
-            fullscreenQueue = false
-        }
-    }
     fun openPinnedQueue() {
         prefs.setString(PrefKeys.QueuePanelMode, QueuePanelMode.PINNED_RIGHT.name)
         fullscreenQueue = false
@@ -148,9 +141,9 @@ fun FrameWindowScope.AppScaffold(
     val libraryAllowed = Sidebars.libraryAllowedOn(current, sidebarCfg)
     val libraryState = if (libraryAllowed) sidebarCfg.libraryState else LibrarySidebarState.HIDDEN
     val queueAuto = Sidebars.queueAutoOpenOnHome(current, sidebarCfg, queueDismissedOnHome)
-    val queueRailOn = (pinnedQueue || queueAuto) && !fullscreenQueue && !onFullscreenPlayer
+    val queueRailOn = (pinnedQueue || queueAuto) && !fullscreenQueue
     // The rail that opened itself on Home stays when you navigate (Search, Library, ...): it only goes when closed.
-    LaunchedEffect(queueAuto) { if (queueAuto && !onFullscreenPlayer) pinnedQueue = true }
+    LaunchedEffect(queueAuto) { if (queueAuto) pinnedQueue = true }
     fun closePinnedQueue() {
         pinnedQueue = false
         if (sidebarCfg.queueOnHome) queueDismissedOnHome = true
@@ -524,7 +517,13 @@ fun VisageNavHost(
             )
         }
         composable(Routes.NOW_PLAYING_FULLSCREEN) {
-            NowPlayingFullscreenScreen(navController = navController)
+            NowPlayingFullscreenScreen(
+                navController = navController,
+                onOpenPinnedQueue = onOpenPinnedQueue,
+                onOpenFullscreenQueue = onOpenFullscreenQueue,
+                queueOpen = queueOpen,
+                onCloseQueue = onCloseQueue,
+            )
         }
 
         composable(
