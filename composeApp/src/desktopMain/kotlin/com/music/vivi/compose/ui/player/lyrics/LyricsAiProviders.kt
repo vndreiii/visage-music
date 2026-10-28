@@ -188,7 +188,10 @@ private abstract class CliProvider : LyricsAiProvider {
             if (p.exitValue() != 0) error("$label: ${err.toString().trim().lines().lastOrNull().orEmpty().take(150).ifBlank { "exit ${p.exitValue()}" }}")
             return out
         } finally {
-            runCatching { dir.toFile().deleteRecursively() }
+            runCatching {
+                // Files.walk does not follow symlinks, so a link left in the scratch dir is deleted, never entered.
+                Files.walk(dir).use { w -> w.sorted(Comparator.reverseOrder()).forEach { Files.delete(it) } }
+            }
         }
     }
 }
@@ -218,8 +221,7 @@ private object OpenCodeProvider : CliProvider() {
     override fun prepare(dir: java.nio.file.Path) {
         Files.writeString(
             dir.resolve("opencode.json"),
-            """{"permission":{"bash":"deny","edit":"deny","webfetch":"deny","external_directory":"deny"},""" +
-                """"tools":{"bash":false,"edit":false,"write":false,"read":false,"patch":false,"webfetch":false,"glob":false,"grep":false,"list":false}}""",
+            """{"permission":{"*":"deny"},"tools":{"*":false},"mcp":{}}""",
         )
     }
     override fun command(cfg: AiConfig, prompt: String) = listOf("opencode", "run", "--pure", "-m", cfg.model.ifBlank { "opencode/big-pickle" }, "--", prompt)
