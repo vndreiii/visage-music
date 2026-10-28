@@ -216,35 +216,7 @@ fun LyricsSettingsScreen(navController: NavController) {
                         prefs.getString(PrefKeys.LyricsTranslateLang, "en"),
                     ) { prefs.setString(PrefKeys.LyricsTranslateLang, it) }
                     SettingsDivider()
-                    val provider = runCatching {
-                        com.music.vivi.compose.ui.player.lyrics.TranslateProvider.valueOf(
-                            prefs.getString(PrefKeys.LyricsTranslateProvider, com.music.vivi.compose.ui.player.lyrics.TranslateProvider.GOOGLE.name),
-                        )
-                    }.getOrDefault(com.music.vivi.compose.ui.player.lyrics.TranslateProvider.GOOGLE)
-                    ChipChoiceRow(
-                        Icons.Outlined.AutoAwesome, "Provider",
-                        com.music.vivi.compose.ui.player.lyrics.TranslateProvider.entries.map { it to it.label }, provider,
-                    ) { prefs.setString(PrefKeys.LyricsTranslateProvider, it.name) }
-                    if (provider == com.music.vivi.compose.ui.player.lyrics.TranslateProvider.GEMINI) {
-                        var key by remember { mutableStateOf(prefs.getString(PrefKeys.LyricsGeminiKey, "")) }
-                        var model by remember { mutableStateOf(prefs.getString(PrefKeys.LyricsGeminiModel, "gemini-2.5-flash")) }
-                        androidx.compose.material3.OutlinedTextField(
-                            value = key,
-                            onValueChange = { key = it; prefs.setString(PrefKeys.LyricsGeminiKey, it.trim()) },
-                            label = { Text("Gemini API key") },
-                            singleLine = true,
-                            visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                            supportingText = { Text("Stored in plain text in the settings file. Get one free at aistudio.google.com") },
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                        )
-                        androidx.compose.material3.OutlinedTextField(
-                            value = model,
-                            onValueChange = { model = it; prefs.setString(PrefKeys.LyricsGeminiModel, it.trim()) },
-                            label = { Text("Gemini model") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-                        )
-                    }
+                    LyricsAiProviderSettings(prefs)
                 }
 
                 SettingsSection("Animation") {

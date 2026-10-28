@@ -239,7 +239,7 @@ fun LyricsPanel(
         if (!tOpts.enabled || parsed.lines.isEmpty()) return@LaunchedEffect
         val key = nowPlaying?.videoId ?: return@LaunchedEffect
         // Offline part first so Japanese/Korean/Cyrillic romanization shows immediately.
-        if (tOpts.romanize) shownParsed = LyricsTransform.apply(key, parsed, tOpts.copy(translate = false, provider = TranslateProvider.GOOGLE)).lyrics
+        if (tOpts.romanize) shownParsed = LyricsTransform.apply(key, parsed, tOpts.copy(translate = false, provider = GOOGLE_FREE)).lyrics
         val full = LyricsTransform.apply(key, parsed, tOpts)
         shownParsed = full.lyrics
         transformProblem = full.problem
