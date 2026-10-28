@@ -36,6 +36,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.Person
+import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.outlined.Radio
@@ -453,30 +455,38 @@ private fun NowPlayingFullscreenContent(
                                 )
                             } else {
                                 PrefVertical(cfg.showArtist) {
-                                    ArtistLinks(
-                                        credits = credits,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = ink.text(0.65f),
-                                        hoverColor = ink.text(),
-                                        onOpen = {
-                                            WindowFullscreen.exit(windowState)
-                                            navController.openArtistByName(it)
-                                        },
-                                        maxLines = 2,
-                                        modifier = Modifier.padding(top = 6.dp),
-                                    )
+                                    Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Outlined.Person, "Artist", tint = ink.text(0.65f), modifier = Modifier.size(18.dp))
+                                        Spacer(Modifier.width(6.dp))
+                                        ArtistLinks(
+                                            credits = credits,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = ink.text(0.8f),
+                                            hoverColor = ink.text(),
+                                            onOpen = {
+                                                WindowFullscreen.exit(windowState)
+                                                navController.openArtistByName(it)
+                                            },
+                                            maxLines = 2,
+                                            modifier = Modifier.weight(1f),
+                                        )
+                                    }
                                 }
                             }
                             val album = track?.album.orEmpty()
                             PrefVertical(cfg.showAlbum && album.isNotBlank()) {
-                                Text(
-                                    album,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = ink.text(0.5f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Clip,
-                                    modifier = Modifier.padding(top = 4.dp).visageMarquee(),
-                                )
+                                Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Outlined.Album, "Album", tint = ink.text(0.5f), modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(6.dp))
+                                    Text(
+                                        album,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = ink.text(0.55f),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Clip,
+                                        modifier = Modifier.weight(1f).visageMarquee(),
+                                    )
+                                }
                             }
                         }
                         Spacer(Modifier.width(12.dp))
@@ -488,7 +498,7 @@ private fun NowPlayingFullscreenContent(
                     }
 
                     Column(chromeMod) {
-                        Spacer(Modifier.height(24.dp))
+                        Spacer(Modifier.height(16.dp))
                         NowPlayingSeekSection(
                             duration = duration,
                             sliderStyle = cfg.sliderStyle,
