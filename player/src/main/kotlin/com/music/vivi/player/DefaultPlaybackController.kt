@@ -173,12 +173,10 @@ class DefaultPlaybackController(
         trace("mpv[$slot] state=$mpvState (ui=${_state.value}, pauseRequested=${pauseRequested.get()}, active=${activeSlot.get()})")
         // Incoming (idle) player must not drive UI / queue advance.
         if (slot != activeSlot.get()) {
-            if (mpvState == MpvPlayer.State.Error && dualOverlapActive.get()) {
-                val generation = loadGeneration.get()
-                scope.launch {
-                    if (generation == loadGeneration.get()) failPlayback(_lastError.value ?: "Incoming audio could not be played")
-                }
-            }
+            // An incoming (crossfade) player that errors is reported by loadAndPlay itself: its awaitReady throws, and it
+            // retries the other stream sources. Stopping here would bump the load generation and silently kill that
+            // retry, leaving the player idle after a single refused stream.
+            if (mpvState == MpvPlayer.State.Error && dualOverlapActive.get()) trace("incoming player errored; loadAndPlay will retry or report")
             return
         }
         when (mpvState) {
