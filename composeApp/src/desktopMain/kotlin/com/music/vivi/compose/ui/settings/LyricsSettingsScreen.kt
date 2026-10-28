@@ -188,6 +188,7 @@ fun LyricsSettingsScreen(navController: NavController) {
                         live.align,
                     ) { commit(live.copy(align = it)) }
                     LiveSlider("Size", live.fontSizeSp, 16f..56f, 39, { "${it.toInt()} sp" }, { live = live.copy(fontSizeSp = it) }) { commit(live.copy(fontSizeSp = it)) }
+                    SettingsRowFrame(Icons.Outlined.Restore, "Reset text size", "Back to the default size (translation and romanization follow)", onClick = { commit(live.copy(fontSizeSp = LyricsConfig().fontSizeSp)) })
                     LiveSlider("Line spacing", live.lineSpacingDp, 0f..40f, 19, { "${it.toInt()} dp" }, { live = live.copy(lineSpacingDp = it) }) { commit(live.copy(lineSpacingDp = it)) }
                 }
 

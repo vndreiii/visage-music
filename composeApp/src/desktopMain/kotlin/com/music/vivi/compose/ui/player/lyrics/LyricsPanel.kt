@@ -33,7 +33,9 @@ import androidx.compose.material.icons.automirrored.outlined.FormatAlignRight
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.FormatAlignCenter
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.outlined.Translate
@@ -317,6 +319,7 @@ fun LyricsPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            LyricsSizeControl(prefs = prefs, version = prefsTick)
             LyricsTransformControl(prefs = prefs, version = prefsTick, problem = transformProblem)
             LyricsProviderControl(
                 current = shownProvider ?: provider,
@@ -462,6 +465,38 @@ private fun LyricsAlignControls(
             }
         },
     )
+}
+
+/** Text size for the lyrics, translation and romanization together; saved until changed again. */
+@Composable
+private fun LyricsSizeControl(prefs: DesktopPrefs, version: Int) {
+    var open by remember { mutableStateOf(false) }
+    val default = remember { LyricsConfig().fontSizeSp }
+    val size = remember(version) { prefs.getFloat(PrefKeys.LyricsFontSize, default).coerceIn(16f, 56f) }
+    fun set(v: Float) = prefs.setFloat(PrefKeys.LyricsFontSize, v.coerceIn(16f, 56f))
+    Box {
+        Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.28f)) {
+            IconButton(onClick = { open = true }) {
+                Icon(Icons.Outlined.FormatSize, "Lyrics text size", tint = if (size != default) MaterialTheme.colorScheme.primary else Color.White)
+            }
+        }
+        if (open) {
+            Popup(alignment = Alignment.TopEnd, offset = IntOffset(0, 52), onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 8.dp, shadowElevation = 10.dp,
+                ) {
+                    Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { set(size - 2f) }, enabled = size > 16f) { Icon(Icons.Outlined.Remove, "Smaller") }
+                        Text("${size.toInt()} sp", style = MaterialTheme.typography.titleSmall, modifier = Modifier.widthIn(min = 52.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        IconButton(onClick = { set(size + 2f) }, enabled = size < 56f) { Icon(Icons.Outlined.Add, "Larger") }
+                        IconButton(onClick = { set(default) }, enabled = size != default) { Icon(Icons.Outlined.Restore, "Reset size") }
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable

@@ -150,6 +150,7 @@ internal val SettingsIndex: List<SettingsEntry> = listOf(
     SettingsEntry("Case", "", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
     SettingsEntry("Alignment", "", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
     SettingsEntry("Size", "", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
+    SettingsEntry("Reset text size", "Back to the default size (translation and romanization follow)", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
     SettingsEntry("Line spacing", "", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
     SettingsEntry("Romanize lyrics", "Show Japanese, Korean and Cyrillic lines in Latin letters (kana and Hangul offline; kanji via the provider below)", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
     SettingsEntry("Auto-translate lyrics", "Translate lines that have no translation of their own into the language below", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
