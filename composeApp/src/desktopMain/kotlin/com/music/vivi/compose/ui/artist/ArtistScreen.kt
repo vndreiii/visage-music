@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.artist
 
+import androidx.compose.foundation.lazy.grid.items
+import com.music.vivi.compose.ui.component.horizontalWheelScroll
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.MusicNote
@@ -522,42 +524,36 @@ private fun ArtistStatChips(meta: String, modifier: Modifier = Modifier) {
 }
 
 
-/** Songs in columns like Home's Quick picks (read down each column), a few rows at first and "Show more" for the rest. */
+/** Songs as Home's Quick picks shelf: up to 4 rows, extra songs scroll sideways in whole columns. */
 @Composable
 private fun ArtistSongColumns(songs: List<SongItem>, playingId: String?, isPlaying: Boolean, onClick: (SongItem) -> Unit) {
-    var expanded by remember(songs.firstOrNull()?.id) { mutableStateOf(false) }
     androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
         val gap = 8.dp
         // The list row adds 8 + 12 dp of its own before the cover.
         val side = ArtistContentStart - 20.dp
         val usable = maxWidth - side * 2
-        val cols = ((usable + gap) / (280.dp + gap)).toInt().coerceIn(1, 4)
-        val collapsedRows = 4
-        val shown = if (expanded) songs.take(60) else songs.take(collapsedRows * cols)
-        val rows = (shown.size + cols - 1) / cols
-        Column(Modifier.fillMaxWidth().padding(horizontal = side), verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            for (r in 0 until rows) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(gap)) {
-                    for (c in 0 until cols) {
-                        val song = shown.getOrNull(c * rows + r)
-                        if (song != null) {
-                            YouTubeListItem(
-                                item = song,
-                                isActive = song.id == playingId,
-                                isPlaying = isPlaying,
-                                onClick = { onClick(song) },
-                                modifier = Modifier.weight(1f),
-                            )
-                        } else Spacer(Modifier.weight(1f))
-                    }
-                }
-            }
-            if (songs.size > collapsedRows * cols) {
-                com.music.vivi.compose.ui.expressive.ExpressiveButton(
-                    text = if (expanded) "Show less" else "Show more",
-                    onClick = { expanded = !expanded },
-                    style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Tonal,
-                    modifier = Modifier.padding(start = 12.dp, top = 8.dp, bottom = 8.dp),
+        val fitCols = ((usable + gap) / (280.dp + gap)).toInt().coerceAtLeast(1)
+        val shown = songs.take(60)
+        val rows = ((shown.size + fitCols - 1) / fitCols).coerceIn(1, 4)
+        val colWidth = (usable - gap * (fitCols - 1)) / fitCols
+        val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+        androidx.compose.foundation.lazy.grid.LazyHorizontalGrid(
+            rows = androidx.compose.foundation.lazy.grid.GridCells.Fixed(rows),
+            state = gridState,
+            contentPadding = PaddingValues(horizontal = side),
+            horizontalArrangement = Arrangement.spacedBy(gap),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(com.music.vivi.compose.ui.component.ListItemHeight * rows)
+                .horizontalWheelScroll(gridState),
+        ) {
+            items(shown, key = { it.id }) { song ->
+                YouTubeListItem(
+                    item = song,
+                    isActive = song.id == playingId,
+                    isPlaying = isPlaying,
+                    onClick = { onClick(song) },
+                    modifier = Modifier.width(colWidth),
                 )
             }
         }
