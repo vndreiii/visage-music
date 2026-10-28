@@ -108,6 +108,7 @@ internal fun providerStatus(provider: LyricsAiProvider?, secrets: SecretStore): 
     val has = secrets.has(Secrets.lyricsAiKey(provider.id))
     return when {
         has && secrets.status == SecretStore.Status.Unavailable -> "Key kept for this session only (no system keyring)" to true
+        has && secrets.status == SecretStore.Status.EncryptedFile -> "Key saved in an encrypted file (no system keyring available)" to false
         has -> "Key saved in system keyring" to false
         optionalKey -> "No key set (optional)" to false
         else -> "Key missing" to true
@@ -139,7 +140,10 @@ private fun ProviderFields(prefs: DesktopPrefs, provider: LyricsAiProvider, secr
                     password = true,
                     supportingText = {
                         if (unavailable) Text(NO_KEYRING_NOTE, color = MaterialTheme.colorScheme.error)
-                        else Text(listOf(provider.keyHint, "Saved in the system keyring").filter { it.isNotBlank() }.joinToString(". "))
+                        else {
+                            val where = if (secrets.status == SecretStore.Status.EncryptedFile) "Saved in an encrypted file (no system keyring available)" else "Saved in the system keyring"
+                            Text(listOf(provider.keyHint, where).filter { it.isNotBlank() }.joinToString(". "))
+                        }
                     },
                     modifier = field,
                 )
