@@ -36,6 +36,8 @@ import com.music.vivi.compose.prefs.Sidebars
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.reader
 import com.music.vivi.compose.ui.MiniPlayerBar
+import com.music.vivi.compose.ui.TopBarBrand
+import com.music.vivi.compose.ui.TopNavItems
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.glass.PageBackground
 import com.music.vivi.compose.ui.glass.ProvideGlass
@@ -83,45 +85,36 @@ fun SidebarsPreview(page: PreviewPage, queueOpen: Boolean, modifier: Modifier = 
     val libraryState = if (allowed) cfg.libraryState else LibrarySidebarState.HIDDEN
     val queueOn = Sidebars.queueAutoOpenOnHome(page.route, cfg, dismissedOnHome = false) || queueOpen
     val miniStyle = resolveMiniPlayerStyle(prefs)
-    val glassOn = rememberGlassEnabled()
-    val hazeState = remember { HazeState() }
-    val pageHaze = remember { HazeState() }
-
-    ProvideGlass(hazeState, pageState = pageHaze) {
-        Box(modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            if (glassOn) {
-                Box(Modifier.fillMaxSize().glassSource(hazeState).glassSource(pageHaze)) { PageBackground() }
-            }
-            Column(Modifier.fillMaxSize()) {
-                PreviewTopBar(cfg, page, libraryState, queueOn)
-                SidebarShell(
-                    cfg = cfg,
-                    libraryState = libraryState,
-                    queueLeft = queueOn && cfg.queueSide == com.music.vivi.compose.prefs.SidebarSide.LEFT,
-                    queueRight = queueOn && cfg.queueSide == com.music.vivi.compose.prefs.SidebarSide.RIGHT,
-                    queueWidthForLibrary = if (queueOn) SidebarConfig.QueueWidth else 0,
-                    modifier = Modifier.weight(1f).fillMaxWidth(),
-                    librarySidebar = { side, state, width ->
-                        PreviewLibrarySidebar(side, state, width, foldersFirst = prefs.getBoolean(SidebarKeys.LibraryFoldersFirst, true))
-                    },
-                    queueRail = { visible, fromStart ->
-                        AnimatedQueuePinnedRail(visible = visible, onDismiss = {}, onExpandFullscreen = {}, fromStart = fromStart)
-                    },
-                ) {
-                    Box(Modifier.weight(1f).fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
-                        PreviewHomePane(page)
-                        MiniPlayerBar(
-                            styleOverride = miniStyle,
-                            interactive = false,
-                            modifier = Modifier.align(
-                                if (miniStyle == MiniPlayerStyle.COMPACT_EDGE) Alignment.BottomEnd else Alignment.BottomCenter,
-                            ),
-                        )
-                    }
+    PreviewAppSurface(modifier) {
+        Column(Modifier.fillMaxSize()) {
+            PreviewTopBar(cfg, page, libraryState, queueOn)
+            SidebarShell(
+                cfg = cfg,
+                libraryState = libraryState,
+                queueLeft = queueOn && cfg.queueSide == com.music.vivi.compose.prefs.SidebarSide.LEFT,
+                queueRight = queueOn && cfg.queueSide == com.music.vivi.compose.prefs.SidebarSide.RIGHT,
+                queueWidthForLibrary = if (queueOn) SidebarConfig.QueueWidth else 0,
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                librarySidebar = { side, state, width ->
+                    PreviewLibrarySidebar(side, state, width, foldersFirst = prefs.getBoolean(SidebarKeys.LibraryFoldersFirst, true))
+                },
+                queueRail = { visible, fromStart ->
+                    AnimatedQueuePinnedRail(visible = visible, onDismiss = {}, onExpandFullscreen = {}, fromStart = fromStart)
+                },
+            ) {
+                Box(Modifier.weight(1f).fillMaxSize().background(MaterialTheme.colorScheme.surface)) {
+                    PreviewHomePane(page)
+                    MiniPlayerBar(
+                        styleOverride = miniStyle,
+                        interactive = false,
+                        modifier = Modifier.align(
+                            if (miniStyle == MiniPlayerStyle.COMPACT_EDGE) Alignment.BottomEnd else Alignment.BottomCenter,
+                        ),
+                    )
                 }
             }
         }
-    }
+}
 }
 
 @Composable
@@ -131,14 +124,8 @@ private fun PreviewTopBar(cfg: SidebarConfig, page: PreviewPage, libraryState: L
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        Text("VIsage", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-        listOf("Home", "Search", "Library").forEach {
-            Text(
-                it, style = MaterialTheme.typography.labelLarge,
-                color = if (it == "Home" && page == PreviewPage.HOME || it == "Library" && page == PreviewPage.LIBRARY) MaterialTheme.colorScheme.primary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
+        TopBarBrand(title = if (page == PreviewPage.HOME) "Home" else "Library", onLogoClick = {})
+        TopNavItems(Routes.mainDestinations, currentRoute = page.route, onNavigate = {}, anchors = false)
         Spacer(Modifier.weight(1f))
         // The same toggles the real top bar shows, driven by the same rules.
         if (page == PreviewPage.HOME && cfg.queueOnHome) {
@@ -184,7 +171,7 @@ private fun PreviewLibrarySidebar(
 
 /** A sample page: a couple of shelves of generated covers, enough to read as "the app". */
 @Composable
-private fun PreviewHomePane(page: PreviewPage) {
+internal fun PreviewHomePane(page: PreviewPage) {
     Column(Modifier.fillMaxSize().padding(horizontal = 24.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(20.dp)) {
         Text(
             if (page == PreviewPage.HOME) "Good evening" else "Your library",

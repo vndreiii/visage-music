@@ -49,6 +49,7 @@ import com.music.vivi.compose.prefs.PlayerBackgroundStyle
 import com.music.vivi.compose.prefs.reader
 import com.music.vivi.compose.prefs.resetFullscreenPrefs
 import com.music.vivi.compose.ui.player.FullscreenPlayerPreview
+import com.music.vivi.compose.ui.settings.preview.SettingsPreviewFrame
 import org.koin.compose.koinInject
 
 private fun PlayerBackgroundStyle.fsLabel(): String = when (this) {
@@ -74,19 +75,13 @@ fun FullscreenPlayerSettingsScreen(navController: NavController) {
     val canvasMode = prefs.enumPref(FullscreenKeys.CanvasMode, FullscreenCanvasMode.FOLLOW)
     var confirmReset by remember { mutableStateOf(false) }
 
-    PreviewSettingsPage(
-        title = "Fullscreen player",
-        onBack = { navController.navigateUp() },
-        previewKey = "settingsPreviewFullscreenOpen",
-        previewCaption = "Sample track, 16:9",
-        previewHeight = 0.dp,
-        preview = {
-            androidx.compose.foundation.layout.Box(Modifier.fillMaxWidth(), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                FullscreenPlayerPreview(Modifier.widthIn(max = 560.dp))
-            }
-        },
-        sized = false,
-    ) {
+    SettingsPage(title = "Fullscreen player", onBack = { navController.navigateUp() }) {
+        SettingsPreviewFrame(
+            pageKey = "fullscreen",
+            caption = "Sample track, 16:9",
+            maxWindowWidth = 560.dp,
+        ) { FullscreenPlayerPreview(Modifier) }
+
         SettingsSection("Layout") {
             ChoiceRow(
                 icon = Icons.Outlined.OpenInFull,

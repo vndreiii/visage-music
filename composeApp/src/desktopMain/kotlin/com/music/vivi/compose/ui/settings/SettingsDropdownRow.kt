@@ -54,7 +54,7 @@ data class DropdownOption<T>(
 /**
  * A settings row whose value is picked from a long list: icon, title and the current value as a normal settings row,
  * which opens a menu on click. The menu can have a search box ([searchable]), group headings ([DropdownOption.group]),
- * a hint under each entry and a check on the selected one. Use it instead of [ChipChoiceRow] when the options do not fit
+ * a hint under each entry and a check on the selected one. Use it (never a chip cloud) when the options do not fit
  * on a couple of lines.
  *
  * [status] is an optional small line under the current value (for example whether a key is saved), tinted with [statusColor].

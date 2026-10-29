@@ -43,7 +43,7 @@ fnroute={
 'RingsControls':('SETTINGS_APPEARANCE','Interface'),
 'InterfaceLinkItems':('HUB','Settings'),
 }
-POSITIONAL=re.compile(r'\b(?:SwitchItem|ChipChoiceRow|ChoiceRow|SettingsDropdownRow|LiveSlider|SettingsRowFrame|Item)\(\s*(?:(?:Icons\.\w+\.\w+|null|\w+)\s*,\s*)?"((?:[^"\\]|\\.)*)"(?:\s*,\s*"((?:[^"\\]|\\.)*)")?')
+POSITIONAL=re.compile(r'\b(?:SwitchItem|ChoiceRow|SettingsDropdownRow|LiveSlider|SettingsRowFrame|Item)\(\s*(?:(?:Icons\.\w+\.\w+|null|\w+)\s*,\s*)?"((?:[^"\\]|\\.)*)"(?:\s*,\s*"((?:[^"\\]|\\.)*)")?')
 str_=r'"((?:[^"\\]|\\.)*)"'
 # Every settings screen must be mapped, otherwise its settings silently go missing from search.
 _missing=[]
@@ -63,7 +63,7 @@ for f in files:
         if name not in fnroute: continue
         route,page=fnroute[name]
         body=s[a:b]
-        for m in re.finditer(r'SettingsSection\('+str_,body):
+        for m in re.finditer(r'SettingsSection\(\s*'+str_,body):
             if route!='HUB': out.append((m.group(1),'',page,route,True,[]))
         ms=sorted(list(re.finditer(r'\btitle = '+str_,body))+list(re.finditer(POSITIONAL,body)),key=lambda m:m.start())
         for i,m in enumerate(ms):

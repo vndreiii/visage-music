@@ -22,7 +22,13 @@ import com.music.vivi.compose.prefs.reader
 import com.music.vivi.compose.ui.player.swap.SongSwapConfig
 import com.music.vivi.compose.ui.player.swap.SongSwapKeys
 import com.music.vivi.compose.ui.player.swap.SongSwapMode
-import com.music.vivi.compose.ui.player.swap.SongSwapPreview
+import com.music.vivi.compose.ui.player.swap.SongSwapPreviewScene
+import com.music.vivi.compose.ui.player.swap.SwapDirection
+import com.music.vivi.compose.ui.player.swap.rememberSongSwapPreviewState
+import com.music.vivi.compose.ui.settings.preview.SettingsPreviewFrame
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.TextButton
 import org.koin.compose.koinInject
 
 @Composable
@@ -32,19 +38,24 @@ fun SongSwapSettingsScreen(navController: NavController) {
     val observe = rememberPrefsVersion(prefs)
     val cfg = SongSwapConfig.resolve(prefs.reader())
 
-    PreviewSettingsPage(
-        title = "Song swappings",
-        onBack = { navController.navigateUp() },
-        previewKey = "settingsPreviewSongSwapOpen",
-        previewCaption = "Sample songs",
-        previewHeight = 0.dp,
-        sized = false,
-        preview = {
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                SongSwapPreview(cfg, Modifier.widthIn(max = 480.dp))
-            }
-        },
-    ) {
+    val swapPreview = rememberSongSwapPreviewState(cfg)
+
+    SettingsPage(title = "Song swappings", onBack = { navController.navigateUp() }) {
+        SettingsPreviewFrame(
+            pageKey = "songSwap",
+            caption = "Sample songs",
+            virtualWidth = 640.dp,
+            virtualHeight = 360.dp,
+            maxWindowWidth = 480.dp,
+            actions = {
+                TextButton(onClick = { swapPreview.slowLoad = !swapPreview.slowLoad }) {
+                    Text(if (swapPreview.slowLoad) "Slow load: on" else "Slow load: off")
+                }
+                OutlinedButton(onClick = { swapPreview.play(SwapDirection.PREVIOUS) }) { Text("Previous") }
+                FilledTonalButton(onClick = { swapPreview.play(SwapDirection.NEXT) }) { Text("Play next") }
+            },
+        ) { SongSwapPreviewScene(swapPreview) }
+
         SettingsSection("Transition") {
             SettingsDropdownRow(
                 icon = Icons.Outlined.OpenWith,

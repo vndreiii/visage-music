@@ -3,6 +3,8 @@ package com.music.vivi.compose.ui.settings.preview
 import com.music.vivi.compose.ui.library.sidebar.EntryKind
 import com.music.vivi.compose.ui.library.sidebar.LibraryEntry
 import com.music.vivi.compose.ui.library.sidebar.LibraryFolderModel
+import androidx.compose.ui.graphics.Color
+import com.music.vivi.compose.theme.ArtworkPalette
 import com.music.vivi.player.QueueTrack
 
 /**
@@ -12,6 +14,15 @@ import com.music.vivi.player.QueueTrack
 object PreviewSampleData {
     private fun track(id: String, title: String, artist: String, album: String, seconds: Int) =
         QueueTrack(videoId = "preview:$id", title = title, artist = artist, album = album, durationMs = seconds * 1000L)
+
+    /** Colours the backgrounds get in previews (the generated covers have no real artwork to take them from). */
+    val palette = ArtworkPalette(
+        seed = Color(0xFFE0537A),
+        gradient = listOf(Color(0xFFFF7A9A), Color(0xFF8A2F7C), Color(0xFF1B1030)),
+        glowColors = listOf(
+            Color(0xFFFF7A9A), Color(0xFFFFB067), Color(0xFF8A2F7C), Color(0xFF5B5BD6), Color(0xFF2FB8C4), Color(0xFF1B1030),
+        ),
+    )
 
     /** The queue; index 0 is the "now playing" song. */
     val queue: List<QueueTrack> = listOf(

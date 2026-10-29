@@ -71,8 +71,6 @@ import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.collectAsState
 import androidx.compose.material.icons.outlined.Wallpaper
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -112,6 +110,12 @@ import com.music.vivi.compose.prefs.AudioQuality
 import com.music.vivi.compose.prefs.DarkMode
 import com.music.vivi.compose.prefs.DefaultThemeColorArgb
 import com.music.vivi.compose.prefs.DesktopPrefs
+import com.music.vivi.compose.ui.settings.preview.AppPreviewSizes
+import com.music.vivi.compose.ui.settings.preview.MiniPlayerPreview
+import com.music.vivi.compose.ui.settings.preview.NowPlayingPreview
+import com.music.vivi.compose.ui.settings.preview.PageBackgroundPreview
+import com.music.vivi.compose.ui.settings.preview.SettingsPreviewFrame
+import com.music.vivi.compose.ui.settings.preview.TopBarPreview
 import com.music.vivi.compose.prefs.DownloadAudioFormat
 import com.music.vivi.compose.prefs.DownloadAudioQuality
 import com.music.vivi.compose.prefs.LyricsProvider
@@ -575,7 +579,15 @@ fun AppearanceSettingsScreen(navController: NavController) {
     val pageDarkness = prefs.getInt(PrefKeys.PageBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PageDarkness).coerceIn(0, 100)
 
     SettingsPage(title = "Interface", onBack = { navController.navigateUp() }) {
-        SettingsSection("Top bar", preview = { LiveTopNavHeroPreview(style = topNav) }) {
+        SettingsSection(
+            "Top bar",
+            preview = {
+                SettingsPreviewFrame(
+                    pageKey = "interface-topbar", caption = "The real tab chips of the top bar", sticky = false,
+                    virtualWidth = AppPreviewSizes.TopBarWidth.dp, virtualHeight = AppPreviewSizes.TopBarHeight.dp,
+                ) { TopBarPreview() }
+            },
+        ) {
             ChoiceRow(
                 icon = Icons.Outlined.Menu,
                 title = "Tab labels",
@@ -597,7 +609,15 @@ fun AppearanceSettingsScreen(navController: NavController) {
             )
         }
 
-        SettingsSection("Mini-player", preview = { LiveMiniPlayerHeroPreview(layout = currentMiniLayout, background = miniBg) }) {
+        SettingsSection(
+            "Mini-player",
+            preview = {
+                SettingsPreviewFrame(
+                    pageKey = "interface-miniplayer", caption = "The real mini-player on a sample page", sticky = false,
+                    virtualWidth = AppPreviewSizes.MiniPlayerWidth.dp, virtualHeight = AppPreviewSizes.MiniPlayerHeight.dp,
+                ) { MiniPlayerPreview() }
+            },
+        ) {
             ChoiceRow(
                 icon = Icons.Outlined.SmartDisplay,
                 title = "Mini-player layout",
@@ -648,10 +668,10 @@ fun AppearanceSettingsScreen(navController: NavController) {
             "Glass and backdrop",
             preview = if (glass) {
                 {
-                    LivePlayerBackgroundHeroPreview(
-                        style = pageStyle, darkness = pageDarkness / 100f, id = "pageBackground",
-                        caption = "The page background behind every screen",
-                    )
+                    SettingsPreviewFrame(
+                        pageKey = "interface-pagebackground", caption = "The page background behind every screen", sticky = false,
+                        virtualWidth = AppPreviewSizes.PageBackgroundWidth.dp, virtualHeight = AppPreviewSizes.PageBackgroundHeight.dp,
+                    ) { PageBackgroundPreview() }
                 }
             } else null,
         ) {
@@ -748,27 +768,14 @@ fun NowPlayingSettingsScreen(navController: NavController) {
     val playerDarkness = prefs.getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100)
     val limitWidth = prefs.getBoolean(PrefKeys.LimitPlayerControlsWidth, prefs.getBoolean(PrefKeys.AdwaitaInspired, false))
     val slider = prefs.enumPref(PrefKeys.SliderStyle, SliderStyle.M3_EXPRESSIVE)
-    val track by com.music.vivi.compose.LocalPlaybackController.current.nowPlaying.collectAsState()
 
     SettingsPage(title = "Now Playing", onBack = { navController.navigateUp() }) {
-        SettingsSection(
-            "Cover and controls",
-            preview = {
-                LivePlayerLayoutHeroPreview(
-                    framed = prefs.getBoolean(PrefKeys.UsePlayerV2, false),
-                    buttons = prefs.enumPref(PrefKeys.PlayerButtonsStyle, PlayerButtonsStyle.DEFAULT),
-                    playPauseHeight = prefs.getInt(PrefKeys.PlayPauseHeight, 56).dp,
-                    slider = slider,
-                    squiggly = prefs.getBoolean(PrefKeys.SquigglySlider, false),
-                    squareCover = prefs.getBoolean(PrefKeys.SquareCover, false),
-                    hideCover = prefs.getBoolean(PrefKeys.HidePlayerThumbnail, false),
-                    limitWidth = if (limitWidth) prefs.getInt(PrefKeys.PlayerControlsWidth, 600).dp else null,
-                    artworkUrl = track?.artworkUrl,
-                    title = track?.title ?: "Your next favourite",
-                    artist = track?.artist?.ifBlank { null } ?: "Now Playing preview",
-                )
-            },
-        ) {
+        // One preview for the whole page: the real background, cover, controls and volume row with your settings applied.
+        SettingsPreviewFrame(
+            pageKey = "nowplaying", caption = "The real Now Playing layout with sample data", maxWindowWidth = 560.dp,
+        ) { NowPlayingPreview() }
+
+        SettingsSection("Cover and controls") {
             SwitchItem(
                 icon = Icons.Outlined.CropSquare,
                 title = "Square cover",
@@ -850,10 +857,7 @@ fun NowPlayingSettingsScreen(navController: NavController) {
             )
         }
 
-        SettingsSection(
-            "Background",
-            preview = { LivePlayerBackgroundHeroPreview(style = playerBg, darkness = playerDarkness / 100f) },
-        ) {
+        SettingsSection("Background") {
             SettingsDropdownRow(
                 icon = Icons.Outlined.Wallpaper,
                 title = "Player background",
@@ -1404,7 +1408,7 @@ private fun SettingsGroupCard(content: @Composable ColumnScope.() -> Unit) {
 internal fun SettingsSection(
     title: String,
     @Suppress("UNUSED_PARAMETER") initiallyExpanded: Boolean = true,
-    /** Live preview shown between the heading and the card (see [PreviewFrame]). */
+    /** Live preview shown between the heading and the card (a [SettingsPreviewFrame]). */
     preview: (@Composable () -> Unit)? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -1615,39 +1619,6 @@ internal fun <T> ChoiceRow(
             Column {
                 SettingsRowFrame(icon, title, subtitle, onClick = null, extraText = options.joinToString(" ") { it.second })
                 segmented(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, bottom = 12.dp))
-            }
-        }
-    }
-}
-
-/** A setting with many options: title row plus a wrapping set of chips. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-internal fun <T> ChipChoiceRow(
-    icon: ImageVector?,
-    title: String,
-    options: List<Pair<T, String>>,
-    selected: T,
-    onSelect: (T) -> Unit,
-) {
-    var local by remember(selected) { mutableStateOf(selected) }
-    Column(Modifier.fillMaxWidth()) {
-        SettingsRowFrame(icon, title, null, onClick = null, extraText = options.joinToString(" ") { it.second })
-        FlowRow(
-            Modifier.fillMaxWidth().padding(start = if (icon != null) 56.dp else 16.dp, end = 16.dp, bottom = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
-        ) {
-            options.forEach { (value, label) ->
-                FilterChip(
-                    selected = local == value,
-                    onClick = { local = value; onSelect(value) },
-                    label = { Text(highlighted(label)) },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = FilterChipDefaults.filterChipColors(
-                        selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    ),
-                )
             }
         }
     }

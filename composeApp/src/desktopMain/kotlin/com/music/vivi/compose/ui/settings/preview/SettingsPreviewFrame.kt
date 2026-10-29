@@ -85,6 +85,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.zIndex
 import com.music.vivi.compose.LocalPlaybackController
+import com.music.vivi.compose.theme.LocalArtworkPalette
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.ui.motion.VisageMotion
 import com.music.vivi.compose.ui.settings.LocalSettingsViewport
@@ -119,6 +120,7 @@ fun stickyOffset(scrollValue: Int, naturalTopInContent: Int, margin: Int = 0): I
  * @param title label in the frame header
  * @param caption small line under the window ("Sample data")
  * @param sticky pin to the top of the settings page while scrolling
+ * @param maxWindowWidth cap for the width of the scaled window (centred); Unspecified = the whole page width
  * @param actions preview-only controls shown in the header (they ARE interactive; keep them tiny)
  * @param content the real UI, laid out in the virtual window
  */
@@ -131,6 +133,7 @@ fun SettingsPreviewFrame(
     sticky: Boolean = true,
     virtualWidth: Dp = PreviewVirtualWidthDp.dp,
     virtualHeight: Dp = PreviewVirtualHeightDp.dp,
+    maxWindowWidth: Dp = Dp.Unspecified,
     actions: @Composable () -> Unit = {},
     content: @Composable () -> Unit,
 ) {
@@ -198,7 +201,7 @@ fun SettingsPreviewFrame(
                         }
                     }
                     if (!collapsed) {
-                        PreviewWindow(virtualWidth, virtualHeight, live = visible || stick, content = content)
+                        PreviewWindow(virtualWidth, virtualHeight, maxWindowWidth, live = visible || stick, content = content)
                         Text(
                             caption,
                             style = MaterialTheme.typography.bodySmall,
@@ -214,11 +217,12 @@ fun SettingsPreviewFrame(
 
 /** The scaled, clipped, pointer-blocked virtual window. [live] false keeps the size but composes nothing. */
 @Composable
-private fun PreviewWindow(virtualWidth: Dp, virtualHeight: Dp, live: Boolean, content: @Composable () -> Unit) {
+private fun PreviewWindow(virtualWidth: Dp, virtualHeight: Dp, maxWindowWidth: Dp, live: Boolean, content: @Composable () -> Unit) {
     val density = LocalDensity.current
-    BoxWithConstraints(Modifier.fillMaxWidth()) {
-        val scale = previewScale(maxWidth.value, virtualWidth.value)
-        val w = maxWidth
+    BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.TopCenter) {
+        // Never wider than the virtual window itself: a small window (lyrics, song swap) is shown at 1:1, centred.
+        val w = minOf(maxWidth, virtualWidth, if (maxWindowWidth == Dp.Unspecified) maxWidth else maxWindowWidth)
+        val scale = previewScale(w.value, virtualWidth.value)
         val h = previewScaledHeight(virtualHeight.value, scale).dp
         Box(
             Modifier
@@ -228,7 +232,11 @@ private fun PreviewWindow(virtualWidth: Dp, virtualHeight: Dp, live: Boolean, co
         ) {
             if (live) {
                 val controller = rememberFakePlaybackController()
-                CompositionLocalProvider(LocalSettingsPreview provides true, LocalPlaybackController provides controller) {
+                CompositionLocalProvider(
+                    LocalSettingsPreview provides true,
+                    LocalPlaybackController provides controller,
+                    LocalArtworkPalette provides PreviewSampleData.palette,
+                ) {
                     Box(
                         Modifier
                             .layout { measurable, _ ->

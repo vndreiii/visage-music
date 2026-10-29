@@ -20,7 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -56,7 +56,6 @@ import com.music.vivi.compose.ui.player.lyrics.LyricsGapStyle
 import com.music.vivi.compose.ui.player.lyrics.lyricsAccent
 import com.music.vivi.compose.ui.player.lyrics.lyricsConfig
 import com.music.vivi.compose.ui.settings.PREVIEW_LRC
-import com.music.vivi.compose.ui.settings.previewOnly
 import com.music.vivi.compose.ui.settings.rememberPrefsVersion
 import com.music.vivi.compose.ui.settings.rememberPreviewClock
 import com.music.vivi.player.NowPlaying
@@ -69,69 +68,11 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.koin.compose.koinInject
 
-/** Window size the preview lays the fullscreen player out at, before scaling it down into the settings page. */
-private val VirtualWidth = 1280.dp
-private val VirtualHeight = 720.dp
-
-private val sampleTrack = NowPlaying(
-    videoId = "preview-1", title = "Midnight Drive", artist = "Neon Harbor", album = "City Lights",
-    durationMs = 215_000L,
-)
-private val sampleQueue = listOf(
-    QueueTrack("preview-0", "Glass Hours", "Neon Harbor", durationMs = 190_000L),
-    QueueTrack("preview-1", "Midnight Drive", "Neon Harbor", durationMs = 215_000L),
-    QueueTrack("preview-2", "Afterglow", "Neon Harbor", durationMs = 201_000L),
-    QueueTrack("preview-3", "Slow Tide", "Harbor Lights", durationMs = 233_000L),
-    QueueTrack("preview-4", "Paper Moons", "Harbor Lights", durationMs = 178_000L),
-)
-
-/** A playback controller with a fixed sample track and a looping position; nothing it does reaches the real player. */
-internal class PreviewPlaybackController : com.music.vivi.player.PlaybackController {
-    override val state = MutableStateFlow(PlaybackState.Playing)
-    override val nowPlaying = MutableStateFlow<NowPlaying?>(sampleTrack)
-    override val positionMs = MutableStateFlow(42_000L)
-    override val durationMs = MutableStateFlow(sampleTrack.durationMs)
-    override val isFavorite = MutableStateFlow(true)
-    override val lastError = MutableStateFlow<String?>(null)
-    override val notice = MutableStateFlow<String?>(null)
-    override fun clearNotice() {}
-    override val queueIds = MutableStateFlow(sampleQueue.map { it.videoId })
-    override val queueTracks = MutableStateFlow(sampleQueue)
-    override val queueIndex = MutableStateFlow(1)
-    override val queueLoading = MutableStateFlow(false)
-    override val radioActive = MutableStateFlow(false)
-    override val volume = MutableStateFlow(0.7f)
-    override val shuffleEnabled = MutableStateFlow(false)
-    override val repeatMode = MutableStateFlow(RepeatMode.Off)
-    override suspend fun restoreQueue(tracks: List<QueueTrack>, startIndex: Int, positionMs: Long) {}
-    override suspend fun playVideo(videoId: String) {}
-    override suspend fun playQueue(tracks: List<QueueTrack>, startIndex: Int) {}
-    override suspend fun playLocalQueue(tracks: List<QueueTrack>, startIndex: Int) {}
-    override suspend fun startRadio(videoId: String) {}
-    override fun playNext(track: QueueTrack) {}
-    override fun addToQueue(track: QueueTrack) {}
-    override fun moveQueueItem(from: Int, to: Int) {}
-    override fun removeFromQueue(index: Int) {}
-    override fun play() {}
-    override fun pause() {}
-    override fun toggleFromList() {}
-    override fun stop() {}
-    override fun seekTo(positionMs: Long) {}
-    override fun next() {}
-    override fun previous() {}
-    override fun setVolume(volume: Float) {}
-    override fun toggleShuffle() {}
-    override fun cycleRepeatMode() {}
-    override suspend fun toggleFavorite() {}
-    override suspend fun setLiked(videoId: String, like: Boolean) {}
-    override fun release() {}
-}
-
 /**
  * The real fullscreen player layout ([FullscreenStage], [FullscreenControlsCard], [FullscreenCover], the background layer and
- * the lyrics list) fed with sample data and a fake controller, laid out at 1280 x 720 and scaled to the width it is given.
+ * the lyrics list) fed with the sample data and fake controller that [com.music.vivi.compose.ui.settings.preview.SettingsPreviewFrame]
+ * provides. Meant to fill that frame's 1280 x 720 virtual window.
  * It reads the same prefs as the screen (via [FullscreenSettings.resolve] on every pref change), so every setting shows at once.
- * The preview is not interactive.
  */
 @Composable
 fun FullscreenPlayerPreview(modifier: Modifier = Modifier) {
@@ -143,15 +84,13 @@ fun FullscreenPlayerPreview(modifier: Modifier = Modifier) {
         runCatching { QueuePanelMode.valueOf(prefs.getString(PrefKeys.QueuePanelMode, QueuePanelMode.PINNED_RIGHT.name)) }
             .getOrDefault(QueuePanelMode.PINNED_RIGHT)
     }
-    val controller = remember { PreviewPlaybackController() }
-    LaunchedEffect(controller) {
-        // A slow loop of the position so the seek bar and time labels move.
-        while (true) {
-            delay(250)
-            val next = controller.positionMs.value + 250
-            controller.positionMs.value = if (next >= controller.durationMs.value) 0L else next
-        }
-    }
+    val controller = LocalPlaybackController.current
+    val sampleTrack = controller.nowPlaying.collectAsState().value ?: NowPlaying(videoId = "preview", title = "", artist = "", durationMs = 0L)
+    val sampleQueue by controller.queueTracks.collectAsState()
+    val playbackState by controller.state.collectAsState()
+    val playing = playbackState == PlaybackState.Playing
+    val favorite by controller.isFavorite.collectAsState()
+    val volume by controller.volume.collectAsState()
     val playerGlass = remember { HazeState() }
     val lyricsClock = rememberPreviewClock()
     val parsed = remember { LyricsParser.parse(PREVIEW_LRC.trim()) }
@@ -165,33 +104,19 @@ fun FullscreenPlayerPreview(modifier: Modifier = Modifier) {
     val offset by rememberUpdatedState(lyricsCfg.syncOffsetMs)
     val clock = remember { derivedStateOf { lyricsClock.value + offset } }
     val inlineQueue = queueMode == QueuePanelMode.UNDER_PLAYBAR
-    val upcoming = remember { sampleQueue.mapIndexedNotNull { i, t -> if (i > 1) i to t else null } }
-    val previous = remember { listOf(0 to sampleQueue[0]) }
-    val next = remember { sampleQueue.drop(2).mapIndexed { i, t -> (i + 2) to t } }
+    val upcoming = remember(sampleQueue) { sampleQueue.mapIndexedNotNull { i, t -> if (i > 1) i to t else null } }
+    val previous = remember(sampleQueue) { sampleQueue.take(1).mapIndexed { i, t -> i to t } }
+    val next = remember(sampleQueue) { sampleQueue.drop(2).mapIndexed { i, t -> (i + 2) to t } }
 
-    BoxWithConstraints(modifier.fillMaxWidth().aspectRatio(16f / 9f).clip(RoundedCornerShape(18.dp)).previewOnly()) {
-        val scale = maxWidth / VirtualWidth
-        CompositionLocalProvider(LocalPlaybackController provides controller) {
-            ProvidePlayerInk(
-                solid = cfg.backgroundStyle == PlayerBackgroundStyle.DEFAULT,
-                backdrop = MaterialTheme.colorScheme.surface,
-                darkness = prefs.getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100) / 100f,
-                framedControls = cfg.framedControls,
-            ) {
-                ProvideGlass(playerGlass) {
-                    Box(
-                        Modifier
-                            .wrapContentSize(Alignment.TopStart, unbounded = true)
-                            .requiredSize(VirtualWidth, VirtualHeight)
-                            .graphicsLayer {
-                                scaleX = scale
-                                scaleY = scale
-                                transformOrigin = TransformOrigin(0f, 0f)
-                            },
-                    ) {
-                        PreviewScene(cfg, lyricsCfg, timeline, clock, playerGlass, inlineQueue, upcoming, previous, next)
-                    }
-                }
+    ProvidePlayerInk(
+        solid = cfg.backgroundStyle == PlayerBackgroundStyle.DEFAULT,
+        backdrop = MaterialTheme.colorScheme.surface,
+        darkness = prefs.getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100) / 100f,
+        framedControls = cfg.framedControls,
+    ) {
+        ProvideGlass(playerGlass) {
+            Box(modifier.fillMaxSize()) {
+                PreviewScene(cfg, lyricsCfg, timeline, clock, playerGlass, inlineQueue, upcoming, previous, next, sampleTrack, playing, favorite, volume)
             }
         }
     }
@@ -208,6 +133,10 @@ private fun PreviewScene(
     upcoming: List<Pair<Int, QueueTrack>>,
     previous: List<Pair<Int, QueueTrack>>,
     next: List<Pair<Int, QueueTrack>>,
+    sampleTrack: NowPlaying,
+    playing: Boolean,
+    favorite: Boolean,
+    volume: Float,
 ) {
     val ink = LocalPlayerInk.current
     val showLyrics = cfg.lyricsByDefault
@@ -260,15 +189,15 @@ private fun PreviewScene(
                     FullscreenControlsCard(
                         cfg = cfg,
                         track = sampleTrack,
-                        stateName = PlaybackState.Playing.name,
-                        playing = true,
-                        isFavorite = true,
+                        stateName = (if (playing) PlaybackState.Playing else PlaybackState.Paused).name,
+                        playing = playing,
+                        isFavorite = favorite,
                         duration = sampleTrack.durationMs,
                         canPrev = true,
                         canNext = true,
                         shuffle = false,
                         repeat = RepeatMode.Off,
-                        volume = 0.7f,
+                        volume = volume,
                         inlineQueue = inlineQueue,
                         upcoming = upcoming,
                         previousPreview = previous,

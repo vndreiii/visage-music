@@ -171,9 +171,16 @@ track shows the animated playing glyph over the cover. Clickable rows clip to 12
 
 ### Settings — `ui/settings/SettingsScreens.kt`
 Build only from: `SettingsPage`, `SettingsSection(title)` (a `groupLabel` over a 20 dp `SettingsGroupCard`),
-`SettingsNavItem` (chevron), `SwitchItem`, `ChoiceRow` (≤4 short options), `ChipChoiceRow` (many), `PrefSecondsSlider`,
+`SettingsNavItem` (chevron), `SwitchItem`, `ChoiceRow` (≤4 short options), `SettingsDropdownRow` (5+ options, `searchable` from ~15), `PrefSecondsSlider`,
 `SettingsDivider`. All go through `SettingsRowFrame`, which handles search highlight, the scroll-into-view flash and the
 "New" chip.
+- **Chips are not setting controls.** `ChipChoiceRow` is gone: 2-4 short options use `ChoiceRow` (segmented), 5 or more use
+  `SettingsDropdownRow` (with `searchable = true` for long lists such as languages). A swatch/visual picker may keep a
+  swatch row, never `FilterChip`s.
+- **Visual settings get a live preview** made of the real components in `SettingsPreviewFrame`
+  (`ui/settings/preview/`): a scaled, pointer-blocked virtual window with a `FakePlaybackController` and sample data.
+  Components shown in it must observe prefs themselves (`rememberPrefsVersion`) so they update the instant a setting changes.
+  Do not draw look-alike mock-ups.
 - Title is a noun phrase; description is one sentence, no trailing full stop needed.
 - Put a setting on the page where a person would look for it, not where the code lives.
 - **Search:** the settings list is generated into `ui/settings/SettingsIndex.kt` by

@@ -94,6 +94,7 @@ import com.music.vivi.compose.ui.player.lyrics.LyricsWeight
 import com.music.vivi.compose.ui.player.lyrics.lyricsAccent
 import com.music.vivi.compose.ui.player.lyrics.lyricsConfig
 import com.music.vivi.compose.ui.player.lyrics.saveLyricsConfig
+import com.music.vivi.compose.ui.settings.preview.SettingsPreviewFrame
 import org.koin.compose.koinInject
 
 /** Sample song for the live preview: word-synced, line-synced (estimated), background vocal, translation, kana line, long gap. */
@@ -150,14 +151,14 @@ fun LyricsSettingsScreen(navController: NavController) {
     }
     var confirm by remember { mutableStateOf<String?>(null) }
 
-    PreviewSettingsPage(
-        title = "Lyrics",
-        onBack = { navController.navigateUp() },
-        previewKey = "settingsPreviewLyricsOpen",
-        previewCaption = "Sample song",
-        previewHeight = 230.dp,
-        preview = { LyricsPreview(live, Modifier.fillMaxSize()) },
-    ) {
+    SettingsPage(title = "Lyrics", onBack = { navController.navigateUp() }) {
+        SettingsPreviewFrame(
+            pageKey = "lyrics",
+            caption = "Sample song",
+            virtualWidth = 640.dp,
+            virtualHeight = 250.dp,
+        ) { LyricsPreview(live, Modifier.fillMaxSize()) }
+
         SettingsSection("Source") {
             val provider = prefs.enumPref(PrefKeys.LyricsProvider, LyricsProvider.LRCLIB)
             SettingsDropdownRow(
@@ -341,7 +342,7 @@ fun LyricsSettingsScreen(navController: NavController) {
             AnimatedVisibility(live.scene != LyricsScene.NONE, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
                 Column {
                     SettingsDivider()
-                    SettingsDisclosure(Icons.Outlined.Tune, "Advanced", "Overshoot, frequency and damping of the camera spring") {
+                    AdvancedExpander(Icons.Outlined.Tune, "Advanced", "Overshoot, frequency and damping of the camera spring") {
                         LiveSlider(
                             "Inertial overshoot", live.bounceAmp, 0f..2.5f, 25, { if (it <= 0f) "Off" else "${(it * 100).toInt()}%" },
                             { live = live.copy(bounceAmp = it) }, { commit(live.copy(bounceAmp = it)) },
@@ -461,7 +462,7 @@ private fun LyricsPreview(cfg: LyricsConfig, modifier: Modifier = Modifier) {
     val offset by rememberUpdatedState(cfg.syncOffsetMs)
     val clock = remember { derivedStateOf { base.value + offset } }
     val accent = lyricsAccent(cfg.accent)
-    Box(modifier.previewOnly().clip(RoundedCornerShape(18.dp)).background(Color(0xFF0F1115))) {
+    Box(modifier.clip(RoundedCornerShape(18.dp)).background(Color(0xFF0F1115))) {
         LyricsBackground(
             mode = cfg.background,
             intensity = cfg.backgroundIntensity,
