@@ -10,6 +10,7 @@ import androidx.navigation.compose.rememberNavController
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.FullscreenKeys
 import com.music.vivi.compose.ui.player.FullscreenPlayerPreview
+import com.music.vivi.compose.ui.settings.preview.SettingsPreviewFrame
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.swing.Swing
@@ -52,14 +53,14 @@ class SettingsPreviewRenderTest {
 
     @Test
     fun fullscreenPreviewRendersAndFollowsPrefs() = withPrefs { prefs ->
-        shoot(1280, 720, "fs-preview-default") { FullscreenPlayerPreview(Modifier) }
+        shoot(1280, 720, "fs-preview-default") { SettingsPreviewFrame(pageKey = "t", sticky = false) { FullscreenPlayerPreview(Modifier) } }
         prefs.setString(FullscreenKeys.CoverSide, "RIGHT")
         prefs.setString(FullscreenKeys.CoverShape, "CIRCLE")
         prefs.setBoolean(FullscreenKeys.ShowRadio, true)
         prefs.setBoolean(FullscreenKeys.ShowClock, true)
-        shoot(1280, 720, "fs-preview-right") { FullscreenPlayerPreview(Modifier) }
+        shoot(1280, 720, "fs-preview-right") { SettingsPreviewFrame(pageKey = "t", sticky = false) { FullscreenPlayerPreview(Modifier) } }
         prefs.setBoolean(FullscreenKeys.LyricsByDefault, false)
-        shoot(1280, 720, "fs-preview-nolyrics") { FullscreenPlayerPreview(Modifier) }
+        shoot(1280, 720, "fs-preview-nolyrics") { SettingsPreviewFrame(pageKey = "t", sticky = false) { FullscreenPlayerPreview(Modifier) } }
     }
 
     @Test
@@ -67,7 +68,7 @@ class SettingsPreviewRenderTest {
         shoot(1280, 720, "fs-preview-live", afterFirst = {
             prefs.setString(FullscreenKeys.CoverSide, "RIGHT")
             prefs.setString(FullscreenKeys.CoverShape, "SQUARE")
-        }) { FullscreenPlayerPreview(Modifier) }
+        }) { SettingsPreviewFrame(pageKey = "t", sticky = false) { FullscreenPlayerPreview(Modifier) } }
     }
 
     @Test
