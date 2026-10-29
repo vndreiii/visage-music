@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -144,6 +145,7 @@ import com.music.vivi.compose.ui.player.video.morphClip
 import com.music.vivi.compose.ui.player.canvas.CanvasResolver
 import com.music.vivi.compose.ui.player.canvas.CanvasSource
 import com.music.vivi.compose.ui.player.lyrics.LyricsPanel
+import com.music.vivi.player.NowPlaying
 import com.music.vivi.player.PlaybackState
 import com.music.vivi.player.QueueTrack
 import com.music.vivi.player.RepeatMode
@@ -188,14 +190,12 @@ fun NowPlayingScreen(
     val prefs = koinInject<DesktopPrefs>()
     @Suppress("UNUSED_VARIABLE")
     val observeInk = rememberPrefsVersion(prefs)
-    val style = runCatching {
-        PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle.name))
-    }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
+    val outerLook = prefs.nowPlayingLook()
     ProvidePlayerInk(
-        solid = style == PlayerBackgroundStyle.DEFAULT,
+        solid = outerLook.backgroundStyle == PlayerBackgroundStyle.DEFAULT,
         backdrop = MaterialTheme.colorScheme.surface,
-        darkness = prefs.getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100) / 100f,
-        framedControls = prefs.getBoolean(PrefKeys.UsePlayerV2, false),
+        darkness = outerLook.darkness,
+        framedControls = outerLook.framedControls,
     ) {
         NowPlayingScreenContent(navController, onOpenPinnedQueue, onOpenFullscreenQueue, queueOpen, onCloseQueue)
     }
@@ -214,7 +214,6 @@ private fun NowPlayingScreenContent(
     val prefs = koinInject<DesktopPrefs>()
     @Suppress("UNUSED_VARIABLE")
     val observeSquare = rememberPrefsVersion(prefs)
-    val squareCover = prefs.getBoolean(PrefKeys.SquareCover, false)
     val downloads = koinInject<com.music.vivi.compose.download.TrackDownloadService>()
     val scope = rememberCoroutineScope()
     var toastMessage by remember { mutableStateOf<String?>(null) }
@@ -238,9 +237,11 @@ private fun NowPlayingScreenContent(
     }
     @Suppress("UNUSED_VARIABLE")
     val observePrefs = prefsTick
-    val limitControlsWidth = prefs.getBoolean(PrefKeys.LimitPlayerControlsWidth, prefs.getBoolean(PrefKeys.AdwaitaInspired, false))
-    val controlsMaxWidth = prefs.getInt(PrefKeys.PlayerControlsWidth, 600).coerceIn(400, 600).dp
-    val playPauseHeight = prefs.getInt(PrefKeys.PlayPauseHeight, 56).coerceIn(48, 96).dp
+    val look = prefs.nowPlayingLook()
+    val squareCover = look.squareCover
+    val limitControlsWidth = look.limitControlsWidth
+    val controlsMaxWidth = look.controlsMaxWidth
+    val playPauseHeight = look.playPauseHeight
     val queueMode = runCatching {
         QueuePanelMode.valueOf(
             prefs.getString(PrefKeys.QueuePanelMode, QueuePanelMode.PINNED_RIGHT.name),
@@ -276,21 +277,11 @@ private fun NowPlayingScreenContent(
         queueTracks.mapIndexedNotNull { i, t -> if (i > queueIndex) i to t else null }
     }
 
-    val bgStyle = runCatching {
-        PlayerBackgroundStyle.valueOf(
-            prefs.getString(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle.name),
-        )
-    }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
-    val sliderStyle = runCatching {
-        SliderStyle.valueOf(prefs.getString(PrefKeys.SliderStyle, SliderStyle.M3_EXPRESSIVE.name))
-    }.getOrDefault(SliderStyle.M3_EXPRESSIVE)
-    val squigglySlider = prefs.getBoolean(PrefKeys.SquigglySlider, false)
-    val framedControls = prefs.getBoolean(PrefKeys.UsePlayerV2, false)
-    val buttonsStyle = runCatching {
-        PlayerButtonsStyle.valueOf(
-            prefs.getString(PrefKeys.PlayerButtonsStyle, PlayerButtonsStyle.DEFAULT.name),
-        )
-    }.getOrDefault(PlayerButtonsStyle.DEFAULT)
+    val bgStyle = look.backgroundStyle
+    val sliderStyle = look.sliderStyle
+    val squigglySlider = look.squiggly
+    val framedControls = look.framedControls
+    val buttonsStyle = look.buttonsStyle
     val enableCanvas = prefs.getBoolean(PrefKeys.EnableCanvas, true)
     val canvasSource = runCatching {
         CanvasSource.valueOf(prefs.getString(PrefKeys.CanvasSource, CanvasSource.AUTO.name))
@@ -333,7 +324,7 @@ private fun NowPlayingScreenContent(
         canvasArt = art
     }
 
-    val hideThumbnail = prefs.getBoolean(PrefKeys.HidePlayerThumbnail, false)
+    val hideThumbnail = look.hideCover
     // Only animate to artwork that is already decoded at full quality.
     val readyArt = com.music.vivi.compose.ui.component.rememberReadyArtwork(track?.artworkUrl)
     var artTarget by remember { mutableStateOf<Pair<String?, String?>>(null to null) }
@@ -378,15 +369,13 @@ private fun NowPlayingScreenContent(
                     // With the blur setting on, the top bar floats over this page: keep content below it.
                     .padding(top = com.music.vivi.compose.ui.glass.LocalTopBarInset.current),
             ) {
-                val paneGap = 28.dp
-                val bottomChromeH = 60.dp
+                val paneGap = NowPlayingPaneGap
                 val underQueue = showUnderPlaybar && !showLyrics
-                val mainH = (maxHeight - bottomChromeH).coerceAtLeast(200.dp)
-                // Cover from height, then stack takes the rest so the row is wide and stack isn't skinny.
-                val idleArtSize = minOf(mainH * 0.92f, maxWidth * 0.40f)
-                val availableStackW = (maxWidth - paneGap - idleArtSize).coerceAtLeast(0.dp)
-                val idleStackW = if (limitControlsWidth) adwaitaClampWidth(availableStackW, controlsMaxWidth) else availableStackW
-                val idleContentW = (idleArtSize + paneGap + idleStackW).coerceAtMost(maxWidth)
+                val idle = nowPlayingIdleMetrics(maxWidth, maxHeight, limitControlsWidth, controlsMaxWidth)
+                val mainH = idle.mainHeight
+                val idleArtSize = idle.coverSize
+                val idleStackW = idle.stackWidth
+                val idleContentW = idle.contentWidth
                 val lyricsStackW = (maxWidth * 0.44f).coerceAtMost(440.dp)
                 val lyricsContentW = maxWidth
                 val lyricsLeftW = (lyricsContentW - paneGap - lyricsStackW).coerceAtLeast(0.dp)
@@ -474,7 +463,7 @@ private fun NowPlayingScreenContent(
                                         label = "npArtwork",
                                         modifier = Modifier.fillMaxSize()
                                             .songSwapCover(swap)
-                                            .morphClip(elevation = 28.dp) { if (squareCover) 0.dp else (28f - 8f * coverMorph.progress.coerceIn(0f, 1f)).dp },
+                                            .morphClip(elevation = 28.dp) { nowPlayingCoverRadius(squareCover, coverMorph.progress) },
                                     ) { (_, artUrl) ->
                                         Box(Modifier.fillMaxSize().then(Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest))) {
                                             val squareUrl = canvasSquareUrl
@@ -622,7 +611,7 @@ private fun NowPlayingScreenContent(
                             }
 
                             Column(
-                                Modifier.align(Alignment.CenterHorizontally).then(if (limitControlsWidth) Modifier.widthIn(max = if (showLyrics) adwaitaClampWidth(stackW, controlsMaxWidth) else controlsMaxWidth) else Modifier).fillMaxWidth().then(if (underQueue && !showCanvasOnRight) Modifier.weight(1f) else Modifier).songSwapControls(swap).playerControlsSurface(framedControls)
+                                Modifier.align(Alignment.CenterHorizontally).nowPlayingControlsWidth(limitControlsWidth, if (showLyrics) adwaitaClampWidth(stackW, controlsMaxWidth) else controlsMaxWidth).then(if (underQueue && !showCanvasOnRight) Modifier.weight(1f) else Modifier).songSwapControls(swap).playerControlsSurface(framedControls)
                             ) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                                 PlainAnimatedVisibility(
@@ -649,71 +638,25 @@ private fun NowPlayingScreenContent(
                                             .clip(if (squareCover) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(14.dp)),
                                     )
                                 }
-                                Column(Modifier.weight(1f)) {
-                                    Text(
-                                        track?.title ?: "Nothing playing",
-                                        style = MaterialTheme.typography.headlineMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ink.text(),
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    val credits = track?.artist.orEmpty()
-                                    if (credits.isBlank()) {
-                                        Text(
-                                            state.name,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = ink.text(0.65f),
-                                            modifier = Modifier.padding(top = 6.dp),
-                                        )
-                                    } else {
-                                        com.music.vivi.compose.ui.artist.ArtistLinks(
-                                            credits = credits,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = ink.text(0.65f),
-                                            hoverColor = ink.text(),
-                                            onOpen = { navController.openArtistByName(it) },
-                                            maxLines = 2,
-                                            modifier = Modifier.padding(top = 6.dp),
-                                        )
-                                    }
-                                    val albumName = track?.album.orEmpty()
-                                    if (albumName.isNotBlank()) {
-                                        val canOpenAlbum = com.music.vivi.compose.ui.album.AlbumLinks.isOpenable(albumName, track?.albumId, track?.localPath != null)
-                                        Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Outlined.Album, "Album", tint = ink.text(0.5f), modifier = Modifier.size(16.dp))
-                                            Spacer(Modifier.width(6.dp))
-                                            com.music.vivi.compose.ui.album.AlbumLink(
-                                                albumName,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                color = ink.text(0.55f),
-                                                hoverColor = ink.text(),
-                                                modifier = Modifier.weight(1f, fill = false),
-                                                onClick = if (!canOpenAlbum) null else {
-                                                    {
-                                                        val t = track
-                                                        scope.launch { navController.openAlbumOf(t?.albumId, albumName, t?.artist.orEmpty()) }
-                                                    }
-                                                },
-                                            )
-                                        }
-                                    }
-                                }
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    ToolIconButton(Icons.Outlined.Download, "Make available offline") {
+                                NowPlayingTrackInfo(
+                                    track = track,
+                                    stateName = state.name,
+                                    onOpenArtist = { navController.openArtistByName(it) },
+                                    onOpenAlbum = { t -> scope.launch { navController.openAlbumOf(t.albumId, t.album.orEmpty(), t.artist) } },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                NowPlayingTrackActions(
+                                    isFavorite = isFavorite,
+                                    onDownload = {
                                         val t = track
                                         if (t == null) {
                                             toastMessage = "Nothing playing"
                                         } else {
                                             downloads.enqueue(t.videoId, t.title, t.artist)
                                         }
-                                    }
-                                    ToolIconButton(
-                                        if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                        "Favorite",
-                                        active = isFavorite,
-                                    ) { scope.launch { controller.toggleFavorite() } }
-                                }
+                                    },
+                                    onFavorite = { scope.launch { controller.toggleFavorite() } },
+                                )
                             }
 
                             Spacer(Modifier.height(stackGap))
@@ -762,107 +705,44 @@ private fun NowPlayingScreenContent(
 
                     Spacer(Modifier.height(16.dp))
                     // Same width as cover + stack above — tools | volume (fills) | more.
-                    Row(
-                        Modifier.width(contentW),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            ToolIconButton(
-                                Icons.AutoMirrored.Outlined.QueueMusic,
-                                "Queue",
-                                active = showUnderPlaybar || queueOpen,
-                            ) {
-                                when {
-                                    queueOpen -> onCloseQueue?.invoke()
-                                    queueMode == QueuePanelMode.FULLSCREEN ->
-                                        onOpenFullscreenQueue?.invoke()
-                                    queueMode == QueuePanelMode.PINNED_RIGHT ->
-                                        onOpenPinnedQueue?.invoke()
-                                            ?: onOpenFullscreenQueue?.invoke()
-                                    else -> underPlaybarOpen = !underPlaybarOpen
-                                }
+                    NowPlayingBottomBar(
+                        modifier = Modifier.width(contentW),
+                        queueActive = showUnderPlaybar || queueOpen,
+                        lyricsActive = showLyrics,
+                        shuffle = shuffle,
+                        repeat = repeat,
+                        volume = displayVolume,
+                        volumeStyle = look.volumeStyle,
+                        onQueue = {
+                            when {
+                                queueOpen -> onCloseQueue?.invoke()
+                                queueMode == QueuePanelMode.FULLSCREEN ->
+                                    onOpenFullscreenQueue?.invoke()
+                                queueMode == QueuePanelMode.PINNED_RIGHT ->
+                                    onOpenPinnedQueue?.invoke()
+                                        ?: onOpenFullscreenQueue?.invoke()
+                                else -> underPlaybarOpen = !underPlaybarOpen
                             }
-                            ToolIconButton(Icons.Outlined.Lyrics, "Lyrics", active = showLyrics) {
-                                showLyrics = !showLyrics
+                        },
+                        onLyrics = { showLyrics = !showLyrics },
+                        onShuffle = { controller.toggleShuffle() },
+                        onRepeat = { controller.cycleRepeatMode() },
+                        onFullscreen = {
+                            WindowFullscreen.enter(windowState)
+                            navController.navigate(Routes.NOW_PLAYING_FULLSCREEN) {
+                                launchSingleTop = true
                             }
-                            ToolIconButton(
-                                Icons.Outlined.Shuffle,
-                                "Shuffle",
-                                active = shuffle,
-                            ) { controller.toggleShuffle() }
-                            ToolIconButton(
-                                if (repeat == RepeatMode.One) Icons.Outlined.RepeatOne else Icons.Outlined.Repeat,
-                                "Repeat",
-                                active = repeat != RepeatMode.Off,
-                            ) { controller.cycleRepeatMode() }
-                            ToolIconButton(Icons.Outlined.OpenInFull, "Fullscreen player") {
-                                WindowFullscreen.enter(windowState)
-                                navController.navigate(Routes.NOW_PLAYING_FULLSCREEN) {
-                                    launchSingleTop = true
-                                }
-                            }
-                        }
-                        val volumeStyle = runCatching { VolumeControlStyle.valueOf(prefs.getString(PrefKeys.VolumeControlStyle, VolumeControlStyle.SLIDER.name)) }.getOrDefault(VolumeControlStyle.SLIDER)
-                        Row(
-                            Modifier
-                                .weight(1f)
-                                .volumeWheel()
-                                .padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Icon(
-                                Icons.Outlined.VolumeDown,
-                                contentDescription = null,
-                                tint = ink.text(0.75f),
-                                modifier = Modifier.size(20.dp),
-                            )
-                            if (volumeStyle == VolumeControlStyle.COMPACT_PILL) {
-                                VolumePillControl(
-                                    volume = displayVolume,
-                                    onVolumeChange = {
-                                        scrubVolume = true
-                                        scrubVol = it
-                                        controller.setVolume(it)
-                                    },
-                                    onVolumeChangeFinished = {
-                                        scrubVolume = false
-                                        prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
-                                    }
-                                )
-                                
-                            } else {
-                                PlayerSeekBar(
-                                    progress = displayVolume,
-                                    onScrub = {
-                                        scrubVolume = true
-                                        scrubVol = it
-                                        controller.setVolume(it)
-                                    },
-                                    onScrubFinished = {
-                                        scrubVolume = false
-                                        prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
-                                    },
-                                    activeColor = ink.primary,
-                                    inactiveColor = ink.fill(0.28f),
-                                    style = SliderStyle.M3_EXPRESSIVE,
-                                    squiggly = false,
-                                    compact = true,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    "${(displayVolume * 100).toInt()}%",
-                                    style = com.music.vivi.compose.theme.VisageType.readout,
-                                    color = ink.text(0.7f),
-                                    modifier = Modifier.widthIn(min = 40.dp),
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                )
-                            }
-                        }
-                        Box {
+                        },
+                        onVolumeChange = {
+                            scrubVolume = true
+                            scrubVol = it
+                            controller.setVolume(it)
+                        },
+                        onVolumeFinished = {
+                            scrubVolume = false
+                            prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
+                        },
+                        more = {
                             ToolIconButton(Icons.Outlined.MoreVert, "More", circle = true) {
                                 showTrackActions = true
                             }
@@ -871,12 +751,233 @@ private fun NowPlayingScreenContent(
                                 track = track,
                                 onDismiss = { showTrackActions = false },
                             )
-                        }
-                    }
+                        },
+                    )
                 }
             }
         }
     }
+    }
+}
+
+/** Gap between the cover and the controls column. */
+internal val NowPlayingPaneGap = 28.dp
+
+/** Sizes of the idle (no lyrics) Now Playing layout in a window of [maxWidth] x [maxHeight]. */
+internal class NowPlayingIdleMetrics(val mainHeight: Dp, val coverSize: Dp, val stackWidth: Dp, val contentWidth: Dp)
+
+/** Shared by the screen and the settings preview, so both lay the cover and the controls out the same way. */
+internal fun nowPlayingIdleMetrics(
+    maxWidth: Dp,
+    maxHeight: Dp,
+    limitControlsWidth: Boolean,
+    controlsMaxWidth: Dp,
+    bottomChrome: Dp = 60.dp,
+): NowPlayingIdleMetrics {
+    val mainH = (maxHeight - bottomChrome).coerceAtLeast(200.dp)
+    // Cover from height, then stack takes the rest so the row is wide and stack isn't skinny.
+    val art = minOf(mainH * 0.92f, maxWidth * 0.40f)
+    val available = (maxWidth - NowPlayingPaneGap - art).coerceAtLeast(0.dp)
+    val stack = if (limitControlsWidth) adwaitaClampWidth(available, controlsMaxWidth) else available
+    return NowPlayingIdleMetrics(mainH, art, stack, (art + NowPlayingPaneGap + stack).coerceAtMost(maxWidth))
+}
+
+/** Corner radius of the big cover: square when the setting says so, easing from 28 to 20 dp while it morphs to a video. */
+internal fun nowPlayingCoverRadius(square: Boolean, morphProgress: Float = 0f): Dp =
+    if (square) 0.dp else (28f - 8f * morphProgress.coerceIn(0f, 1f)).dp
+
+/** Width rule of the controls column ("Limit controls width"). */
+internal fun Modifier.nowPlayingControlsWidth(limit: Boolean, maxWidth: Dp): Modifier =
+    (if (limit) widthIn(max = maxWidth) else this).fillMaxWidth()
+
+/** Title, credited artists (linked) and album of the playing song. Used by Now Playing and its settings preview. */
+@Composable
+internal fun NowPlayingTrackInfo(
+    track: NowPlaying?,
+    stateName: String,
+    onOpenArtist: (String) -> Unit,
+    onOpenAlbum: (NowPlaying) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val ink = LocalPlayerInk.current
+    Column(modifier) {
+        Text(
+            track?.title ?: "Nothing playing",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = ink.text(),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        val credits = track?.artist.orEmpty()
+        if (credits.isBlank()) {
+            Text(
+                stateName,
+                style = MaterialTheme.typography.titleMedium,
+                color = ink.text(0.65f),
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        } else {
+            com.music.vivi.compose.ui.artist.ArtistLinks(
+                credits = credits,
+                style = MaterialTheme.typography.titleMedium,
+                color = ink.text(0.65f),
+                hoverColor = ink.text(),
+                onOpen = onOpenArtist,
+                maxLines = 2,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+        val albumName = track?.album.orEmpty()
+        if (albumName.isNotBlank()) {
+            val canOpenAlbum = com.music.vivi.compose.ui.album.AlbumLinks.isOpenable(albumName, track?.albumId, track?.localPath != null)
+            Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Album, "Album", tint = ink.text(0.5f), modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                com.music.vivi.compose.ui.album.AlbumLink(
+                    albumName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ink.text(0.55f),
+                    hoverColor = ink.text(),
+                    modifier = Modifier.weight(1f, fill = false),
+                    onClick = if (!canOpenAlbum || track == null) null else { { onOpenAlbum(track) } },
+                )
+            }
+        }
+    }
+}
+
+/** Download and favourite buttons next to the title. */
+@Composable
+internal fun NowPlayingTrackActions(isFavorite: Boolean, onDownload: () -> Unit, onFavorite: () -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ToolIconButton(Icons.Outlined.Download, "Make available offline", onClick = onDownload)
+        ToolIconButton(
+            if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+            "Favorite",
+            active = isFavorite,
+            onClick = onFavorite,
+        )
+    }
+}
+
+/** Bottom row of Now Playing: tool buttons | volume (fills) | more. Shared with the settings preview. */
+@Composable
+internal fun NowPlayingBottomBar(
+    queueActive: Boolean,
+    lyricsActive: Boolean,
+    shuffle: Boolean,
+    repeat: RepeatMode,
+    volume: Float,
+    volumeStyle: VolumeControlStyle,
+    onQueue: () -> Unit,
+    onLyrics: () -> Unit,
+    onShuffle: () -> Unit,
+    onRepeat: () -> Unit,
+    onFullscreen: () -> Unit,
+    onVolumeChange: (Float) -> Unit,
+    onVolumeFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+    more: @Composable () -> Unit,
+) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            ToolIconButton(Icons.AutoMirrored.Outlined.QueueMusic, "Queue", active = queueActive, onClick = onQueue)
+            ToolIconButton(Icons.Outlined.Lyrics, "Lyrics", active = lyricsActive, onClick = onLyrics)
+            ToolIconButton(Icons.Outlined.Shuffle, "Shuffle", active = shuffle, onClick = onShuffle)
+            ToolIconButton(
+                if (repeat == RepeatMode.One) Icons.Outlined.RepeatOne else Icons.Outlined.Repeat,
+                "Repeat",
+                active = repeat != RepeatMode.Off,
+                onClick = onRepeat,
+            )
+            ToolIconButton(Icons.Outlined.OpenInFull, "Fullscreen player", onClick = onFullscreen)
+        }
+        Row(
+            Modifier.weight(1f).volumeWheel().padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            NowPlayingVolumeControl(volume = volume, style = volumeStyle, onChange = onVolumeChange, onFinished = onVolumeFinished)
+        }
+        Box { more() }
+    }
+}
+
+/**
+ * The Now Playing look settings, read in one place for the screen and the settings preview. Call it with a prefs version
+ * you observe ([com.music.vivi.compose.ui.settings.rememberPrefsVersion]) so a change recomposes the caller.
+ */
+internal data class NowPlayingLook(
+    val backgroundStyle: PlayerBackgroundStyle,
+    val darkness: Float,
+    val squareCover: Boolean,
+    val hideCover: Boolean,
+    val framedControls: Boolean,
+    val buttonsStyle: PlayerButtonsStyle,
+    val sliderStyle: SliderStyle,
+    val squiggly: Boolean,
+    val limitControlsWidth: Boolean,
+    val controlsMaxWidth: Dp,
+    val playPauseHeight: Dp,
+    val volumeStyle: VolumeControlStyle,
+)
+
+internal fun DesktopPrefs.nowPlayingLook(): NowPlayingLook {
+    fun <E : Enum<E>> enumOf(key: String, default: E, parse: (String) -> E): E =
+        runCatching { parse(getString(key, default.name)) }.getOrDefault(default)
+    return NowPlayingLook(
+        backgroundStyle = enumOf(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle) { PlayerBackgroundStyle.valueOf(it) },
+        darkness = getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100) / 100f,
+        squareCover = getBoolean(PrefKeys.SquareCover, false),
+        hideCover = getBoolean(PrefKeys.HidePlayerThumbnail, false),
+        framedControls = getBoolean(PrefKeys.UsePlayerV2, false),
+        buttonsStyle = enumOf(PrefKeys.PlayerButtonsStyle, PlayerButtonsStyle.DEFAULT) { PlayerButtonsStyle.valueOf(it) },
+        sliderStyle = enumOf(PrefKeys.SliderStyle, SliderStyle.M3_EXPRESSIVE) { SliderStyle.valueOf(it) },
+        squiggly = getBoolean(PrefKeys.SquigglySlider, false),
+        limitControlsWidth = getBoolean(PrefKeys.LimitPlayerControlsWidth, getBoolean(PrefKeys.AdwaitaInspired, false)),
+        controlsMaxWidth = getInt(PrefKeys.PlayerControlsWidth, 600).coerceIn(400, 600).dp,
+        playPauseHeight = getInt(PrefKeys.PlayPauseHeight, 56).coerceIn(48, 96).dp,
+        volumeStyle = enumOf(PrefKeys.VolumeControlStyle, VolumeControlStyle.SLIDER) { VolumeControlStyle.valueOf(it) },
+    )
+}
+
+/** Volume icon plus the slider or pill (and its percentage), per the "Volume control" setting. */
+@Composable
+internal fun RowScope.NowPlayingVolumeControl(
+    volume: Float,
+    style: VolumeControlStyle,
+    onChange: (Float) -> Unit,
+    onFinished: () -> Unit,
+) {
+    val ink = LocalPlayerInk.current
+    Icon(
+        Icons.Outlined.VolumeDown,
+        contentDescription = null,
+        tint = ink.text(0.75f),
+        modifier = Modifier.size(20.dp),
+    )
+    if (style == VolumeControlStyle.COMPACT_PILL) {
+        VolumePillControl(volume = volume, onVolumeChange = onChange, onVolumeChangeFinished = onFinished)
+    } else {
+        PlayerSeekBar(
+            progress = volume,
+            onScrub = onChange,
+            onScrubFinished = onFinished,
+            activeColor = ink.primary,
+            inactiveColor = ink.fill(0.28f),
+            style = SliderStyle.M3_EXPRESSIVE,
+            squiggly = false,
+            compact = true,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            "${(volume * 100).toInt()}%",
+            style = com.music.vivi.compose.theme.VisageType.readout,
+            color = ink.text(0.7f),
+            modifier = Modifier.widthIn(min = 40.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
     }
 }
 

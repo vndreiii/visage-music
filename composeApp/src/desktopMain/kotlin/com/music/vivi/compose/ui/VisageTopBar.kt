@@ -100,21 +100,6 @@ fun FrameWindowScope.VisageTopBar(
     /** Page-contextual buttons (sidebar toggles) shown just left of the caption buttons. */
     extraActions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
 ) {
-    val prefs = koinInject<DesktopPrefs>()
-    var prefsTick by remember { mutableIntStateOf(0) }
-    DisposableEffect(prefs) {
-        val listener = { prefsTick += 1 }
-        prefs.addListener(listener)
-        onDispose { prefs.removeListener(listener) }
-    }
-    @Suppress("UNUSED_VARIABLE")
-    val observe = prefsTick
-
-    val navStyle = runCatching {
-        TopNavStyle.valueOf(prefs.getString(PrefKeys.TopNavStyle, TopNavStyle.ICON_ONLY.name))
-    }.getOrDefault(TopNavStyle.ICON_ONLY)
-    val settingsDropdown = prefs.getBoolean(PrefKeys.SettingsDropdown, true)
-
     val onMain = destinations.any {
         currentRoute == it.route ||
             (it.route == Routes.SEARCH && currentRoute?.startsWith("search/") == true)
@@ -133,8 +118,6 @@ fun FrameWindowScope.VisageTopBar(
     }
 
     val navDestinations = destinations.filter { it.route != Routes.SMOKE }
-    var settingsMenuOpen by remember { mutableStateOf(false) }
-
     val glass = com.music.vivi.compose.ui.glass.glassActive()
     Surface(
         tonalElevation = if (glass) 0.dp else 2.dp,
@@ -153,104 +136,21 @@ fun FrameWindowScope.VisageTopBar(
                     edges = com.music.vivi.compose.ui.glass.GlassEdges.Bottom,
                 )
                 // Left: brand + section title (inset from edge)
-                Row(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .fillMaxHeight()
-                        .padding(start = 14.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    val logo = remember {
-                        runCatching {
-                            useResource("visage_icon.png") { loadImageBitmap(it) }
-                        }.getOrNull()
-                    }
-                    if (logo != null) {
-                        Image(
-                            bitmap = logo,
-                            contentDescription = "VIsage",
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(RoundedCornerShape(8.dp)) // the icon is a rounded square; a circle would cut its corners
-                                .clickable { onNavigate(Routes.HOME) },
-                            contentScale = ContentScale.Fit,
-                        )
-                    } else {
-                        Text(
-                            "V",
-                            modifier = Modifier
-                                .size(36.dp)
-                                .clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primary)
-                                .clickable { onNavigate(Routes.HOME) }
-                                .padding(6.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                    Text(
-                        text = currentLabel,
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 22.sp,
-                        ),
-                    )
-                }
+                TopBarBrand(
+                    title = currentLabel,
+                    onLogoClick = { onNavigate(Routes.HOME) },
+                    modifier = Modifier.align(Alignment.CenterStart).fillMaxHeight().padding(start = 14.dp),
+                )
 
                 // Center: main destinations
                 if (navDestinations.isNotEmpty()) {
-                    Row(
+                    TopNavItems(
+                        destinations = navDestinations,
+                        currentRoute = currentRoute,
+                        onNavigate = onNavigate,
+                        onOpenSettingsRoute = onOpenSettingsRoute,
                         modifier = Modifier.align(Alignment.Center),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        navDestinations.forEach { dest ->
-                            val selected = when (dest.route) {
-                                Routes.SETTINGS ->
-                                    currentRoute == Routes.SETTINGS ||
-                                        currentRoute?.startsWith("settings/") == true
-                                Routes.SEARCH ->
-                                    currentRoute == dest.route ||
-                                        currentRoute?.startsWith("search/") == true
-                                else -> currentRoute == dest.route
-                            }
-                            Box(Modifier.tourAnchor(
-                                when (dest.route) {
-                                    Routes.HOME -> "nav.home"
-                                    Routes.SEARCH -> "nav.search"
-                                    Routes.LIBRARY -> "nav.library"
-                                    Routes.SETTINGS -> "nav.settings"
-                                    else -> "nav.${dest.route}"
-                                },
-                            )) {
-                                TopNavChip(
-                                    label = dest.label,
-                                    icon = destIcon(dest.route, selected),
-                                    style = navStyle,
-                                    selected = selected,
-                                    onClick = {
-                                        if (dest.route == Routes.SETTINGS && settingsDropdown) {
-                                            settingsMenuOpen = true
-                                        } else {
-                                            settingsMenuOpen = false
-                                            onNavigate(dest.route)
-                                        }
-                                    },
-                                )
-                                if (dest.route == Routes.SETTINGS) {
-                                    SettingsDropdownMenu(
-                                        expanded = settingsMenuOpen && settingsDropdown,
-                                        onDismiss = { settingsMenuOpen = false },
-                                        onOpen = { route ->
-                                            settingsMenuOpen = false
-                                            onOpenSettingsRoute(route)
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
+                    )
                 }
 
                 // Right: caption buttons — compact M3 pill hover, not full-height bars
@@ -373,6 +273,133 @@ private fun SettingsDropdownMenu(
             leadingIcon = { Icon(Icons.Outlined.BugReport, contentDescription = null) },
             onClick = { onOpen(Routes.SETTINGS_DIAGNOSTICS) },
         )
+    }
+}
+
+/** Logo mark and section title at the left of the top bar. Shared by the window bar and the Interface settings preview. */
+@Composable
+internal fun TopBarBrand(title: String, onLogoClick: () -> Unit, modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        val logo = remember {
+            runCatching {
+                useResource("visage_icon.png") { loadImageBitmap(it) }
+            }.getOrNull()
+        }
+        if (logo != null) {
+            Image(
+                bitmap = logo,
+                contentDescription = "VIsage",
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(8.dp)) // the icon is a rounded square; a circle would cut its corners
+                    .clickable { onLogoClick() },
+                contentScale = ContentScale.Fit,
+            )
+        } else {
+            Text(
+                "V",
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary)
+                    .clickable { onLogoClick() }
+                    .padding(6.dp),
+                color = MaterialTheme.colorScheme.onPrimary,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge.copy(
+                fontWeight = FontWeight.Bold,
+                fontSize = 22.sp,
+            ),
+        )
+    }
+}
+
+/**
+ * The centred tab chips of the top bar. Reads (and observes) the tab-label and settings-menu prefs itself, so the real bar
+ * and the Interface settings preview both follow them the moment they change.
+ */
+@Composable
+internal fun TopNavItems(
+    destinations: List<MainDest>,
+    currentRoute: String?,
+    onNavigate: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    onOpenSettingsRoute: (String) -> Unit = onNavigate,
+    /** False in settings previews: their chips must not take over the onboarding tour's spotlight targets. */
+    anchors: Boolean = true,
+) {
+    val prefs = koinInject<DesktopPrefs>()
+    var prefsTick by remember { mutableIntStateOf(0) }
+    DisposableEffect(prefs) {
+        val listener = { prefsTick += 1 }
+        prefs.addListener(listener)
+        onDispose { prefs.removeListener(listener) }
+    }
+    @Suppress("UNUSED_VARIABLE")
+    val observe = prefsTick
+    val navStyle = runCatching {
+        TopNavStyle.valueOf(prefs.getString(PrefKeys.TopNavStyle, TopNavStyle.ICON_ONLY.name))
+    }.getOrDefault(TopNavStyle.ICON_ONLY)
+    val settingsDropdown = prefs.getBoolean(PrefKeys.SettingsDropdown, true)
+    var settingsMenuOpen by remember { mutableStateOf(false) }
+    Row(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        destinations.forEach { dest ->
+            val selected = when (dest.route) {
+                Routes.SETTINGS ->
+                    currentRoute == Routes.SETTINGS ||
+                        currentRoute?.startsWith("settings/") == true
+                Routes.SEARCH ->
+                    currentRoute == dest.route ||
+                        currentRoute?.startsWith("search/") == true
+                else -> currentRoute == dest.route
+            }
+            Box(if (!anchors) Modifier else Modifier.tourAnchor(
+                when (dest.route) {
+                    Routes.HOME -> "nav.home"
+                    Routes.SEARCH -> "nav.search"
+                    Routes.LIBRARY -> "nav.library"
+                    Routes.SETTINGS -> "nav.settings"
+                    else -> "nav.${dest.route}"
+                },
+            )) {
+                TopNavChip(
+                    label = dest.label,
+                    icon = destIcon(dest.route, selected),
+                    style = navStyle,
+                    selected = selected,
+                    onClick = {
+                        if (dest.route == Routes.SETTINGS && settingsDropdown) {
+                            settingsMenuOpen = true
+                        } else {
+                            settingsMenuOpen = false
+                            onNavigate(dest.route)
+                        }
+                    },
+                )
+                if (dest.route == Routes.SETTINGS) {
+                    SettingsDropdownMenu(
+                        expanded = settingsMenuOpen && settingsDropdown,
+                        onDismiss = { settingsMenuOpen = false },
+                        onOpen = { route ->
+                            settingsMenuOpen = false
+                            onOpenSettingsRoute(route)
+                        },
+                    )
+                }
+            }
+        }
     }
 }
 
