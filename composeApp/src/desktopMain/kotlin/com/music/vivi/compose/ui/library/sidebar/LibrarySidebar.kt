@@ -138,6 +138,7 @@ import com.music.vivi.compose.ui.component.VisageToast
 import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 import com.music.vivi.compose.ui.library.LibraryCache
+import com.music.vivi.compose.ui.library.YtLibraryData
 import com.music.vivi.compose.ui.library.libraryModule
 import com.music.vivi.compose.ui.motion.VisageMotion
 import com.music.vivi.compose.local.toQueueTrack as offlineToQueueTrack
@@ -268,8 +269,48 @@ internal fun LibrarySidebarFrame(
     }
 }
 
+/** The sidebar's rows for the loaded YouTube library, local playlists and downloads. Shared with Settings. */
+internal fun libraryEntries(
+    ytData: YtLibraryData,
+    offline: List<com.music.vivi.database.Downloaded_track>,
+    locals: List<com.music.vivi.database.Playlist>,
+): List<LibraryEntry> = buildEntries(
+    ytPlaylists = ytData.playlists.mapIndexed { i, p ->
+        LibraryEntry(
+            key = "yt:${p.id}", id = p.id, kind = EntryKind.YT_PLAYLIST, title = p.title,
+            creator = p.author?.name.orEmpty(),
+            trackCount = p.songCountText?.let { Regex("""\d[\d,]*""").find(it)?.value?.replace(",", "")?.toIntOrNull() },
+            thumbnail = p.thumbnail, recentRank = 1_000 + i,
+        )
+    },
+    localPlaylists = locals.mapIndexed { i, p ->
+        LibraryEntry(
+            key = "local:${p.id}", id = p.id, kind = EntryKind.LOCAL_PLAYLIST, title = p.title,
+            creator = "You", trackCount = p.song_count?.toInt(), thumbnail = p.thumbnail, recentRank = i,
+        )
+    },
+    albums = ytData.albums.mapIndexed { i, a ->
+        LibraryEntry(
+            key = "album:${a.id}", id = a.id, kind = EntryKind.ALBUM, title = a.title,
+            creator = a.artists?.joinToString { it.name }.orEmpty(), thumbnail = a.thumbnail, recentRank = 2_000 + i,
+        )
+    },
+    artists = ytData.artists.mapIndexed { i, a ->
+        LibraryEntry(
+            key = "artist:${a.id}", id = a.id, kind = EntryKind.ARTIST, title = a.title,
+            creator = a.title, thumbnail = a.thumbnail, recentRank = 3_000 + i,
+        )
+    },
+    liked = ytData.songs.takeIf { it.isNotEmpty() }?.let {
+        LibraryEntry("liked", "LM", EntryKind.LIKED, "Liked Songs", "Playlist", it.size, it.first().thumbnail)
+    },
+    downloads = offline.takeIf { it.isNotEmpty() }?.let {
+        LibraryEntry("downloads", "offline", EntryKind.DOWNLOADS, "Downloaded", "Available offline", it.size, null)
+    },
+)
+
 @Composable
-private fun rememberLibraryCache(): LibraryCache = remember {
+internal fun rememberLibraryCache(): LibraryCache = remember {
     try {
         GlobalContext.get().get<LibraryCache>()
     } catch (e: Exception) {
@@ -304,42 +345,7 @@ private fun LibraryPanel(
         value = withContext(Dispatchers.IO) { runCatching { repo.localPlaylists() }.getOrDefault(emptyList()) }
     }
 
-    val entries = remember(ytData, offline, locals) {
-        buildEntries(
-            ytPlaylists = ytData.playlists.mapIndexed { i, p ->
-                LibraryEntry(
-                    key = "yt:${p.id}", id = p.id, kind = EntryKind.YT_PLAYLIST, title = p.title,
-                    creator = p.author?.name.orEmpty(),
-                    trackCount = p.songCountText?.let { Regex("""\d[\d,]*""").find(it)?.value?.replace(",", "")?.toIntOrNull() },
-                    thumbnail = p.thumbnail, recentRank = 1_000 + i,
-                )
-            },
-            localPlaylists = locals.mapIndexed { i, p ->
-                LibraryEntry(
-                    key = "local:${p.id}", id = p.id, kind = EntryKind.LOCAL_PLAYLIST, title = p.title,
-                    creator = "You", trackCount = p.song_count?.toInt(), thumbnail = p.thumbnail, recentRank = i,
-                )
-            },
-            albums = ytData.albums.mapIndexed { i, a ->
-                LibraryEntry(
-                    key = "album:${a.id}", id = a.id, kind = EntryKind.ALBUM, title = a.title,
-                    creator = a.artists?.joinToString { it.name }.orEmpty(), thumbnail = a.thumbnail, recentRank = 2_000 + i,
-                )
-            },
-            artists = ytData.artists.mapIndexed { i, a ->
-                LibraryEntry(
-                    key = "artist:${a.id}", id = a.id, kind = EntryKind.ARTIST, title = a.title,
-                    creator = a.title, thumbnail = a.thumbnail, recentRank = 3_000 + i,
-                )
-            },
-            liked = ytData.songs.takeIf { it.isNotEmpty() }?.let {
-                LibraryEntry("liked", "LM", EntryKind.LIKED, "Liked Songs", "Playlist", it.size, it.first().thumbnail)
-            },
-            downloads = offline.takeIf { it.isNotEmpty() }?.let {
-                LibraryEntry("downloads", "offline", EntryKind.DOWNLOADS, "Downloaded", "Available offline", it.size, null)
-            },
-        )
-    }
+    val entries = remember(ytData, offline, locals) { libraryEntries(ytData, offline, locals) }
 
     // Snapshot state, initialised from prefs and written through, so every control applies instantly.
     var query by remember { mutableStateOf("") }

@@ -26,7 +26,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -43,8 +42,6 @@ import com.music.vivi.compose.ui.motion.VisageMotion
 import com.music.vivi.compose.ui.settings.preview.PreviewPage
 import com.music.vivi.compose.ui.settings.preview.SettingsPreviewFrame
 import com.music.vivi.compose.ui.settings.preview.SidebarsPreview
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import org.koin.compose.koinInject
 
 @Composable
@@ -53,9 +50,6 @@ fun SidebarsSettingsScreen(navController: NavController) {
     @Suppress("UNUSED_VARIABLE")
     val observe = rememberPrefsVersion(prefs)
     val cfg = SidebarConfig.resolve(prefs.reader())
-    val repo = koinInject<com.music.vivi.database.LibraryRepository>()
-    val scope = rememberCoroutineScope()
-    var resetDone by remember { mutableStateOf(false) }
     var previewPage by remember { mutableStateOf(PreviewPage.HOME) }
     var previewQueue by remember { mutableStateOf(true) }
 
@@ -157,16 +151,13 @@ fun SidebarsSettingsScreen(navController: NavController) {
                         onChecked = { prefs.setBoolean(SidebarKeys.LibraryFoldersFirst, it) },
                     )
                     SettingsDivider()
-                    SettingsNavItem(
+                    AdvancedExpander(
                         icon = Icons.Outlined.VisibilityOff,
                         title = "Hidden items",
-                        subtitle = if (resetDone) "All hidden items are visible again" else "Bring back everything you hid from the sidebar. Nothing was deleted",
-                        onClick = {
-                            scope.launch(Dispatchers.IO) { runCatching { repo.resetHidden() } }
-                            prefs.setBoolean(SidebarKeys.LibraryShowHidden, false)
-                            resetDone = true
-                        },
-                    )
+                        subtitle = "Restore items you hid from the library sidebar, one at a time or all at once",
+                    ) {
+                        HiddenSidebarItemsList(prefs)
+                    }
                 }
             }
         }
