@@ -1,0 +1,49 @@
+# Penpot coverage ("VIsage UI")
+
+Honest status. **Rule (from Alex): every component/screen must be 1:1 with the running app; verify against Xvfb screenshots and the Kotlin
+source, never from memory.** Status below is split into *verified 1:1*, *built but not yet re-verified*, and *missing*.
+Real captures of the app (default theme, Xvfb) were taken for many more screens than are rebuilt; they live outside the repo
+(session scratchpad) and the recipe to re-take them is in `.claude/skills/visage-penpot/SKILL.md`.
+
+## Foundations (page `Foundations`)
+| Item | Status |
+|------|--------|
+| colorScheme dark + light swatches (real values dumped from `visageColorScheme`, seed 0xFF8BA3B8 TonalSpot; also library colours `dark/colorScheme.*`, `light/…`) | done, exact |
+| VisageType roles (11) as library typographies + specimen frame | done (sizes from `docs/design-system.md`; fonts Manrope/Roboto) |
+| Radii, spacing constants, breakpoints, glass key | done (from docs/Dimensions.kt; not screenshot-measured) |
+
+## Components (page `Components`, dark + light each)
+Alex hand-corrected several of these in Penpot; **his edits are the source of truth — do not regenerate the page.** Light frames were
+re-synced to his dark edits (page-state layout, search-field default/hover opacity 0.4/0.8, `HOVER_STATE` search field, NewChip 41x21, loading
+indicator = morph cycle illustration, `Recent ▾` icon).
+| Group | Status |
+|-------|--------|
+| ExpressiveButton (5 styles x sizes x states) | built from `ExpressiveButtons.kt` values; **needs a pixel compare vs capture** |
+| Chips / ConnectedButtonGroup / NewChip / Switch / text fields / icon buttons | built; Alex-corrected; not re-compared by me |
+| YouTubeListItem / YouTubeGridItem / mood + hero tiles | built from memory-grade values; **not verified 1:1** |
+| GlassSurface / HomeCategoryFrame / SettingsGroupCard | built; glass approximated; HomeCategoryFrame verified at 1920 Home |
+| Overlays: ItemContextMenu, VisageToast, NavTray, LibraryDialogShell, page states | built; **not verified 1:1** |
+| PlayerSeekBar (wavy/flat/compact) | from `PlayerSeekBar.kt` constants; real sine wave path |
+| **MiniPlayerBar (3 styles + phone)** | **rebuilt 1:1 from `MiniPlayerBar.kt` + zoomed capture** (circle cover 44, prev/play/next/Speaker/favorite, 4dp MiniSeek row, no cast icon) |
+| QueuePanel / LibrarySidebar components | built earlier from memory; superseded by the measured versions inside `HomeScreen / Desktop 1920x1080` |
+| Icons | real Material outlined/filled SVG paths (`tools/penpot/material-icons-outlined.json`) |
+
+## Screens
+| Screen | Breakpoint / state | Status |
+|--------|--------------------|--------|
+| HomeScreen | Desktop 1920x1080 default, queue + library docked | **done, measured against capture (layout, panel rects, rows, shelves, mini player)** |
+| HomeScreen | 1366, Mobile 390, Tablet 800, Large, UltraWide, light, blur-off, loading/empty/error, tray/queue/library overlays | missing (captures for 390/800/1366/2560/3440 were scheduled; frames not built) |
+| Settings hub | 1920 | **removed**: first attempt was not 1:1; real capture exists |
+| Settings sub-pages (Theme, Interface, Now Playing, Playback, Downloads, Account, Lyrics, Song swappings, Fullscreen player, Local files, Diagnostics, Keyboard shortcuts, Sidebars) | all | missing (row lists extracted into `tools/penpot/settings-grouped.json`, grouping heuristic) |
+| Now Playing (idle/lyrics/video/queue/stacked/ultrawide), Fullscreen player | all | missing |
+| Library (+ sidebar hidden items), Search, Album, Artist, Playlist, Charts, Moods, New releases, History, Browse, Tag Manager | all | missing |
+| Popup mini player, What's New, onboarding, login gate, update prompt, crash dialog, splash | all | missing |
+
+## Legend page
+Table Penpot element → Kotlin symbol → file → parameters: done (24 rows).
+
+## Penpot MCP limitations hit
+* Plugin storage is wiped when an `execute_code` call times out (~30 s): keep calls small; the helper library is persisted in
+  Legend-page plugin data (`visageLib`, `visagePatchN`, `visageIcons`, `visageImgs`, `visagePal`).
+* No backdrop blur; `fetch` blocked; localStorage not permitted; `findByName('Roboto')` returns Roboto Mono; `openPage` async; text sizes read as 1
+  until a layout update; images only via `uploadMediaUrl` (public URLs, so covers are CC picsum photos, not the user's real artwork).

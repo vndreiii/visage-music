@@ -4,6 +4,8 @@ How every piece of the UI is built and why. It describes what the app does today
 file; when you must break a rule, change the rule here in the same commit. `docs/ui-kit.md` covers the Expressive
 components and motion in more depth; this file is the rulebook that ties everything together.
 
+Penpot mirror of this UI: [penpot-mapping.md](penpot-mapping.md) (naming contract), [penpot-coverage.md](penpot-coverage.md); skill `.claude/skills/visage-penpot`.
+
 Rule zero: **use a token, not a number.** Text sizes come from `VisageType`, colours from `MaterialTheme.colorScheme`,
 animation from `VisageMotion`, page spacing from the constants in `ui/component`. A literal `fontSize = 13.sp` or
 `spring(...)` at a call site is a bug.
