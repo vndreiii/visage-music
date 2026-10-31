@@ -973,6 +973,8 @@ private fun HomeSectionBlock(
             Modifier
                 .fillMaxWidth()
                 .padding(horizontal = if (halfWidth) 4.dp else 12.dp, vertical = 8.dp),
+            // Same header-to-content gap as inside a frame; without it the title sits on top of the first row.
+            verticalArrangement = Arrangement.spacedBy(PanelHeaderGap),
         ) {
             sectionTitle()
             sectionBody()
