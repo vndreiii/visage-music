@@ -122,8 +122,10 @@ internal class ShortcutRunner(
             ShortcutAction.SEEK_BACKWARD -> seekBy(-5_000)
             ShortcutAction.SEEK_FORWARD_LONG -> seekBy(15_000)
             ShortcutAction.SEEK_BACKWARD_LONG -> seekBy(-15_000)
-            ShortcutAction.VOLUME_UP -> volumeBy(0.05f)
-            ShortcutAction.VOLUME_DOWN -> volumeBy(-0.05f)
+            ShortcutAction.VOLUME_UP -> volumeBy(5)
+            ShortcutAction.VOLUME_DOWN -> volumeBy(-5)
+            ShortcutAction.VOLUME_UP_LONG -> volumeBy(15)
+            ShortcutAction.VOLUME_DOWN_LONG -> volumeBy(-15)
             ShortcutAction.MUTE -> toggleMute()
             ShortcutAction.SHUFFLE -> {
                 val on = !controller.shuffleEnabled.value
@@ -204,10 +206,14 @@ internal class ShortcutRunner(
         return true
     }
 
-    private fun volumeBy(delta: Float): Boolean {
-        val v = (controller.volume.value + delta).coerceIn(0f, 1f)
+    /** Steps the volume by [percent] points and shows the same kind of readout as a seek: "+5%" / "-15%". */
+    private fun volumeBy(percent: Int): Boolean {
+        val v = (controller.volume.value + percent / 100f).coerceIn(0f, 1f)
         volumeBeforeMute = null
-        setVolume(v)
+        controller.setVolume(v)
+        prefs.setFloat(PrefKeys.PlaybackVolume, v)
+        val now = Math.round(v * 100)
+        hud(if (now == 0) "Muted" else "${if (percent > 0) "+" else ""}$percent% · $now%")
         return true
     }
 
