@@ -276,7 +276,7 @@ fun NowPlayingScreen(
     )
     val canvasSquareUrl = if (trackVideo != null) null else CanvasResolver.squareUrl(canvasArt)
     val canvasTallUrl = if (trackVideo != null) null else CanvasResolver.tallUrl(canvasArt)
-    var showLyrics by remember { mutableStateOf(false) }
+    var showLyrics by remember { mutableStateOf(com.music.vivi.nativelib.AppEnv.flag("DEV_LYRICS")) } // DEV_LYRICS: dev aid
     var showTrackActions by remember { mutableStateOf(false) }
     com.music.vivi.compose.keys.ShortcutEventEffect { e ->
         when (e) {
@@ -344,22 +344,38 @@ fun NowPlayingScreen(
             BoxWithConstraints(
                 Modifier
                     .fillMaxSize()
-                    .padding(start = 28.dp, end = 28.dp, top = 16.dp, bottom = 16.dp)
+                    .padding(
+                        horizontal = com.music.vivi.compose.ui.responsive.windowLayout().pagePadding,
+                        vertical = if (com.music.vivi.compose.ui.responsive.windowLayout().isMobile) 8.dp else 16.dp,
+                    )
                     // With the blur setting on, the top bar floats over this page: keep content below it.
                     .padding(top = com.music.vivi.compose.ui.glass.LocalTopBarInset.current),
             ) {
-                val paneGap = 28.dp
+                val windowLayout = com.music.vivi.compose.ui.responsive.windowLayout()
+                // Pane-based (not window-based): the pinned queue rail steals 360dp from this pane.
+                // Stacked = media on top, controls below, queue in a tray. Narrow or portrait-ish panes.
+                val stacked = maxWidth < 760.dp || maxHeight > maxWidth * 1.25f
+                // Three panes (cover | lyrics | controls) when lyrics are open and the pane is ultra wide.
+                val triple = !stacked && showLyrics && maxWidth >= 1700.dp && maxWidth.value / maxHeight.value >= 1.85f
+                val paneGap = if (stacked) 16.dp else 28.dp
                 val bottomChromeH = 60.dp
-                val underQueue = showUnderPlaybar && !showLyrics
+                val underQueue = showUnderPlaybar && !showLyrics && !stacked
                 val mainH = (maxHeight - bottomChromeH).coerceAtLeast(200.dp)
                 // Cover from height, then stack takes the rest so the row is wide and stack isn't skinny.
-                val idleArtSize = minOf(mainH * 0.92f, maxWidth * 0.40f)
+                val idleArtSize = minOf(mainH * 0.92f, maxWidth * 0.40f, 900.dp)
                 val availableStackW = (maxWidth - paneGap - idleArtSize).coerceAtLeast(0.dp)
-                val idleStackW = if (limitControlsWidth) adwaitaClampWidth(availableStackW, controlsMaxWidth) else availableStackW
+                // Large screens: keep the controls column a readable width instead of stretching it across the pane.
+                val stackCap = if (windowLayout.isExpanded) 820.dp else 1200.dp
+                val idleStackW = minOf(
+                    if (limitControlsWidth) adwaitaClampWidth(availableStackW, controlsMaxWidth) else availableStackW,
+                    stackCap,
+                )
                 val idleContentW = (idleArtSize + paneGap + idleStackW).coerceAtMost(maxWidth)
-                val lyricsStackW = (maxWidth * 0.44f).coerceAtMost(440.dp)
-                val lyricsContentW = maxWidth
-                val lyricsLeftW = (lyricsContentW - paneGap - lyricsStackW).coerceAtLeast(0.dp)
+                val tripleArt = minOf(mainH * 0.78f, maxWidth * 0.24f)
+                val lyricsStackW = if (triple) 520.dp else (maxWidth * 0.44f).coerceAtMost(440.dp)
+                val lyricsContentW = if (triple) minOf(maxWidth, 3000.dp) else if (windowLayout.isExpanded) minOf(maxWidth, 2000.dp) else maxWidth
+                val lyricsLeftW = if (triple) tripleArt else (lyricsContentW - paneGap - lyricsStackW).coerceAtLeast(0.dp)
+                val tripleMidW = (lyricsContentW - tripleArt - lyricsStackW - paneGap * 2).coerceAtLeast(0.dp)
 
                 val layoutSpring = VisageMotion.glide<Dp>()
                 val contentW by animateDpAsState(
@@ -373,7 +389,7 @@ fun NowPlayingScreen(
                     label = "npLeftW",
                 )
                 val leftH by animateDpAsState(
-                    if (showLyrics) mainH else idleArtSize,
+                    if (triple) tripleArt else if (showLyrics) mainH else idleArtSize,
                     layoutSpring,
                     label = "npLeftH",
                 )
@@ -393,25 +409,11 @@ fun NowPlayingScreen(
                     label = "npStackGap",
                 )
 
-                Column(
-                    Modifier.fillMaxSize(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Row(
-                        Modifier
-                            .width(contentW)
-                            .weight(1f),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(paneGap),
-                    ) {
-                        Box(
-                            Modifier
-                                .width(leftW)
-                                .height(leftH),
-                            contentAlignment = Alignment.Center,
-                        ) {
+
+                // ---- Shared pieces, placed by the wide (side by side) and stacked (compact) layouts below. ----
+                val coverSlot: @Composable () -> Unit = {
                             PlainAnimatedVisibility(
-                                visible = !hideThumbnail && !showLyrics,
+                                visible = !hideThumbnail && (!showLyrics || triple),
                                 enter = fadeIn() + scaleIn(initialScale = 0.92f),
                                 exit = fadeOut() + scaleOut(targetScale = 0.92f),
                                 label = "npCoverLarge",
@@ -491,7 +493,8 @@ fun NowPlayingScreen(
                                     }
                                 }
                             }
-
+                }
+                val lyricsSlot: @Composable () -> Unit = {
                             PlainAnimatedVisibility(
                                 visible = showLyrics,
                                 enter = fadeIn() + slideInHorizontally { -it / 8 },
@@ -505,95 +508,14 @@ fun NowPlayingScreen(
                                         .padding(end = 8.dp),
                                 )
                             }
-
-                            if (hideThumbnail && !showLyrics) {
-                                Spacer(Modifier.fillMaxSize())
-                            }
-                        }
-
-                        Column(
-                            Modifier
-                                .width(stackW)
-                                .height(stackH),
-                            verticalArrangement = Arrangement.Bottom,
-                            horizontalAlignment = Alignment.Start,
-                        ) {
-                            val rightCanvasUrl = canvasTallUrl ?: canvasSquareUrl
-                            val showCanvasOnRight = showLyrics && rightCanvasUrl != null && trackVideo == null
-                            // Free space above the controls: half of it when idle (controls centred), all of it
-                            // with lyrics (controls at the bottom, canvas fills the rest). Animated so the
-                            // controls glide between the two instead of snapping.
-                            val controlsBias by animateFloatAsState(
-                                if (showLyrics) 1f else 0.5f,
-                                VisageMotion.settle(),
-                                label = "npControlsBias",
-                            )
-                            if (!underQueue) {
-                                Box(Modifier.fillMaxWidth().weight(controlsBias.coerceIn(0.001f, 1f))) {
-                                    // A music video takes the free space above the controls while lyrics are open,
-                                    // at its own 16:9 shape and sitting on the controls.
-                                    PlainAnimatedVisibility(
-                                        visible = showLyrics && trackVideo != null,
-                                        enter = fadeIn(),
-                                        exit = fadeOut(),
-                                        label = "npRightVideo",
-                                    ) {
-                                        val videoShape = if (squareCover) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(24.dp)
-                                        Box(Modifier.fillMaxSize().padding(bottom = 16.dp), contentAlignment = Alignment.BottomCenter) {
-                                            trackVideo?.let {
-                                                com.music.vivi.compose.ui.player.video.MusicVideoSurface(
-                                                    video = it,
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .aspectRatio(16f / 9f)
-                                                        // Same swap layer as the controls below it, so the two move in step.
-                                                        .songSwapControls(swap)
-                                                        .shadow(24.dp, videoShape, clip = false)
-                                                        .clip(videoShape),
-                                                )
-                                            }
-                                        }
-                                    }
-                                    if (rightCanvasUrl != null) {
-                                        PlainAnimatedVisibility(
-                                            visible = showCanvasOnRight,
-                                            enter = fadeIn(),
-                                            exit = fadeOut(),
-                                            label = "npRightCanvas",
-                                        ) {
-                                            com.music.vivi.compose.ui.player.background.CanvasVideoSurface(
-                                                videoUrl = rightCanvasUrl,
-                                                playing = playing,
-                                                modifier = Modifier
-                                                    .fillMaxSize()
-                                                    .padding(bottom = 16.dp)
-                                                    .clip(if (squareCover) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(24.dp))
-                                                    .graphicsLayer {
-                                                        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
-                                                    }
-                                                    .drawWithContent {
-                                                        drawContent()
-                                                        drawRect(
-                                                            brush = Brush.verticalGradient(
-                                                                0f to Color.Black,
-                                                                0.75f to Color.Black,
-                                                                1f to Color.Transparent,
-                                                            ),
-                                                            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
-                                                        )
-                                                    },
-                                            )
-                                        }
-                                    }
-                                }
-                            }
-
+                }
+                val controlsBlock: @Composable (Modifier, Boolean) -> Unit = { modifier, showThumb ->
                             Column(
-                                Modifier.align(Alignment.CenterHorizontally).then(if (limitControlsWidth) Modifier.widthIn(max = if (showLyrics) adwaitaClampWidth(stackW, controlsMaxWidth) else controlsMaxWidth) else Modifier).fillMaxWidth().then(if (underQueue && !showCanvasOnRight) Modifier.weight(1f) else Modifier).songSwapControls(swap).playerControlsSurface(framedControls)
+                                modifier.songSwapControls(swap).playerControlsSurface(framedControls)
                             ) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
                                 PlainAnimatedVisibility(
-                                    visible = showLyrics && !hideThumbnail && !showCanvasOnRight,
+                                    visible = showThumb,
                                     enter = fadeIn() + scaleIn(initialScale = 0.85f),
                                     exit = fadeOut() + scaleOut(targetScale = 0.85f),
                                     label = "npCoverThumb",
@@ -619,7 +541,7 @@ fun NowPlayingScreen(
                                 Column(Modifier.weight(1f)) {
                                     Text(
                                         track?.title ?: "Nothing playing",
-                                        style = MaterialTheme.typography.headlineMedium,
+                                        style = if (stacked) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
                                         fontWeight = FontWeight.Bold,
                                         color = Color.White,
                                         maxLines = 2,
@@ -700,21 +622,16 @@ fun NowPlayingScreen(
                                 )
                             }
                             } // Close inner Column
-                            if (!underQueue) {
-                                Spacer(Modifier.weight((1f - controlsBias).coerceIn(0.001f, 1f)))
-                            }
-                        }
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-                    // Same width as cover + stack above — tools | volume (fills) | more.
+                }
+                val toolsRow: @Composable (Modifier, Boolean) -> Unit = { toolsMod, compactTools ->
                     Row(
-                        Modifier.width(contentW),
+                        toolsMod,
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Row(
+                            if (compactTools) Modifier.weight(1f).padding(end = 12.dp) else Modifier,
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            horizontalArrangement = if (compactTools) Arrangement.SpaceBetween else Arrangement.spacedBy(8.dp),
                         ) {
                             ToolIconButton(
                                 Icons.AutoMirrored.Outlined.QueueMusic,
@@ -751,6 +668,7 @@ fun NowPlayingScreen(
                                 }
                             }
                         }
+                        if (!compactTools) {
                         val volumeStyle = runCatching { VolumeControlStyle.valueOf(prefs.getString(PrefKeys.VolumeControlStyle, VolumeControlStyle.SLIDER.name)) }.getOrDefault(VolumeControlStyle.SLIDER)
                         Row(
                             Modifier
@@ -805,6 +723,7 @@ fun NowPlayingScreen(
                                 )
                             }
                         }
+                        }
                         Box {
                             ToolIconButton(Icons.Outlined.MoreVert, "More", circle = true) {
                                 showTrackActions = true
@@ -816,6 +735,152 @@ fun NowPlayingScreen(
                             )
                         }
                     }
+                }
+
+                if (stacked) {
+                    // Compact layout: media (cover or lyrics) on top, controls under it, tools last.
+                    val colMax = 560.dp
+                    val showThumbStacked = showLyrics && !hideThumbnail && maxHeight >= 600.dp
+                    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        BoxWithConstraints(
+                            Modifier.weight(1f).fillMaxWidth(),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            val mediaW = maxWidth
+                            val mediaH = maxHeight
+                            if (showLyrics) {
+                                Box(Modifier.fillMaxSize()) { lyricsSlot() }
+                            } else {
+                                val side = minOf(mediaW, mediaH, 560.dp).coerceAtLeast(0.dp)
+                                Box(Modifier.size(side), contentAlignment = Alignment.Center) { coverSlot() }
+                            }
+                        }
+                        Spacer(Modifier.height(12.dp))
+                        controlsBlock(Modifier.widthIn(max = colMax).fillMaxWidth(), showThumbStacked)
+                        Spacer(Modifier.height(8.dp))
+                        toolsRow(Modifier.widthIn(max = colMax).fillMaxWidth(), true)
+                    }
+                } else
+                Column(
+                    Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Row(
+                        Modifier
+                            .width(contentW)
+                            .weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(paneGap),
+                    ) {
+                        Box(
+                            Modifier
+                                .width(leftW)
+                                .height(leftH),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            coverSlot()
+
+                            if (!triple) lyricsSlot()
+
+                            if (hideThumbnail && !showLyrics) {
+                                Spacer(Modifier.fillMaxSize())
+                            }
+                        }
+
+                        if (triple) {
+                            Box(Modifier.width(tripleMidW).height(mainH)) { lyricsSlot() }
+                        }
+
+                        Column(
+                            Modifier
+                                .width(stackW)
+                                .height(stackH),
+                            verticalArrangement = Arrangement.Bottom,
+                            horizontalAlignment = Alignment.Start,
+                        ) {
+                            val rightCanvasUrl = canvasTallUrl ?: canvasSquareUrl
+                            val showCanvasOnRight = showLyrics && rightCanvasUrl != null && trackVideo == null
+                            // Free space above the controls: half of it when idle (controls centred), all of it
+                            // with lyrics (controls at the bottom, canvas fills the rest). Animated so the
+                            // controls glide between the two instead of snapping.
+                            val controlsBias by animateFloatAsState(
+                                if (showLyrics) 1f else 0.5f,
+                                VisageMotion.settle(),
+                                label = "npControlsBias",
+                            )
+                            if (!underQueue) {
+                                Box(Modifier.fillMaxWidth().weight(controlsBias.coerceIn(0.001f, 1f))) {
+                                    // A music video takes the free space above the controls while lyrics are open,
+                                    // at its own 16:9 shape and sitting on the controls.
+                                    PlainAnimatedVisibility(
+                                        visible = showLyrics && trackVideo != null,
+                                        enter = fadeIn(),
+                                        exit = fadeOut(),
+                                        label = "npRightVideo",
+                                    ) {
+                                        val videoShape = if (squareCover) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(24.dp)
+                                        Box(Modifier.fillMaxSize().padding(bottom = 16.dp), contentAlignment = Alignment.BottomCenter) {
+                                            trackVideo?.let {
+                                                com.music.vivi.compose.ui.player.video.MusicVideoSurface(
+                                                    video = it,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .aspectRatio(16f / 9f)
+                                                        // Same swap layer as the controls below it, so the two move in step.
+                                                        .songSwapControls(swap)
+                                                        .shadow(24.dp, videoShape, clip = false)
+                                                        .clip(videoShape),
+                                                )
+                                            }
+                                        }
+                                    }
+                                    if (rightCanvasUrl != null) {
+                                        PlainAnimatedVisibility(
+                                            visible = showCanvasOnRight,
+                                            enter = fadeIn(),
+                                            exit = fadeOut(),
+                                            label = "npRightCanvas",
+                                        ) {
+                                            com.music.vivi.compose.ui.player.background.CanvasVideoSurface(
+                                                videoUrl = rightCanvasUrl,
+                                                playing = playing,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .padding(bottom = 16.dp)
+                                                    .clip(if (squareCover) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(24.dp))
+                                                    .graphicsLayer {
+                                                        compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen
+                                                    }
+                                                    .drawWithContent {
+                                                        drawContent()
+                                                        drawRect(
+                                                            brush = Brush.verticalGradient(
+                                                                0f to Color.Black,
+                                                                0.75f to Color.Black,
+                                                                1f to Color.Transparent,
+                                                            ),
+                                                            blendMode = androidx.compose.ui.graphics.BlendMode.DstIn,
+                                                        )
+                                                    },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            controlsBlock(
+                                Modifier.align(Alignment.CenterHorizontally).then(if (limitControlsWidth) Modifier.widthIn(max = if (showLyrics) adwaitaClampWidth(stackW, controlsMaxWidth) else controlsMaxWidth) else Modifier).fillMaxWidth().then(if (underQueue && !showCanvasOnRight) Modifier.weight(1f) else Modifier),
+                                showLyrics && !triple && !hideThumbnail && !showCanvasOnRight,
+                            )
+                            if (!underQueue) {
+                                Spacer(Modifier.weight((1f - controlsBias).coerceIn(0.001f, 1f)))
+                            }
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                    // Same width as cover + stack above — tools | volume (fills) | more.
+                    toolsRow(Modifier.width(contentW), false)
                 }
             }
         }

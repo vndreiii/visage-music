@@ -321,20 +321,29 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
 
         com.music.vivi.compose.ui.player.swap.SongSwapLoadingIndicator(swap.anim, Modifier.fillMaxSize())
 
+        val fsLayout = com.music.vivi.compose.ui.responsive.windowLayout()
+        val fsCompact = fsLayout.isCompactWidth
         BoxWithConstraints(
             Modifier
                 .fillMaxSize()
-                .padding(start = 56.dp, end = 56.dp, top = 96.dp, bottom = 40.dp),
+                .padding(
+                    start = if (fsCompact) 16.dp else 56.dp,
+                    end = if (fsCompact) 16.dp else 56.dp,
+                    top = if (fsCompact) 76.dp else 96.dp,
+                    bottom = if (fsCompact) 16.dp else 40.dp,
+                ),
         ) {
             val w = maxWidth
             val h = maxHeight
-            val vertical = cfg.layout == FullscreenLayout.CENTERED
+            // Narrow screens: always cover over controls, and lyrics replace the cover instead of sitting beside the controls.
+            val narrow = w < 700.dp
+            val vertical = cfg.layout == FullscreenLayout.CENTERED || narrow
             val coverShown = !hideCover && !showLyrics
             // With lyrics open the cover slot is gone; a playing music video takes the room above the controls.
             val lyricsVideo = showLyrics && !hideCover && trackVideo != null
             val baseGap = if (vertical) 32.dp else 48.dp
             val autoCover = if (vertical) {
-                minOf(h - 380.dp, w * 0.5f, 520.dp).coerceAtLeast(160.dp)
+                minOf(h - 380.dp, w * (if (narrow) 0.9f else 0.5f), 520.dp).coerceAtLeast(if (narrow) 96.dp else 160.dp)
             } else {
                 minOf(h, w * 0.42f, 600.dp)
             }
@@ -353,7 +362,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                 vertical || hideCover -> minOf(ctrlLimit, w)
                 else -> minOf(ctrlLimit, (w - coverSize - baseGap).coerceAtLeast(320.dp))
             }
-            val lyricsMainW = (w * 0.46f).coerceAtMost(560.dp)
+            val lyricsMainW = if (narrow) w else (w * 0.46f).coerceAtMost(560.dp)
             val spring = VisageMotion.glide<Dp>()
             val mainW by animateDpAsState(if (showLyrics) lyricsMainW else w, spring, label = "fsMainW")
             val ctrlW by animateDpAsState(
@@ -553,6 +562,15 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                 }
             }
 
+            if (narrow && showLyrics) {
+                Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box(Modifier.weight(1f).fillMaxWidth()) {
+                        LyricsPanel(onClose = { showLyrics = false }, modifier = Modifier.fillMaxSize())
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    controlsContent()
+                }
+            } else
             Row(Modifier.fillMaxSize()) {
                 Box(Modifier.width(mainW).fillMaxHeight(), contentAlignment = Alignment.Center) {
                     if (showLyrics) {
@@ -604,7 +622,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
         }
 
         // Up-next overlay.
-        Box(Modifier.fillMaxSize().padding(top = 96.dp, end = 32.dp, bottom = 32.dp), contentAlignment = Alignment.CenterEnd) {
+        Box(Modifier.fillMaxSize().padding(top = if (fsCompact) 76.dp else 96.dp, end = if (fsCompact) 12.dp else 32.dp, start = if (fsCompact) 12.dp else 0.dp, bottom = if (fsCompact) 16.dp else 32.dp), contentAlignment = Alignment.CenterEnd) {
             PlainAnimatedVisibility(
                 visible = showQueue,
                 enter = fadeIn() + slideInHorizontally { it / 2 },
@@ -613,7 +631,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
             ) {
                 Column(
                     Modifier
-                        .width(380.dp)
+                        .then(if (fsCompact) Modifier.fillMaxWidth() else Modifier.width(380.dp))
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(28.dp))
                         .background(Color.Black.copy(alpha = 0.5f))
@@ -632,7 +650,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 32.dp, vertical = 24.dp)
+                .padding(horizontal = if (fsCompact) 12.dp else 32.dp, vertical = if (fsCompact) 12.dp else 24.dp)
                 .then(chromeMod),
             verticalAlignment = Alignment.CenterVertically,
         ) {

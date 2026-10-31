@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -109,8 +111,13 @@ fun FrameWindowScope.AppScaffold(
     val current = backStack?.destination?.route
     val onNowPlaying = current == Routes.NOW_PLAYING || current == Routes.NOW_PLAYING_FULLSCREEN
     val onFullscreenPlayer = current == Routes.NOW_PLAYING_FULLSCREEN
+    // Window class decides how sidebars dock: beside the page on Desktop+, as overlays/trays below it.
+    val windowLayout = com.music.vivi.compose.ui.responsive.windowLayout()
+    val compact = windowLayout.isCompactWidth
+    var libraryOverlayOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(current, compact) { libraryOverlayOpen = false }
     LaunchedEffect(Unit) { com.music.vivi.compose.ui.search.ContentRegion.apply(prefs) }
-    var pinnedQueue by remember { mutableStateOf(false) }
+    var pinnedQueue by remember { mutableStateOf(com.music.vivi.nativelib.AppEnv.flag("DEV_QUEUE")) } // DEV_QUEUE: dev aid, start with the queue open
     var fullscreenQueue by remember { mutableStateOf(false) }
     var prefsTick by remember { mutableIntStateOf(0) }
     DisposableEffect(prefs) {
@@ -142,19 +149,27 @@ fun FrameWindowScope.AppScaffold(
     var queueDismissedOnHome by remember { mutableStateOf(false) }
     LaunchedEffect(sidebarCfg.queueOnHome) { queueDismissedOnHome = false }
     val libraryAllowed = Sidebars.libraryAllowedOn(current, sidebarCfg)
-    val libraryState = if (libraryAllowed) sidebarCfg.libraryState else LibrarySidebarState.HIDDEN
+    val libraryStateRaw = if (libraryAllowed) sidebarCfg.libraryState else LibrarySidebarState.HIDDEN
+    // On compact windows the in-row sidebar is always hidden; the library shows as an overlay instead.
+    val libraryState = if (compact) LibrarySidebarState.HIDDEN else libraryStateRaw
     val queueAuto = Sidebars.queueAutoOpenOnHome(current, sidebarCfg, queueDismissedOnHome)
-    val queueRailOn = (pinnedQueue || queueAuto) && !fullscreenQueue && !onFullscreenPlayer
+    val queueWanted = (pinnedQueue || queueAuto) && !onFullscreenPlayer
+    // Compact windows have no room for a 360dp rail: the "pinned" queue opens as the bottom tray instead.
+    val queueRailOn = queueWanted && !fullscreenQueue && !compact
+    val queueTrayOn = (fullscreenQueue && !onFullscreenPlayer) || (queueWanted && compact)
     fun closePinnedQueue() {
         pinnedQueue = false
         if (queueAuto) queueDismissedOnHome = true
     }
     fun setLibraryState(state: LibrarySidebarState) = prefs.setString(SidebarKeys.LibraryState, state.name)
     fun toggleLibrary() {
-        if (libraryAllowed) setLibraryState(Sidebars.toggled(sidebarCfg.libraryState, sidebarCfg.libraryDefaultState))
+        if (libraryAllowed) {
+            if (compact) libraryOverlayOpen = !libraryOverlayOpen
+            else setLibraryState(Sidebars.toggled(sidebarCfg.libraryState, sidebarCfg.libraryDefaultState))
+        }
     }
     fun toggleQueueSidebar() {
-        if (queueRailOn) closePinnedQueue() else { queueDismissedOnHome = false; openPinnedQueue() }
+        if (queueRailOn || queueTrayOn) { closePinnedQueue(); fullscreenQueue = false } else { queueDismissedOnHome = false; openPinnedQueue() }
     }
 
     // Global keyboard shortcuts (AWT-level dispatcher) + the screen-owned effects they trigger.
@@ -199,16 +214,16 @@ fun FrameWindowScope.AppScaffold(
                     if (current == Routes.HOME && sidebarCfg.queueOnHome) {
                         SidebarToggleButton(
                             icon = Icons.Outlined.QueueMusic,
-                            description = if (queueRailOn) "Hide queue sidebar" else "Show queue sidebar",
-                            active = queueRailOn,
+                            description = if (queueRailOn || queueTrayOn) "Hide queue sidebar" else "Show queue sidebar",
+                            active = queueRailOn || queueTrayOn,
                             onClick = { toggleQueueSidebar() },
                         )
                     }
                     if (Sidebars.libraryAllowedOn(current, sidebarCfg)) {
                         SidebarToggleButton(
                             icon = Icons.Outlined.LibraryMusic,
-                            description = if (libraryState == LibrarySidebarState.HIDDEN) "Show library (Ctrl+Shift+L)" else "Hide library (Ctrl+Shift+L)",
-                            active = libraryState != LibrarySidebarState.HIDDEN,
+                            description = if (libraryState == LibrarySidebarState.HIDDEN && !libraryOverlayOpen) "Show library (Ctrl+Shift+L)" else "Hide library (Ctrl+Shift+L)",
+                            active = libraryState != LibrarySidebarState.HIDDEN || libraryOverlayOpen,
                             onClick = { toggleLibrary() },
                         )
                     }
@@ -299,10 +314,10 @@ fun FrameWindowScope.AppScaffold(
                         Box(Modifier.weight(1f).fillMaxSize().trackMainPane()) {
                             VisageNavHost(
                                 navController = navController,
-                                startDestination = if (sessionManager.isLoggedIn()) Routes.HOME else Routes.LIBRARY,
+                                startDestination = com.music.vivi.nativelib.AppEnv.get("DEV_ROUTE") ?: if (sessionManager.isLoggedIn()) Routes.HOME else Routes.LIBRARY,
                                 onOpenPinnedQueue = { openPinnedQueue() },
                                 onOpenFullscreenQueue = { openFullscreenQueue() },
-                                queueOpen = queueRailOn || fullscreenQueue,
+                                queueOpen = queueRailOn || queueTrayOn,
                                 onCloseQueue = { closePinnedQueue(); fullscreenQueue = false },
                                 modifier = Modifier.fillMaxSize().nestedScroll(backdropNested).glassSource(glassState),
                             )
@@ -352,6 +367,40 @@ fun FrameWindowScope.AppScaffold(
                         onStateChange = ::setLibraryState,
                     )
                 }
+                if (compact && libraryAllowed) {
+                    // Compact windows: the library is a modal overlay on its configured side, over a scrim.
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = libraryOverlayOpen,
+                        enter = androidx.compose.animation.fadeIn(),
+                        exit = androidx.compose.animation.fadeOut(),
+                        modifier = Modifier.fillMaxSize(),
+                    ) {
+                        Box(
+                            Modifier.fillMaxSize()
+                                .background(Color.Black.copy(alpha = 0.4f))
+                                .clickable(
+                                    indication = null,
+                                    interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                                ) { libraryOverlayOpen = false },
+                        )
+                    }
+                    val fromRight = sidebarCfg.librarySide == SidebarSide.RIGHT
+                    val overlayLibW = minOf(libWidth, (maxWidth.value * 0.88f).dp)
+                    Box(
+                        Modifier
+                            .align(if (fromRight) Alignment.CenterEnd else Alignment.CenterStart)
+                            .fillMaxHeight()
+                            .then(if (overlayTopBar) Modifier.padding(top = com.music.vivi.compose.ui.glass.TopBarInset) else Modifier),
+                    ) {
+                        AnimatedLibrarySidebar(
+                            state = if (libraryOverlayOpen) LibrarySidebarState.EXPANDED else LibrarySidebarState.HIDDEN,
+                            side = sidebarCfg.librarySide,
+                            expandedWidth = overlayLibW,
+                            navController = navController,
+                            onStateChange = { st -> if (st == LibrarySidebarState.HIDDEN) libraryOverlayOpen = false },
+                        )
+                    }
+                }
             }
             if (miniAtRoot) {
                 MiniPlayerBar(
@@ -366,8 +415,8 @@ fun FrameWindowScope.AppScaffold(
                 )
             }
             AnimatedQueueBottomTray(
-                visible = fullscreenQueue,
-                onDismiss = { fullscreenQueue = false },
+                visible = queueTrayOn,
+                onDismiss = { fullscreenQueue = false; closePinnedQueue() },
                 onPin = { openPinnedQueue() },
             )
         }

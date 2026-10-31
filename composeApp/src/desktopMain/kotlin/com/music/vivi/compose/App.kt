@@ -102,10 +102,12 @@ fun FrameWindowScope.App(
                 shape = if (osFullscreen) RectangleShape else windowShape,
                 color = MaterialTheme.colorScheme.background,
             ) {
-                AppScaffold(
-                    windowState = windowState,
-                    onClose = onClose,
-                )
+                com.music.vivi.compose.ui.responsive.ProvideWindowLayoutFromWindow {
+                    AppScaffold(
+                        windowState = windowState,
+                        onClose = onClose,
+                    )
+                }
                 com.music.vivi.compose.crash.CrashDialogHost(onQuit = onClose)
                 com.music.vivi.compose.update.UpdatePrompt()
                 com.music.vivi.compose.keys.ShortcutOverlays()

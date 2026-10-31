@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -37,6 +38,9 @@ import androidx.compose.material.icons.outlined.PlayCircle
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Menu
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.material.icons.rounded.CropSquare
 import androidx.compose.material.icons.rounded.FilterNone
 import androidx.compose.material.icons.rounded.Minimize
@@ -134,6 +138,11 @@ fun FrameWindowScope.VisageTopBar(
     val navDestinations = destinations.filter { it.route != Routes.SMOKE }
     var settingsMenuOpen by remember { mutableStateOf(false) }
 
+    val layout = com.music.vivi.compose.ui.responsive.windowLayout()
+    // Below the desktop breakpoint the tabs live in a hamburger menu so nothing overlaps the title.
+    val compact = layout.isCompactWidth
+    var navMenuOpen by remember { mutableStateOf(false) }
+
     val glass = com.music.vivi.compose.ui.glass.glassActive()
     Surface(
         tonalElevation = if (glass) 0.dp else 2.dp,
@@ -151,21 +160,67 @@ fun FrameWindowScope.VisageTopBar(
                     modifier = Modifier.matchParentSize(),
                     edges = com.music.vivi.compose.ui.glass.GlassEdges.Bottom,
                 )
+                // Compact: [menu | logo | title (shrinks)] ... [actions + caption buttons] as one row, so the title can
+                // never run under the controls. Desktop: the original three-zone box layout.
+                val leftZone: @Composable (Modifier) -> Unit = { zoneMod ->
                 // Left: brand + section title (inset from edge)
                 Row(
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
+                    modifier = zoneMod
                         .fillMaxHeight()
-                        .padding(start = 14.dp),
+                        .padding(start = if (compact) 6.dp else 14.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(if (layout.isMobile) 6.dp else 12.dp),
                 ) {
+                    if (compact && navDestinations.isNotEmpty()) {
+                        Box {
+                            WindowCaptionButton(
+                                icon = Icons.Rounded.Menu,
+                                description = "Menu",
+                            ) { navMenuOpen = true }
+                            DropdownMenu(
+                                expanded = navMenuOpen,
+                                onDismissRequest = { navMenuOpen = false },
+                                shape = RoundedCornerShape(24.dp),
+                                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            ) {
+                                navDestinations.forEach { dest ->
+                                    val sel = when (dest.route) {
+                                        Routes.SETTINGS -> currentRoute == Routes.SETTINGS || currentRoute?.startsWith("settings/") == true
+                                        Routes.SEARCH -> currentRoute == dest.route || currentRoute?.startsWith("search/") == true
+                                        else -> currentRoute == dest.route
+                                    }
+                                    DropdownMenuItem(
+                                        text = {
+                                            Text(
+                                                dest.label,
+                                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
+                                                color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                            )
+                                        },
+                                        leadingIcon = {
+                                            Icon(
+                                                destIcon(dest.route, sel),
+                                                contentDescription = null,
+                                                tint = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            )
+                                        },
+                                        onClick = {
+                                            navMenuOpen = false
+                                            onNavigate(dest.route)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
                     val logo = remember {
                         runCatching {
                             useResource("visage_icon.png") { loadImageBitmap(it) }
                         }.getOrNull()
                     }
-                    if (logo != null) {
+                    if (layout.isMobile) {
+                        // no logo on phones: the menu button and title need the room
+                    } else if (logo != null) {
                         Image(
                             bitmap = logo,
                             contentDescription = "VIsage",
@@ -190,15 +245,19 @@ fun FrameWindowScope.VisageTopBar(
                     }
                     Text(
                         text = currentLabel,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
                         style = MaterialTheme.typography.titleLarge.copy(
                             fontWeight = FontWeight.Bold,
-                            fontSize = 22.sp,
+                            fontSize = if (layout.isMobile) 18.sp else 22.sp,
                         ),
                     )
                 }
+                }
 
                 // Center: main destinations
-                if (navDestinations.isNotEmpty()) {
+                if (!compact && navDestinations.isNotEmpty()) {
                     Row(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -245,11 +304,11 @@ fun FrameWindowScope.VisageTopBar(
                 }
 
                 // Right: caption buttons — compact M3 pill hover, not full-height bars
+                val rightZone: @Composable (Modifier) -> Unit = { zoneMod ->
                 Row(
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
+                    modifier = zoneMod
                         .fillMaxHeight()
-                        .padding(end = 10.dp),
+                        .padding(end = if (layout.isMobile) 4.dp else 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
@@ -286,6 +345,16 @@ fun FrameWindowScope.VisageTopBar(
                         danger = true,
                         onClick = onClose,
                     )
+                }
+                }
+                if (compact) {
+                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
+                        leftZone(Modifier.weight(1f))
+                        rightZone(Modifier)
+                    }
+                } else {
+                    leftZone(Modifier.align(Alignment.CenterStart))
+                    rightZone(Modifier.align(Alignment.CenterEnd))
                 }
             }
         }

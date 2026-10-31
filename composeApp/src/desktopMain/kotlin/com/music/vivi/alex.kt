@@ -1,6 +1,7 @@
 @file:JvmName("alex")
 package com.music.vivi
 
+import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -160,7 +161,12 @@ private fun runApp() {
         }
         remember { startKoin { modules(coreModule, desktopModule) } }
         val rpcManager = remember { com.music.vivi.compose.ui.player.DiscordRpcManager(kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Default)).apply { start() } }
-        val windowState = rememberWindowState()
+        // Dev aid: VISAGE_WINDOW_SIZE=WxH (dp) opens the window at that size (responsive-layout testing).
+        val windowState = rememberWindowState(
+            size = com.music.vivi.nativelib.AppEnv.get("WINDOW_SIZE")?.split("x")?.mapNotNull { it.trim().toIntOrNull() }
+                ?.takeIf { it.size == 2 }?.let { androidx.compose.ui.unit.DpSize(it[0].dp, it[1].dp) }
+                ?: androidx.compose.ui.unit.DpSize(1280.dp, 800.dp),
+        )
         val closeApp = remember {
             {
                 runCatching { getKoin().get<com.music.vivi.compose.local.QueuePersistence>().close() }
@@ -199,6 +205,8 @@ private fun runApp() {
                 icon = windowIcon,
             ) {
                 androidx.compose.runtime.LaunchedEffect(Unit) { com.music.vivi.compose.StartupSplash.close() }
+                // Small enough to test phone-sized layouts (see ui/responsive/WindowLayout.kt).
+                androidx.compose.runtime.LaunchedEffect(Unit) { window.minimumSize = java.awt.Dimension(360, 560) }
                 App(
                     windowState = windowState,
                     onClose = closeApp,
