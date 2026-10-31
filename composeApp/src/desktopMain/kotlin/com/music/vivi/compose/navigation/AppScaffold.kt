@@ -101,7 +101,7 @@ import com.music.vivi.core.session.SessionManager
 import org.koin.compose.koinInject
 
 @Composable
-@androidx.compose.ui.ExperimentalComposeUiApi
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 fun FrameWindowScope.AppScaffold(
     windowState: WindowState,
     onClose: () -> Unit,
@@ -132,6 +132,8 @@ fun FrameWindowScope.AppScaffold(
     val windowLayout = com.music.vivi.compose.ui.responsive.windowLayout()
     val compact = windowLayout.isCompactWidth
     var libraryOverlayOpen by remember { mutableStateOf(false) }
+    var navMenuOpen by remember { mutableStateOf(false) }
+    LaunchedEffect(current, compact) { navMenuOpen = false }
     LaunchedEffect(current, compact) { libraryOverlayOpen = false }
     LaunchedEffect(Unit) { com.music.vivi.compose.ui.search.ContentRegion.apply(prefs) }
     var pinnedQueue by remember { mutableStateOf(com.music.vivi.nativelib.AppEnv.flag("DEV_QUEUE")) } // DEV_QUEUE: dev aid, start with the queue open
@@ -244,6 +246,8 @@ fun FrameWindowScope.AppScaffold(
                 },
                 windowState = windowState,
                 onClose = onClose,
+                navMenuOpen = navMenuOpen,
+                onNavMenuToggle = { navMenuOpen = !navMenuOpen; if (navMenuOpen) libraryOverlayOpen = false },
                 extraActions = {
                     if (current == Routes.HOME && sidebarCfg.queueOnHome) {
                         SidebarToggleButton(
@@ -371,40 +375,6 @@ fun FrameWindowScope.AppScaffold(
                             fromStart = overlayLeft,
                         )
                     }
-                    if (compact && libraryAllowed) {
-                        // Compact windows: the library is a modal overlay on its configured side, over a scrim.
-                        androidx.compose.animation.AnimatedVisibility(
-                            visible = libraryOverlayOpen,
-                            enter = androidx.compose.animation.fadeIn(),
-                            exit = androidx.compose.animation.fadeOut(),
-                            modifier = Modifier.fillMaxSize(),
-                        ) {
-                            Box(
-                                Modifier.fillMaxSize()
-                                    .background(Color.Black.copy(alpha = 0.4f))
-                                    .clickable(
-                                        indication = null,
-                                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                                    ) { libraryOverlayOpen = false },
-                            )
-                        }
-                        val fromRight = sidebarCfg.librarySide == SidebarSide.RIGHT
-                        val overlayLibW = minOf(sidebarCfg.libraryWidthDp.dp, (windowLayout.width.value * 0.88f).dp)
-                        Box(
-                            Modifier
-                                .align(if (fromRight) Alignment.CenterEnd else Alignment.CenterStart)
-                                .fillMaxHeight()
-                                .then(if (overlayTopBar) Modifier.padding(top = com.music.vivi.compose.ui.glass.TopBarInset) else Modifier),
-                        ) {
-                            AnimatedLibrarySidebar(
-                                state = if (libraryOverlayOpen) LibrarySidebarState.EXPANDED else LibrarySidebarState.HIDDEN,
-                                side = sidebarCfg.librarySide,
-                                expandedWidth = overlayLibW,
-                                navController = navController,
-                                onStateChange = { st -> if (st == LibrarySidebarState.HIDDEN) libraryOverlayOpen = false },
-                            )
-                        }
-                    }
                 },
             ) {
                 // Large / ultra wide windows: pages keep a readable width and sit centred instead of stretching edge to edge.
@@ -495,6 +465,43 @@ fun FrameWindowScope.AppScaffold(
                     modifier = Modifier.align(Alignment.BottomCenter).onSizeChanged { miniBarHeightPx = it.height },
                 )
             }
+            // Above the mini player (drawn after it), so the sidebar's bottom is never covered.
+            Box(Modifier.fillMaxSize()) {
+            if (compact && libraryAllowed) {
+                // Compact windows: the library is a modal overlay on its configured side, over a scrim.
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = libraryOverlayOpen,
+                    enter = androidx.compose.animation.fadeIn(),
+                    exit = androidx.compose.animation.fadeOut(),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    Box(
+                        Modifier.fillMaxSize()
+                            .background(Color.Black.copy(alpha = 0.4f))
+                            .clickable(
+                                indication = null,
+                                interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                            ) { libraryOverlayOpen = false },
+                    )
+                }
+                val fromRight = sidebarCfg.librarySide == SidebarSide.RIGHT
+                val overlayLibW = minOf(sidebarCfg.libraryWidthDp.dp, (windowLayout.width.value * 0.88f).dp)
+                Box(
+                    Modifier
+                        .align(if (fromRight) Alignment.CenterEnd else Alignment.CenterStart)
+                        .fillMaxHeight()
+                        .then(if (overlayTopBar) Modifier.padding(top = com.music.vivi.compose.ui.glass.TopBarInset) else Modifier),
+                ) {
+                    AnimatedLibrarySidebar(
+                        state = if (libraryOverlayOpen) LibrarySidebarState.EXPANDED else LibrarySidebarState.HIDDEN,
+                        side = sidebarCfg.librarySide,
+                        expandedWidth = overlayLibW,
+                        navController = navController,
+                        onStateChange = { st -> if (st == LibrarySidebarState.HIDDEN) libraryOverlayOpen = false },
+                    )
+                }
+            }
+            }
             AnimatedQueueBottomTray(
                 visible = queueTrayOn,
                 onDismiss = { fullscreenQueue = false; closePinnedQueue() },
@@ -503,6 +510,16 @@ fun FrameWindowScope.AppScaffold(
         }
       }
       if (overlayTopBar) Box(Modifier.align(Alignment.TopCenter).fillMaxWidth()) { topBar() }
+      // Compact windows: the nav menu is a tray under the top bar (drawn above pages, mini player and sidebars).
+      if (compact && !hideTopBar) {
+          com.music.vivi.compose.ui.NavTray(
+              open = navMenuOpen,
+              destinations = Routes.mainDestinations,
+              currentRoute = current,
+              onNavigate = { route -> navMenuOpen = false; navigateMain(navController, route) },
+              onDismiss = { navMenuOpen = false },
+          )
+      }
       // Tag Manager work (auto-tag / writing) goes on in the background; this takes you back to it.
       if (current != Routes.TAG_MANAGER) {
           com.music.vivi.compose.ui.tags.TagWorkFab(

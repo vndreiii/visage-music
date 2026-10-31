@@ -16,6 +16,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.outlined.Tune
@@ -99,6 +101,9 @@ fun FrameWindowScope.VisageTopBar(
     onClose: () -> Unit,
     /** Deep settings routes (Appearance, Player, …) — bypasses main-tab pop behavior. */
     onOpenSettingsRoute: (String) -> Unit = onNavigate,
+    /** Compact windows: whether the nav tray ([NavTray], rendered by the caller below the bar) is open. */
+    navMenuOpen: Boolean = false,
+    onNavMenuToggle: () -> Unit = {},
     /** Page-contextual buttons (sidebar toggles) shown just left of the caption buttons. */
     extraActions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit = {},
 ) {
@@ -123,7 +128,6 @@ fun FrameWindowScope.VisageTopBar(
     val layout = com.music.vivi.compose.ui.responsive.windowLayout()
     // Below the desktop breakpoint the tabs live in a hamburger menu so nothing overlaps the title.
     val compact = layout.isCompactWidth
-    var navMenuOpen by remember { mutableStateOf(false) }
     val glass = com.music.vivi.compose.ui.glass.glassActive()
     Surface(
         tonalElevation = if (glass) 0.dp else 2.dp,
@@ -149,43 +153,10 @@ fun FrameWindowScope.VisageTopBar(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         if (compact && navDestinations.isNotEmpty()) {
-                            Box {
-                                WindowCaptionButton(icon = Icons.Rounded.Menu, description = "Menu") { navMenuOpen = true }
-                                DropdownMenu(
-                                    expanded = navMenuOpen,
-                                    onDismissRequest = { navMenuOpen = false },
-                                    shape = RoundedCornerShape(24.dp),
-                                    containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-                                ) {
-                                    navDestinations.forEach { dest ->
-                                        val sel = when (dest.route) {
-                                            Routes.SETTINGS -> currentRoute == Routes.SETTINGS || currentRoute?.startsWith("settings/") == true
-                                            Routes.SEARCH -> currentRoute == dest.route || currentRoute?.startsWith("search/") == true
-                                            else -> currentRoute == dest.route
-                                        }
-                                        DropdownMenuItem(
-                                            text = {
-                                                Text(
-                                                    dest.label,
-                                                    fontWeight = if (sel) FontWeight.Bold else FontWeight.Normal,
-                                                    color = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                                                )
-                                            },
-                                            leadingIcon = {
-                                                Icon(
-                                                    destIcon(dest.route, sel),
-                                                    contentDescription = null,
-                                                    tint = if (sel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                                                )
-                                            },
-                                            onClick = {
-                                                navMenuOpen = false
-                                                onNavigate(dest.route)
-                                            },
-                                        )
-                                    }
-                                }
-                            }
+                            WindowCaptionButton(
+                                icon = if (navMenuOpen) Icons.Rounded.Close else Icons.Rounded.Menu,
+                                description = if (navMenuOpen) "Close menu" else "Menu",
+                            ) { onNavMenuToggle() }
                         }
                         TopBarBrand(
                             title = currentLabel,
@@ -477,6 +448,79 @@ internal fun TopNavItems(
                             onOpenSettingsRoute(route)
                         },
                     )
+                }
+            }
+        }
+    }
+}
+
+private fun navSelected(route: String, currentRoute: String?) = when (route) {
+    Routes.SETTINGS -> currentRoute == Routes.SETTINGS || currentRoute?.startsWith("settings/") == true
+    Routes.SEARCH -> currentRoute == route || currentRoute?.startsWith("search/") == true
+    else -> currentRoute == route
+}
+
+/**
+ * Compact navigation tray: slides down from directly under the top bar, full width, over a scrim that dismisses it.
+ * Draw it in a window-sized Box; it leaves the top [TopBarHeight] free so the menu button underneath still toggles it.
+ */
+@Composable
+fun NavTray(
+    open: Boolean,
+    destinations: List<MainDest>,
+    currentRoute: String?,
+    onNavigate: (String) -> Unit,
+    onDismiss: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val items = destinations.filter { it.route != Routes.SMOKE }
+    Box(modifier.fillMaxSize().padding(top = TopBarHeight)) {
+        androidx.compose.animation.AnimatedVisibility(
+            visible = open,
+            enter = androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.fadeOut(),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Box(
+                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f))
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onDismiss),
+            )
+        }
+        androidx.compose.animation.AnimatedVisibility(
+            visible = open,
+            enter = androidx.compose.animation.slideInVertically { -it } + androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.slideOutVertically { -it } + androidx.compose.animation.fadeOut(),
+            modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
+        ) {
+            Surface(
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
+                shadowElevation = 8.dp,
+                modifier = Modifier.fillMaxWidth()
+                    .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = {}),
+            ) {
+                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    items.forEach { dest ->
+                        val sel = navSelected(dest.route, currentRoute)
+                        val fg = if (sel) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
+                        Row(
+                            Modifier.fillMaxWidth().height(52.dp).clip(RoundedCornerShape(16.dp))
+                                .background(if (sel) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent)
+                                .clickable(role = Role.Button) { onNavigate(dest.route) }
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Icon(
+                                destIcon(dest.route, sel), contentDescription = null,
+                                tint = if (sel) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Spacer(Modifier.width(16.dp))
+                            Text(
+                                dest.label, color = fg, style = MaterialTheme.typography.titleMedium,
+                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                            )
+                        }
+                    }
                 }
             }
         }

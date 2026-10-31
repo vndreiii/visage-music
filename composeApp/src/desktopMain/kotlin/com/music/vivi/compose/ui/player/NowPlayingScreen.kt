@@ -947,11 +947,16 @@ internal fun NowPlayingBottomBar(
     compact: Boolean = false,
     more: @Composable () -> Unit,
 ) {
-    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+    // Compact: one row, fixed spacing, anchored in the centre; "more" is part of it (7 x 44dp + 6 x 4dp = 332dp).
+    Row(
+        modifier,
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = if (compact) Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally) else Arrangement.Start,
+    ) {
         Row(
-            if (compact) Modifier.weight(1f).padding(end = 12.dp) else Modifier,
+            Modifier,
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = if (compact) Arrangement.SpaceBetween else Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp),
         ) {
             ToolIconButton(Icons.AutoMirrored.Outlined.QueueMusic, "Queue", active = queueActive, onClick = onQueue)
             ToolIconButton(Icons.Outlined.Lyrics, "Lyrics", active = lyricsActive, onClick = onLyrics)

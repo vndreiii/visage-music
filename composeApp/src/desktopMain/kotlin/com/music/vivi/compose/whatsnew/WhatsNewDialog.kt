@@ -127,7 +127,7 @@ fun WhatsNewDialog(visible: Boolean, releases: List<WhatsNewRelease>, onDismiss:
                     },
             ) {
                 Column(Modifier.fillMaxWidth()) {
-                    Header(releases.first().version, pager.currentPage, pageCount, onDismiss)
+                    Header(releases.first().version, pager.currentPage, pageCount, onDismiss, onSkip = onDismiss)
                     LookChangedNotice()
                     HorizontalPager(
                         state = pager,
@@ -154,7 +154,7 @@ fun WhatsNewDialog(visible: Boolean, releases: List<WhatsNewRelease>, onDismiss:
 }
 
 @Composable
-private fun Header(version: String, page: Int, count: Int, onClose: () -> Unit) {
+private fun Header(version: String, page: Int, count: Int, onClose: () -> Unit, onSkip: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {
             Text("What's new in VIsage $version", style = MaterialTheme.typography.titleLarge)
@@ -163,6 +163,10 @@ private fun Header(version: String, page: Int, count: Int, onClose: () -> Unit) 
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        // Skip the tour: closes the dialog, which marks the release as seen. The last page has "Got it" instead.
+        if (page < count - 1) {
+            ExpressiveButton(text = "Skip", onClick = onSkip, size = ExpressiveSize.Small, style = ExpressiveStyle.Text)
         }
         IconButton(onClick = onClose) { Icon(Icons.Outlined.Close, contentDescription = "Close") }
     }
