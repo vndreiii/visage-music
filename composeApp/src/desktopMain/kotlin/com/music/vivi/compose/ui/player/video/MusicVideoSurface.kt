@@ -290,8 +290,8 @@ fun MusicVideoSurface(
             visible = (hovered && hasFrame) || menuOpen,
             enter = fadeIn(),
             exit = fadeOut(),
-            // The cover is clipped with a large corner radius, so keep the chip clear of the curve.
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = 20.dp, end = 20.dp),
+            // Tucked into the top-right corner, just inside the rounded clip.
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp),
         ) {
             VideoQualityChip(prefs, playingHeight = video.height, open = menuOpen, onOpenChange = { menuOpen = it })
         }
