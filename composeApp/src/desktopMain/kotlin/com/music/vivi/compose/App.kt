@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.first
 import org.koin.compose.koinInject
 
 @Composable
+@androidx.compose.ui.ExperimentalComposeUiApi // AppScaffold is marked experimental; callers (alex.kt runApp) already opt in
 fun FrameWindowScope.App(
     windowState: WindowState,
     onClose: () -> Unit,

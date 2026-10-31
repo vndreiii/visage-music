@@ -3,6 +3,15 @@ package com.music.vivi.compose.ui.popup
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInWindow
+import com.music.vivi.compose.ui.visageWindowDragModifier
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -13,7 +22,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DragHandle
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.outlined.PushPin
 import androidx.compose.material3.Icon
@@ -40,7 +48,6 @@ import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.FrameWindowScope
 import androidx.compose.ui.window.Window
-import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.rememberWindowState
 import com.music.vivi.compose.LocalPlaybackController
@@ -128,7 +135,10 @@ fun PopupPlayerHost(controller: PlaybackController, prefs: DesktopPrefs, icon: P
                     shape = shape,
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    Box(Modifier.fillMaxSize()) {
+                    // Dragging anywhere on the popup (cover, header, empty space) moves it; children that use the
+                    // gesture themselves (sliders, scrollers) keep it. Windows runs its own caption drag on the header.
+                    val bodyDrag = if (HostOs.isWindows) Modifier else visageWindowDragModifier()
+                    Box(Modifier.fillMaxSize().then(bodyDrag)) {
                         Column(Modifier.fillMaxSize()) {
                             PopupHeader(
                                 pinned = pinned,
@@ -140,7 +150,7 @@ fun PopupPlayerHost(controller: PlaybackController, prefs: DesktopPrefs, icon: P
                             )
                             PopupPlayerContent(Modifier.weight(1f))
                         }
-                        ResizeGrip(Modifier.align(Alignment.BottomEnd))
+                        ResizeEdges(window)
                     }
                 }
             }
@@ -193,16 +203,8 @@ private fun FrameWindowScope.PopupHeader(pinned: Boolean, onTogglePin: () -> Uni
         Modifier.fillMaxWidth().height(36.dp).padding(start = 4.dp, end = 2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        // No visible handle: the empty header (and, off Windows, the whole popup body) is the drag area.
         val dragModifier = Modifier.weight(1f).fillMaxSize()
-        val dragContent: @Composable () -> Unit = {
-            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Icon(
-                    Icons.Filled.DragHandle, "Drag to move",
-                    Modifier.size(20.dp),
-                    tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.35f),
-                )
-            }
-        }
         if (HostOs.isWindows) {
             // Windows: let the OS run the caption drag (Aero Snap, per-monitor DPI), falling back to Compose dragging.
             Box(dragModifier.pointerInput(Unit) {
@@ -212,9 +214,9 @@ private fun FrameWindowScope.PopupHeader(pinned: Boolean, onTogglePin: () -> Uni
                         if (ev.changes.any { it.pressed && !it.previousPressed }) WindowsPopupChrome.beginNativeDrag(window)
                     }
                 }
-            }) { dragContent() }
+            })
         } else {
-            WindowDraggableArea(dragModifier) { dragContent() }
+            Box(dragModifier)
         }
         IconButton(onClick = onTogglePin, modifier = Modifier.size(32.dp)) {
             Icon(
@@ -230,33 +232,49 @@ private fun FrameWindowScope.PopupHeader(pinned: Boolean, onTogglePin: () -> Uni
 }
 
 /**
- * Bottom-right resize grip. The window is undecorated, so there is no frame to grab on most platforms; this works
- * the same everywhere and stays inside [PopupGeometry]'s bounds. (Compositor-driven resizing, e.g. Hyprland's
+ * Invisible resize strips along the right edge, bottom edge and bottom-right corner (the window is undecorated, so
+ * there is no frame to grab). They stay inside [PopupGeometry]'s bounds. The top-left origin never moves, so this
+ * works on native Wayland too, where a client cannot position itself. (Compositor-driven resizing, e.g. Hyprland's
  * `Super + right-drag`, still works as well.)
  */
 @Composable
-private fun FrameWindowScope.ResizeGrip(modifier: Modifier) {
+private fun BoxScope.ResizeEdges(window: java.awt.Window) {
+    ResizeStrip(window, Modifier.align(Alignment.CenterEnd).width(6.dp).fillMaxHeight().padding(bottom = 16.dp, top = 40.dp), 1, 0, java.awt.Cursor.E_RESIZE_CURSOR)
+    ResizeStrip(window, Modifier.align(Alignment.BottomCenter).height(6.dp).fillMaxWidth().padding(end = 16.dp), 0, 1, java.awt.Cursor.S_RESIZE_CURSOR)
+    ResizeStrip(window, Modifier.align(Alignment.BottomEnd).size(16.dp), 1, 1, java.awt.Cursor.SE_RESIZE_CURSOR)
+}
+
+@Composable
+private fun ResizeStrip(window: java.awt.Window, modifier: Modifier, dirX: Int, dirY: Int, cursor: Int) {
     val density = LocalDensity.current.density
+    var origin by remember { mutableStateOf(Offset.Zero) }
     Box(
         modifier
-            .size(22.dp)
+            .pointerHoverIcon(PointerIcon(java.awt.Cursor(cursor)))
+            .onGloballyPositioned { origin = it.positionInWindow() }
             .pointerInput(Unit) {
-                detectDragGestures { change, drag ->
+                // The pointer is tracked in window coordinates (strip origin + local position) against the size at
+                // drag start; per-event deltas would be measured in a frame that moves with the window edge.
+                var startPointer = Offset.Zero
+                var startW = 0
+                var startH = 0
+                detectDragGestures(
+                    onDragStart = { local ->
+                        startPointer = origin + local
+                        startW = window.width
+                        startH = window.height
+                    },
+                ) { change, _ ->
                     change.consume()
+                    val now = origin + change.position
                     val (w, h) = PopupGeometry.clampSize(
-                        window.width + (drag.x / density).toInt(),
-                        window.height + (drag.y / density).toInt(),
+                        startW + if (dirX != 0) ((now.x - startPointer.x) / density).toInt() else 0,
+                        startH + if (dirY != 0) ((now.y - startPointer.y) / density).toInt() else 0,
                     )
                     if (w != window.width || h != window.height) window.setSize(w, h)
                 }
             },
-        contentAlignment = Alignment.BottomEnd,
-    ) {
-        Box(
-            Modifier.padding(5.dp).size(10.dp)
-                .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.25f), RoundedCornerShape(bottomEnd = 6.dp)),
-        )
-    }
+    )
 }
 
 /** Per-window WM_CLASS under XToolkit (X11 and XWayland); Wayland-native toolkits have one app_id per process. */
@@ -269,12 +287,17 @@ internal object PopupWmClass {
         t to t.javaClass.getDeclaredField("awtAppClassName").apply { isAccessible = true }
     }.getOrNull()
 
+    private var previousAppId: String? = null
+
     fun beginPopup() {
+        // Native Wayland (WLToolkit): the app_id comes from this system property when the surface is created.
+        if (com.music.vivi.compose.ui.isNativeWayland()) { previousAppId = System.getProperty("awt.app.id"); System.setProperty("awt.app.id", POPUP_WM_CLASS); return }
         val (t, f) = field() ?: return
         runCatching { previous = f.get(t) as? String; f.set(t, POPUP_WM_CLASS) }
     }
 
     fun endPopup() {
+        if (com.music.vivi.compose.ui.isNativeWayland()) { previousAppId?.let { System.setProperty("awt.app.id", it) }; previousAppId = null; return }
         val (t, f) = field() ?: return
         runCatching { previous?.let { f.set(t, it) } }
         previous = null

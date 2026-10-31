@@ -63,6 +63,8 @@ kotlin {
                 implementation(libs.coil.compose)
                 implementation(libs.coil.network.okhttp)
                 implementation(libs.material.kolor)
+                // com.jetbrains.JBR: window move (xdg_toplevel.move on Wayland) when running on the JetBrains Runtime; inert elsewhere.
+                implementation("org.jetbrains.runtime:jbr-api:1.9.0")
                 implementation(libs.dbus.java.core)
                 implementation(libs.dbus.java.transport.native.unixsocket)
             }
@@ -115,12 +117,21 @@ val cdsArgs = if (isWindowsHost) listOf("-XX:+AutoCreateSharedArchive", "-XX:Sha
 // Linux-only JVM flags: the X11 toolkit package does not exist in the Windows JDK.
 val x11Opens = if (isWindowsHost) emptyList() else listOf("--add-opens=java.desktop/sun.awt.X11=ALL-UNNAMED")
 
+// Runtime the app is packaged with (jlink'd into the distributable). On Linux that is the JetBrains Runtime when
+// scripts/fetch-jbr-linux.sh has unpacked one (or VISAGE_JBR_HOME points at one), because stock OpenJDK has no
+// Wayland toolkit; otherwise the JDK 21 toolchain (X11 / XWayland only). Compilation always uses the 21 toolchain.
+val jbrHome: File? = if (isWindowsHost) null else
+    (System.getenv("VISAGE_JBR_HOME")?.takeIf { it.isNotBlank() }?.let(::File)
+        ?: rootProject.file("build/jbr").listFiles { f -> f.isDirectory && f.name.startsWith("jbrsdk-") }?.maxByOrNull { it.name })
+        ?.takeIf { File(it, "bin/java").canExecute() && File(it, "jmods").isDirectory }
+val packagingRuntimeHome: String = jbrHome?.absolutePath ?: javaToolchains.launcherFor {
+    languageVersion.set(JavaLanguageVersion.of(21))
+}.get().metadata.installationPath.asFile.absolutePath
+
 compose.desktop {
     application {
         mainClass = "com.music.vivi.alex"
-        javaHome = javaToolchains.launcherFor {
-            languageVersion.set(JavaLanguageVersion.of(21))
-        }.get().metadata.installationPath.asFile.absolutePath
+        javaHome = packagingRuntimeHome
         nativeDistributions {
             // Keyring/D-Bus and Discord load JDK classes dynamically; jlink's
             // inferred module set misses jdk.security.auth and java.management.
@@ -280,9 +291,7 @@ tasks.withType<AbstractJPackageTask>().configureEach {
 // jpackage's stock launcher segfaults at startup on current glibc (2.44); replace it in the
 // app-image with a shell script that starts the bundled JVM from lib/app/visage.cfg.
 // (Used by the tar.gz, AppImage and Flatpak; deb/rpm keep jpackage's own launcher.)
-val toolchainHome: String = javaToolchains.launcherFor {
-    languageVersion.set(JavaLanguageVersion.of(21))
-}.get().metadata.installationPath.asFile.absolutePath
+val toolchainHome: String = packagingRuntimeHome
 tasks.matching { !isWindowsHost && (it.name == "createDistributable" || it.name == "createReleaseDistributable") }.configureEach {
     doLast {
         val launcher = rootProject.file("packaging/launcher/visage")

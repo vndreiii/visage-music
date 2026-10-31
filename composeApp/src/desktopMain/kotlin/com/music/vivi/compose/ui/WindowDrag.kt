@@ -6,6 +6,7 @@ import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.window.WindowScope
 import com.sun.jna.Library
@@ -26,41 +27,56 @@ import javax.swing.SwingUtilities
  * window-relative, so as soon as the window moves the next delta is measured against the new origin; with a
  * window manager that also applies the move this feeds back and the window bounces ("jelly" drag).
  *
- * On X11/XWayland (the only toolkit we run: stock OpenJDK has no Wayland toolkit) we instead ask the window
- * manager to run a native move with a _NET_WM_MOVERESIZE message, which is what a normal title bar does. If
- * that is unavailable we move the window ourselves from screen-absolute pointer coordinates with the offset
- * captured once at drag start. Windows and macOS keep Compose's implementation.
+ * Order of preference, so the compositor / WM does the move whenever it can:
+ *  1. JetBrains Runtime's window-move API (`JBR.getWindowMove()`): xdg_toplevel.move on native Wayland
+ *     (WLToolkit), the WM's own move on X11. The only way to move a window on native Wayland.
+ *  2. On a real X11 server, a _NET_WM_MOVERESIZE message (what a normal title bar does). Skipped under XWayland:
+ *     compositors such as Hyprland accept the message and then do nothing with it.
+ *  3. Moving the window ourselves from screen-absolute pointer coordinates with the offset captured once at drag
+ *     start (works for floating windows under XWayland; a tiled window cannot be moved by its client).
+ * Windows and macOS keep Compose's implementation.
  */
 @Composable
-fun WindowScope.VisageWindowDragArea(content: @Composable () -> Unit) {
+fun WindowScope.VisageWindowDragArea(modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     if (!com.music.vivi.nativelib.HostOs.isLinux) {
-        WindowDraggableArea(content = content)
+        WindowDraggableArea(modifier, content = content)
         return
     }
-    val win = window
+    Box(modifier.visageWindowDrag(window)) { content() }
+}
+
+/**
+ * The drag gesture of [VisageWindowDragArea] as a modifier, for dragging a window by a whole region (the popup
+ * uses it on its entire body: children that consume the gesture, such as sliders and scrollers, keep it).
+ */
+@Composable
+fun WindowScope.visageWindowDragModifier(): Modifier {
+    if (!com.music.vivi.nativelib.HostOs.isLinux) return Modifier
+    return Modifier.visageWindowDrag(window)
+}
+
+private fun Modifier.visageWindowDrag(win: Window): Modifier = composed {
     val state = remember(win) { DragState() }
-    Box(
-        modifier = Modifier.pointerInput(win) {
-            detectDragGestures(
-                onDragStart = {
-                    state.nativeActive = X11WindowMove.begin(win)
-                    if (!state.nativeActive) {
-                        state.startPointer = pointerOnScreen()
-                        state.startWindow = win.location
-                    }
-                },
-                onDragEnd = { state.nativeActive = false },
-                onDragCancel = { state.nativeActive = false },
-            ) { change, _ ->
-                change.consume()
-                if (state.nativeActive) return@detectDragGestures
-                val p = pointerOnScreen() ?: return@detectDragGestures
-                val sp = state.startPointer ?: return@detectDragGestures
-                val sw = state.startWindow ?: return@detectDragGestures
-                win.setLocation(sw.x + (p.x - sp.x), sw.y + (p.y - sp.y))
-            }
-        },
-    ) { content() }
+    Modifier.pointerInput(win) {
+        detectDragGestures(
+            onDragStart = {
+                state.nativeActive = WindowMover.begin(win)
+                if (!state.nativeActive) {
+                    state.startPointer = pointerOnScreen()
+                    state.startWindow = win.location
+                }
+            },
+            onDragEnd = { state.nativeActive = false },
+            onDragCancel = { state.nativeActive = false },
+        ) { change, _ ->
+            change.consume()
+            if (state.nativeActive) return@detectDragGestures
+            val p = pointerOnScreen() ?: return@detectDragGestures
+            val sp = state.startPointer ?: return@detectDragGestures
+            val sw = state.startWindow ?: return@detectDragGestures
+            win.setLocation(sw.x + (p.x - sp.x), sw.y + (p.y - sp.y))
+        }
+    }
 }
 
 private class DragState {
@@ -70,6 +86,43 @@ private class DragState {
 }
 
 private fun pointerOnScreen(): Point? = runCatching { MouseInfo.getPointerInfo()?.location }.getOrNull()
+
+/** True when the process talks to Wayland natively (JBR's WLToolkit). */
+internal fun isNativeWayland(): Boolean =
+    runCatching { java.awt.Toolkit.getDefaultToolkit().javaClass.name.startsWith("sun.awt.wl.") }.getOrDefault(false)
+
+/** True when the X display is XWayland: a Wayland session is running but the app uses the X11 toolkit. */
+internal fun isXWayland(): Boolean =
+    !isNativeWayland() && (!System.getenv("WAYLAND_DISPLAY").isNullOrBlank() || System.getenv("XDG_SESSION_TYPE").equals("wayland", true))
+
+/** Starts a compositor / WM driven window move. Returns true when one was started (it then owns the pointer). */
+internal object WindowMover {
+    fun begin(window: Window): Boolean {
+        val started = jbrMove(window) || (!isXWayland() && X11WindowMove.begin(window))
+        // The compositor now owns the pointer and will not send us the button release; tell Compose it happened.
+        if (started) SwingUtilities.invokeLater { releaseButton(window) }
+        return started
+    }
+
+    private fun jbrMove(window: Window): Boolean = try {
+        val mover = com.jetbrains.JBR.getWindowMove()
+        if (mover == null) false else { mover.startMovingTogetherWithMouse(window, MouseEvent.BUTTON1); true }
+    } catch (_: Throwable) { false } // not on the JetBrains Runtime, or the API is unsupported there
+
+    private fun releaseButton(window: Window) {
+        runCatching {
+            val p = MouseInfo.getPointerInfo().location
+            val origin = runCatching { window.locationOnScreen }.getOrNull()
+            val lx = if (origin != null) p.x - origin.x else window.width / 2
+            val ly = if (origin != null) p.y - origin.y else 18
+            val target = SwingUtilities.getDeepestComponentAt(window, lx, ly) ?: window
+            val t = SwingUtilities.convertPoint(window, Point(lx, ly), target)
+            target.dispatchEvent(
+                MouseEvent(target, MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(), 0, t.x, t.y, 1, false, MouseEvent.BUTTON1),
+            )
+        }
+    }
+}
 
 private interface Xlib : Library {
     fun XUngrabPointer(display: Pointer, time: NativeLong): Int
@@ -162,10 +215,8 @@ private object X11WindowMove {
             }
             true
         }.getOrDefault(false)
-        if (!ok) { failed = true; return false }
-        // The WM now owns the pointer and will not send us the button release; tell Compose it happened.
-        SwingUtilities.invokeLater { releaseButton(window) }
-        return true
+        if (!ok) failed = true
+        return ok
     }
 
     private fun frameXid(window: Window): Long? = runCatching {
@@ -183,18 +234,4 @@ private object X11WindowMove {
         m.isAccessible = true
         m.invoke(peer) as Long
     }.getOrNull()
-
-    private fun releaseButton(window: Window) {
-        runCatching {
-            val p = MouseInfo.getPointerInfo().location
-            val origin = window.locationOnScreen
-            val lx = p.x - origin.x
-            val ly = p.y - origin.y
-            val target = SwingUtilities.getDeepestComponentAt(window, lx, ly) ?: window
-            val t = SwingUtilities.convertPoint(window, Point(lx, ly), target)
-            target.dispatchEvent(
-                MouseEvent(target, MouseEvent.MOUSE_RELEASED, System.currentTimeMillis(), 0, t.x, t.y, 1, false, MouseEvent.BUTTON1),
-            )
-        }
-    }
 }
