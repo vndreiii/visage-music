@@ -22,6 +22,7 @@ else
 fi
 
 scripts/fetch-ytdlp-linux.sh
+scripts/fetch-jbr-linux.sh >/dev/null  # native-Wayland runtime for the tar.gz / AppImage launcher (deb/rpm keep jpackage's launcher)
 ./gradlew --no-daemon :composeApp:packageDeb :composeApp:packageRpm :composeApp:createDistributable
 
 shopt -s nullglob

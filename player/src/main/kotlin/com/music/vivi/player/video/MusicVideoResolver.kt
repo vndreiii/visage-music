@@ -5,6 +5,9 @@ import com.music.innertube.models.SongItem
 import com.music.innertube.models.WatchEndpoint
 import com.music.innertube.pages.MusicVideoTypes
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import java.util.concurrent.ConcurrentHashMap
 
@@ -49,6 +52,30 @@ object MusicVideoResolver {
             .minByOrNull { v -> if (track.duration == null || v.duration == null) 0 else kotlin.math.abs(v.duration!! - track.duration!!) }
     }
 
+    private val capOverride = ConcurrentHashMap<String, VideoQuality>()
+    private val revisionFlow = MutableStateFlow(0)
+
+    /** Changes whenever [stepDown] swaps a stream, so the UI asks again for the track's video. */
+    val revision: StateFlow<Int> = revisionFlow.asStateFlow()
+
+    /**
+     * Stalls kept happening on [videoId] (YouTube id, playing at [currentHeight]): lower its quality for the rest of
+     * the session and drop the cached stream. False when it is already at the lowest quality.
+     */
+    fun stepDown(videoId: String, currentHeight: Int): Boolean {
+        val lower = QualityStepDown.lowerThan(currentHeight) ?: return false
+        capOverride[videoId] = lower
+        cache.entries.removeIf { it.value.value?.videoId == videoId }
+        revisionFlow.value = revisionFlow.value + 1
+        return true
+    }
+
+    /** [requested], lowered to the step-down cap for [videoId] when one applies. */
+    internal fun effectiveCap(videoId: String, requested: VideoQuality): VideoQuality {
+        val lowered = capOverride[videoId] ?: return requested
+        return if (requested == VideoQuality.AUTO || lowered.height < requested.height) lowered else requested
+    }
+
     /** Forgets resolved videos (memory pressure) and the proxy's downloaded chunks. */
     fun purge() {
         cache.clear()
@@ -73,7 +100,7 @@ object MusicVideoResolver {
         val key = "$trackId@${cap.name}"
         cache[key]?.takeIf { System.currentTimeMillis() - it.at < TTL_MS }?.let { return it.value }
         val result = runCatching {
-            videoIdFor(trackId)?.let { VideoStreamResolver.resolve(it, cap) }
+            videoIdFor(trackId)?.let { VideoStreamResolver.resolve(it, effectiveCap(it, cap)) }
         }.getOrNull()
         cache[key] = Entry(result, System.currentTimeMillis())
         return result
