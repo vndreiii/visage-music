@@ -80,6 +80,7 @@ import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import coil3.compose.AsyncImage
@@ -513,7 +514,6 @@ private fun HomeScreenContent(navController: NavController, vm: HomeViewModel) {
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(shelfCardHeight(ShelfCoverSize))
                                         .shelfRightFade()
                                         .horizontalWheelScroll(rowState),
                                 ) {
@@ -812,8 +812,18 @@ private fun HomeSectionBlock(
                     // pull that slack out of the top and bottom so the frame's inset is measured to the text itself.
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(ListItemHeight * rows - (if (framed) 24.dp else 0.dp))
-                        .offset(y = if (framed) -12.dp else 0.dp)
+                        .height(ListItemHeight * rows - (if (framed) 40.dp else 0.dp))
+                        .then(
+                            if (framed) {
+                                // Shift the grid up AND shorten the slot by the same slack, so the frame's bottom inset
+                                // is measured to the last row's text instead of 12 dp of dead space.
+                                Modifier.layout { measurable, constraints ->
+                                    val up = 12.dp.roundToPx()
+                                    val p = measurable.measure(constraints)
+                                    layout(p.width, p.height - up * 2) { p.place(0, -up) }
+                                }
+                            } else Modifier,
+                        )
                         .horizontalWheelScroll(gridState),
                 ) {
                     itemsIndexed(
@@ -893,11 +903,17 @@ private fun HomeSectionBlock(
             }
             else -> {
                 val rowState = rememberLazyListState()
-                val hasLarge = sectionData.items.any { itemUsesLargeCard(it, sectionData) }
+                // A shelf that is mostly plain cards with a stray playlist/mix in it (e.g. "Albums for you") keeps every
+                // card the same size: one hero card would otherwise make the whole row tall and leave a dead gap under
+                // the small cards.
+                val largeCount = sectionData.items.count { itemUsesLargeCard(it, sectionData) }
+                val mostlySmall = largeCount * 2 < sectionData.items.size
+                val useLarge: (YTItem) -> Boolean = { !mostlySmall && itemUsesLargeCard(it, sectionData) }
+                val hasLarge = sectionData.items.any(useLarge)
                 val rowH = when {
                     halfWidth && hasLarge -> 228.dp
                     hasLarge -> HeroCardHeight + 8.dp
-                    else -> gridRowHeight + 8.dp
+                    else -> gridRowHeight + (if (framed) 0.dp else 8.dp)
                 }
                 LazyRow(
                     state = rowState,
@@ -906,12 +922,14 @@ private fun HomeSectionBlock(
                     verticalAlignment = Alignment.Top,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(rowH)
+                        // Framed shelves size to their tallest card (no reserved slot), so the frame's bottom inset sits
+                        // right under the card text; flat shelves keep the fixed row.
+                        .then(if (framed) Modifier else Modifier.height(rowH))
                         .then(if (framed) Modifier.shelfRightFade() else Modifier)
                         .horizontalWheelScroll(rowState),
                 ) {
                     items(sectionData.items, key = { it.id }) { item ->
-                        if (itemUsesLargeCard(item, sectionData)) {
+                        if (useLarge(item)) {
                             YouTubeHeroCard(
                                 item = item,
                                 onClick = { onYtItem(item, emptyList()) },
@@ -926,6 +944,9 @@ private fun HomeSectionBlock(
                                 onClick = { onYtItem(item, emptyList()) },
                                 isActive = item.id == playingId,
                                 isPlaying = isPlaying,
+                                insetHorizontal = if (framed) 0.dp else 6.dp,
+                                insetVertical = if (framed) 0.dp else 4.dp,
+                                subtitleLines = 1,
                             )
                         }
                     }
