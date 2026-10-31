@@ -204,9 +204,16 @@ private fun FrameWindowScope.PopupWindowEffects(
 @Composable
 private fun FrameWindowScope.PopupHeader(pinned: Boolean, onTogglePin: () -> Unit, onClose: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(28.dp).padding(top = 2.dp, end = 6.dp),
+        Modifier.fillMaxWidth().height(28.dp).padding(top = 2.dp, start = 6.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        IconButton(onClick = onTogglePin, modifier = Modifier.size(24.dp)) {
+            Icon(
+                if (pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
+                if (pinned) "Unpin (stop keeping on top)" else "Keep on top",
+                Modifier.size(16.dp),
+            )
+        }
         // No visible handle: the empty header (and, off Windows, the whole popup body) is the drag area.
         val dragModifier = Modifier.weight(1f).fillMaxSize()
         if (HostOs.isWindows) {
@@ -221,13 +228,6 @@ private fun FrameWindowScope.PopupHeader(pinned: Boolean, onTogglePin: () -> Uni
             })
         } else {
             Box(dragModifier)
-        }
-        IconButton(onClick = onTogglePin, modifier = Modifier.size(24.dp)) {
-            Icon(
-                if (pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
-                if (pinned) "Unpin (stop keeping on top)" else "Keep on top",
-                Modifier.size(16.dp),
-            )
         }
         IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) {
             Icon(Icons.Filled.Close, "Close mini player", Modifier.size(16.dp))
