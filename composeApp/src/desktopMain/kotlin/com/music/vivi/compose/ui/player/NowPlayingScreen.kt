@@ -57,6 +57,7 @@ import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.OpenInFull
+import androidx.compose.material.icons.outlined.PictureInPictureAlt
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.RepeatOne
 import androidx.compose.material.icons.outlined.Shuffle
@@ -891,6 +892,9 @@ internal fun NowPlayingBottomBar(
                 active = repeat != RepeatMode.Off,
                 onClick = onRepeat,
             )
+            ToolIconButton(Icons.Outlined.PictureInPictureAlt, "Pop out mini player") {
+                com.music.vivi.compose.ui.popup.PopupPlayer.toggle()
+            }
             ToolIconButton(Icons.Outlined.OpenInFull, "Fullscreen player", onClick = onFullscreen)
         }
         Row(

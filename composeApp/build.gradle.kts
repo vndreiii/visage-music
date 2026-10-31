@@ -17,6 +17,8 @@ kotlin {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(libs.junit)
+                @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+                implementation(compose.uiTest)
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.6")
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.9.6")
                 val cefArch = when (System.getProperty("os.arch")) {
