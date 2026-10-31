@@ -204,6 +204,12 @@ private fun runApp() {
                     onClose = closeApp,
                 )
             }
+            // Mini player popup (own window, same controller); closing the main window exits the app and takes it down.
+            com.music.vivi.compose.ui.popup.PopupPlayerHost(
+                controller = remember { getKoin().get<PlaybackController>() },
+                prefs = remember { getKoin().get<DesktopPrefs>() },
+                icon = windowIcon,
+            )
         }
     }
 }

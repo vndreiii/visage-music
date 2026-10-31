@@ -161,6 +161,12 @@ internal class ShortcutRunner(
                 }
                 true
             }
+            ShortcutAction.POPUP_PLAYER -> {
+                com.music.vivi.compose.ui.popup.PopupPlayer.toggle()
+                // The key-up may go to the popup that just closed and be lost, which would swallow the next press.
+                scope.launch { delay(250); ShortcutCapture.engine?.resetHeld() }
+                true
+            }
             ShortcutAction.LEAVE_FULLSCREEN -> leave()
             ShortcutAction.BACK -> {
                 if (nav.previousBackStackEntry == null) false else { nav.popBackStack(); true }
