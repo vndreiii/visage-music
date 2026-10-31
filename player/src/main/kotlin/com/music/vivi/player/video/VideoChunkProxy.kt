@@ -48,6 +48,26 @@ object VideoChunkProxy {
         val layout = ChunkLayout(length)
         val chunks = ConcurrentHashMap<Int, CompletableFuture<ByteArray>>()
         @Volatile var lastUsed = System.nanoTime()
+        /** Bumped by every new read; an older read notices it and stops. */
+        @Volatile var readGen = 0L
+
+        /**
+         * A new read starting at [pos] supersedes the older ones (mpv seeks by opening a new range). Pending fetches
+         * outside the window the new read needs are cancelled, so they do not queue ahead of it in the fetch pool.
+         */
+        @Synchronized
+        fun startRead(pos: Long): Long {
+            val gen = ++readGen
+            val first = layout.indexOf(pos)
+            val keep = first..(first + AHEAD)
+            for ((idx, f) in chunks) {
+                if (idx !in keep && !f.isDone) {
+                    f.cancel(false)
+                    chunks.remove(idx, f)
+                }
+            }
+            return gen
+        }
     }
 
     private val streams = LinkedHashMap<String, Stream>()
@@ -109,7 +129,10 @@ object VideoChunkProxy {
         s.lastUsed = System.nanoTime()
         val future = s.chunks.computeIfAbsent(idx) { fetch(s, idx) }
         if (s.chunks.size > MAX_CHUNKS_PER_STREAM) {
-            s.chunks.keys.filter { it != idx }.maxByOrNull { kotlin.math.abs(it - idx) }?.let { s.chunks.remove(it) }
+            // Only finished chunks are evicted: dropping one still in flight would fetch it twice.
+            s.chunks.entries.filter { it.key != idx && it.value.isDone }
+                .maxByOrNull { kotlin.math.abs(it.key - idx) }
+                ?.let { s.chunks.remove(it.key, it.value) }
         }
         dropColdStreams()
         return future
@@ -176,9 +199,10 @@ object VideoChunkProxy {
      * A chunk that fails is re-requested with backoff instead of ending the response: a short body looks like
      * end of file to mpv and freezes playback until the next seek.
      */
-    private fun chunkBytes(s: Stream, idx: Int): ByteArray {
+    private fun chunkBytes(s: Stream, idx: Int, gen: Long): ByteArray {
         var failure: Throwable? = null
         for (retry in 0 until RetryBackoff.MAX_ATTEMPTS) {
+            if (s.readGen != gen) throw IOException("chunk $idx: read superseded")
             try {
                 return chunk(s, idx).get(30, TimeUnit.SECONDS)
             } catch (e: Exception) {
@@ -207,12 +231,15 @@ object VideoChunkProxy {
             val total = end - start + 1
             if (ex.requestMethod == "HEAD") { ex.responseHeaders.add("Content-Length", total.toString()); ex.sendResponseHeaders(if (partial) 206 else 200, -1); return }
             ex.sendResponseHeaders(if (partial) 206 else 200, total)
+            val gen = s.startRead(start)
             ex.responseBody.use { out ->
                 var pos = start
                 while (pos <= end) {
+                    // mpv moved on (seek): stop feeding this response instead of prefetching for a position nobody reads.
+                    if (s.readGen != gen) break
                     val idx = s.layout.indexOf(pos)
                     for (k in 1..AHEAD) if (idx + k < s.layout.count) chunk(s, idx + k)
-                    val bytes = chunkBytes(s, idx)
+                    val bytes = chunkBytes(s, idx, gen)
                     val off = (pos - s.layout.start(idx)).toInt()
                     val n = minOf((bytes.size - off).toLong(), end - pos + 1).toInt()
                     out.write(bytes, off, n)
