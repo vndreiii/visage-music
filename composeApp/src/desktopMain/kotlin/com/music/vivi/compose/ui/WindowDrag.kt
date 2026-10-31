@@ -98,7 +98,9 @@ internal fun isXWayland(): Boolean =
 /** Starts a compositor / WM driven window move. Returns true when one was started (it then owns the pointer). */
 internal object WindowMover {
     fun begin(window: Window): Boolean {
-        val started = jbrMove(window) || (!isXWayland() && X11WindowMove.begin(window))
+        // Under XWayland both compositor-driven paths (JBR's X11 move service, _NET_WM_MOVERESIZE) are silently ignored by
+        // Hyprland, so the move is done manually there. Native Wayland (WLToolkit) can only use JBR.
+        val started = !isXWayland() && (jbrMove(window) || X11WindowMove.begin(window))
         // The compositor now owns the pointer and will not send us the button release; tell Compose it happened.
         if (started) SwingUtilities.invokeLater { releaseButton(window) }
         return started

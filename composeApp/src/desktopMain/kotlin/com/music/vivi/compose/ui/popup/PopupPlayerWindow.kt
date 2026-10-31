@@ -12,6 +12,7 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInWindow
 import com.music.vivi.compose.ui.visageWindowDragModifier
+import com.music.vivi.compose.ui.VisageWindowDragArea
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -148,7 +149,10 @@ fun PopupPlayerHost(controller: PlaybackController, prefs: DesktopPrefs, icon: P
                                 },
                                 onClose = PopupPlayer::close,
                             )
-                            PopupPlayerContent(Modifier.weight(1f))
+                            PopupPlayerContent(
+                                Modifier.weight(1f),
+                                dragArea = if (HostOs.isLinux) { m, c -> VisageWindowDragArea(m, c) } else NoPopupDragArea,
+                            )
                         }
                         ResizeEdges(window)
                     }
