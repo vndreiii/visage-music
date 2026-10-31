@@ -266,9 +266,12 @@ private fun NowPlayingFullscreenContent(
     }
 
     // Opens the way it was left; the first time it follows "Show lyrics by default" (on unless turned off).
-    var showLyrics by remember { mutableStateOf(prefs.getBoolean(FullscreenKeys.LyricsOpen, cfg.lyricsByDefault)) }
+    var lyricsOn by remember { mutableStateOf(prefs.getBoolean(FullscreenKeys.LyricsOpen, cfg.lyricsByDefault)) }
+    // Lyrics the user wants, minus tracks the lookup found nothing for (the saved toggle is left alone).
+    val showLyrics = lyricsOn && !com.music.vivi.compose.ui.player.lyrics.LyricsAvailability.isNone(nowPlaying?.videoId)
     fun setLyrics(open: Boolean) {
-        showLyrics = open
+        if (open && lyricsOn && !showLyrics) { com.music.vivi.compose.ui.player.lyrics.LyricsAvailability.noneFor = null; return } // retry
+        lyricsOn = open
         prefs.setBoolean(FullscreenKeys.LyricsOpen, open)
     }
     com.music.vivi.compose.keys.ShortcutEventEffect { e ->

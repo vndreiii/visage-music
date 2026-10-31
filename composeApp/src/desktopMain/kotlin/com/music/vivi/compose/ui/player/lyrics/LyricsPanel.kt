@@ -138,6 +138,16 @@ internal fun lyricsAccent(mode: LyricsAccent): Color {
 }
 
 /**
+ * Which track the lyrics lookup came back empty for (not found or failed). Now Playing and the fullscreen player hide
+ * the lyrics UI for that track (`showLyrics && !LyricsAvailability.isNone(videoId)`) without touching the user's toggle.
+ * Toggling the lyrics button clears it, so the lookup is tried again.
+ */
+object LyricsAvailability {
+    var noneFor by androidx.compose.runtime.mutableStateOf<String?>(null)
+    fun isNone(videoId: String?) = videoId != null && noneFor == videoId
+}
+
+/**
  * Lyrics over the player backdrop: per-word karaoke sync, glow, springy focus, optional background.
  * All look & feel comes from [DesktopPrefs] (Settings -> Now Playing -> Lyrics) and applies live.
  */
@@ -233,14 +243,16 @@ fun LyricsPanel(
         loading = false
         result.onSuccess { raw ->
             parsed = withContext(Dispatchers.Default) { LyricsParser.parse(raw) }
-            if (parsed.lines.isEmpty()) error = "No lyrics found"
+            if (parsed.lines.isEmpty()) { error = "No lyrics found"; LyricsAvailability.noneFor = track.videoId }
             else fetched?.let { f ->
                 withContext(Dispatchers.IO) { runCatching { cache.putLyrics(track.videoId, f.provider.name, f.text) } }
             }
         }.onFailure {
             error = it.message ?: "Lyrics lookup failed"
             parsed = ParsedLyrics.Empty
+            LyricsAvailability.noneFor = track.videoId
         }
+        if (error == null) LyricsAvailability.noneFor = null
     }
 
     // Romanization / translation under each line, filled in after the lyrics load (offline kana/Hangul first).

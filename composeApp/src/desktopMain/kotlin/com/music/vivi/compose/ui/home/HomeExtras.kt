@@ -4,6 +4,7 @@ import androidx.compose.ui.input.pointer.isSecondaryPressed
 import androidx.compose.ui.input.pointer.onPointerEvent
 import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -71,24 +72,36 @@ internal fun HomeHeader(
     onHistory: () -> Unit,
 ) {
     val greeting = remember { greetingFor(LocalTime.now()) }
-    Column(Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 4.dp)) {
+    val compact = com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth
+    Column(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp)) {
         Text(
             if (name.isNullOrBlank()) greeting else "$greeting, ${name.substringBefore(' ')}",
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
             overflow = TextOverflow.Clip,
-            modifier = Modifier.visageMarquee(),
+            modifier = Modifier.padding(horizontal = 20.dp).visageMarquee(),
         )
         Spacer(Modifier.height(12.dp))
-        androidx.compose.foundation.layout.FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        val pills: @Composable () -> Unit = {
             ShortcutPill(Icons.Outlined.NewReleases, "New releases", onNewReleases)
             ShortcutPill(Icons.AutoMirrored.Outlined.TrendingUp, "Charts", onCharts)
             ShortcutPill(Icons.Outlined.Mood, "Moods & genres", onMoods)
             ShortcutPill(Icons.Outlined.History, "History", onHistory)
+        }
+        if (compact) {
+            // Phones: one row that scrolls sideways, like the mood chips below.
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState())
+                    .padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) { pills() }
+        } else {
+            androidx.compose.foundation.layout.FlowRow(
+                Modifier.padding(horizontal = 20.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) { pills() }
         }
     }
 }

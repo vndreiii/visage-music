@@ -156,7 +156,9 @@ fun FrameWindowScope.VisageTopBar(
                             WindowCaptionButton(
                                 icon = if (navMenuOpen) Icons.Rounded.Close else Icons.Rounded.Menu,
                                 description = if (navMenuOpen) "Close menu" else "Menu",
+                                iconSize = 27.dp,
                             ) { onNavMenuToggle() }
+                            Spacer(Modifier.width(if (layout.isMobile) 12.dp else 8.dp))
                         }
                         TopBarBrand(
                             title = currentLabel,
@@ -650,7 +652,7 @@ private fun WindowCaptionButton(
     ) {
         // Fixed slot so restore/maximize glyphs never shift baseline
         Box(
-            modifier = Modifier.size(CaptionIconSlot),
+            modifier = Modifier.size(maxOf(CaptionIconSlot, iconSize)),
             contentAlignment = Alignment.Center,
         ) {
             Icon(

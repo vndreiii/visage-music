@@ -298,11 +298,17 @@ private fun NowPlayingScreenContent(
     )
     val canvasSquareUrl = if (trackVideo != null) null else CanvasResolver.squareUrl(canvasArt)
     val canvasTallUrl = if (trackVideo != null) null else CanvasResolver.tallUrl(canvasArt)
-    var showLyrics by remember { mutableStateOf(com.music.vivi.nativelib.AppEnv.flag("DEV_LYRICS")) } // DEV_LYRICS: dev aid
+    var lyricsOn by remember { mutableStateOf(com.music.vivi.nativelib.AppEnv.flag("DEV_LYRICS")) } // DEV_LYRICS: dev aid
+    // Lyrics the user wants, minus tracks the lookup found nothing for (their toggle is left alone).
+    val showLyrics = lyricsOn && !com.music.vivi.compose.ui.player.lyrics.LyricsAvailability.isNone(nowPlaying?.videoId)
+    fun toggleLyrics() {
+        if (lyricsOn && !showLyrics) com.music.vivi.compose.ui.player.lyrics.LyricsAvailability.noneFor = null // retry
+        else lyricsOn = !lyricsOn
+    }
     var showTrackActions by remember { mutableStateOf(false) }
     com.music.vivi.compose.keys.ShortcutEventEffect { e ->
         when (e) {
-            com.music.vivi.compose.keys.ShortcutEvent.ToggleLyrics -> showLyrics = !showLyrics
+            com.music.vivi.compose.keys.ShortcutEvent.ToggleLyrics -> toggleLyrics()
             com.music.vivi.compose.keys.ShortcutEvent.ShowTrackActions -> showTrackActions = !showTrackActions
             else -> Unit
         }
@@ -519,7 +525,7 @@ private fun NowPlayingScreenContent(
                                 label = "npLyrics",
                             ) {
                                 LyricsPanel(
-                                    onClose = { showLyrics = false },
+                                    onClose = { lyricsOn = false },
                                     modifier = Modifier
                                         .fillMaxSize()
                                         .padding(end = 8.dp),
@@ -637,7 +643,7 @@ private fun NowPlayingScreenContent(
                                 else -> underPlaybarOpen = !underPlaybarOpen
                             }
                         },
-                        onLyrics = { showLyrics = !showLyrics },
+                        onLyrics = { toggleLyrics() },
                         onShuffle = { controller.toggleShuffle() },
                         onRepeat = { controller.cycleRepeatMode() },
                         onFullscreen = {
