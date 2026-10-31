@@ -11,10 +11,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertTextEquals
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.runComposeUiTest
 import androidx.compose.ui.unit.dp
 import kotlin.test.Test
+import kotlin.test.assertEquals
+import kotlin.test.assertTrue
 
 class PopupLayoutUiTest {
     @Composable
@@ -64,5 +67,26 @@ class PopupLayoutUiTest {
     @Test fun widerButTooSmallStaysStacked() = runComposeUiTest {
         setContent { Sized(480, 340) }
         onNodeWithTag("popup-stack").assertIsDisplayed()
+    }
+
+    @Test fun landscapeLyricsFillWholeRightSideAndLeftColumnIsFixed() = runComposeUiTest {
+        for (w in listOf(760, 1000)) {
+            setContent { Sized(w, 500) }
+            val lyrics = onNodeWithTag("popup-lyrics").getBoundsInRoot()
+            assertEquals(0f, lyrics.top.value, 0.5f)
+            assertEquals(500f, lyrics.bottom.value, 0.5f)
+            assertEquals(w.toFloat(), lyrics.right.value, 0.5f)
+            // Controls sit under the art in the left column, not under the lyrics.
+            val controls = onNodeWithTag("controls").getBoundsInRoot()
+            assertTrue(controls.right.value <= lyrics.left.value + 0.5f)
+            assertTrue(controls.top.value > onNodeWithTag("art").getBoundsInRoot().bottom.value - 0.5f)
+        }
+        setContent { Sized(1000, 500) }
+        assertEquals(330f, onNodeWithTag("popup-lyrics").getBoundsInRoot().left.value, 0.5f)
+    }
+
+    @Test fun landscapeShortWindowKeepsArtVisible() = runComposeUiTest {
+        setContent { Sized(520, 340) }
+        assertTrue(onNodeWithTag("art").getBoundsInRoot().let { it.bottom.value - it.top.value } > 60f)
     }
 }
