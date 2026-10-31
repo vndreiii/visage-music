@@ -18,7 +18,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material.icons.outlined.BugReport
 import androidx.compose.material.icons.outlined.Download
@@ -123,7 +122,7 @@ fun FrameWindowScope.VisageTopBar(
         tonalElevation = if (glass) 0.dp else 2.dp,
         color = if (glass) Color.Transparent else MaterialTheme.colorScheme.surface,
     ) {
-        WindowDraggableArea {
+        VisageWindowDragArea {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -170,8 +169,11 @@ fun FrameWindowScope.VisageTopBar(
                         windowState.isMinimized = true
                     }
                     val manualMax = com.music.vivi.nativelib.HostOs.isWindows
-                    // Reading size/position makes this recompose when the window is moved or resized.
-                    @Suppress("UNUSED_VARIABLE") val geometry = windowState.size to windowState.position
+                    // Windows only: reading size/position recomposes on move/resize so isMaximized(window) refreshes.
+                    // Elsewhere this would recompose the whole bar on every pixel of a window drag.
+                    if (manualMax) {
+                        @Suppress("UNUSED_VARIABLE") val geometry = windowState.size to windowState.position
+                    }
                     val maximized = if (manualMax) {
                         com.music.vivi.compose.WindowMaximize.isMaximized(window)
                     } else {
