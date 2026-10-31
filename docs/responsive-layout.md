@@ -43,12 +43,20 @@ Rules of thumb:
 ## Already done
 
 * Top bar: below Desktop the tabs collapse into a hamburger menu; logo hidden on Mobile; title ellipsizes.
-* `AppScaffold`: on compact windows the pinned queue opens as the bottom tray and the library sidebar is a modal overlay
-  (toggle button / Ctrl+Shift+L); docked beside the page on Desktop and up.
+* `AppScaffold`: on compact windows the pinned queue opens as the bottom tray (the Home auto-open queue never does) and the
+  library sidebar is a modal overlay (toggle button / Ctrl+Shift+L); docked beside the page on Desktop and up. On Large and
+  UltraWide windows every page except Now Playing is centred and capped at `contentMaxWidth`.
 * Now Playing: stacked (media on top, controls, tools row) in narrow panes; side by side otherwise; cover | lyrics |
-  controls when lyrics are open on ultra wide panes; controls column capped on Large. Fullscreen player: tighter paddings,
-  lyrics replace the cover on narrow screens, the queue overlay fills the width.
+  controls when lyrics are open on ultra wide panes; cover and controls column capped on Large. Fullscreen player: tighter
+  paddings and a stacked fallback (cover above, lyrics/controls below).
+* Pages: Home header chips wrap; Library header/tab actions wrap, liked lists stack; Charts (no podium on phones, compact rows);
+  Moods (1 column on phones); New releases / Browse / Artist items grids use a smaller cell on compact; `DetailPageHeader`
+  puts its trailing search field on its own row on phones; Tag Manager (edit panel covers the list on compact); mini player
+  (fewer buttons on phones, edge style spans the width); What's new dialog scrolls and uses smaller margins on phones.
+* Settings pages were already a single capped column (760dp) with back navigation.
 
-## To do (per page)
+## Testing
 
-Home, Search, Library, Settings, Album/Artist/Playlist, Charts, Moods, Tag manager: all still use fixed widths/columns.
+`VISAGE_WINDOW_SIZE=390x844 VISAGE_DEV_ROUTE=library VISAGE_DEV_NAVFILE=/tmp/nav.txt ./run-dev.sh` under Xvfb, then `echo charts_screen > /tmp/nav.txt`
+navigates. Resize with `xdotool windowsize`; software rendering at 2K+ takes 20-40 s to settle, so start large sizes
+with `VISAGE_WINDOW_SIZE` instead of resizing into them.

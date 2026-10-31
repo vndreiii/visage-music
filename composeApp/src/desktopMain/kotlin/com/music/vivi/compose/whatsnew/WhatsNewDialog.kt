@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -100,7 +101,7 @@ fun WhatsNewDialog(visible: Boolean, releases: List<WhatsNewRelease>, onDismiss:
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 shadowElevation = 16.dp,
                 modifier = Modifier
-                    .padding(24.dp)
+                    .padding(if (com.music.vivi.compose.ui.responsive.windowLayout().isMobile) 10.dp else 24.dp)
                     .widthIn(max = 760.dp)
                     .heightIn(max = 760.dp)
                     .fillMaxWidth()
@@ -169,7 +170,8 @@ private fun Header(version: String, page: Int, count: Int, onClose: () -> Unit) 
 
 @Composable
 private fun FeaturePageContent(page: FeaturePage, active: Boolean) {
-    Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
+    // Scrolls: in a short window the page is taller than the dialog.
+    Column(Modifier.fillMaxWidth().verticalScroll(androidx.compose.foundation.rememberScrollState()).padding(horizontal = 24.dp, vertical = 12.dp)) {
         WhatsNewVideo(
             version = page.version,
             feature = page.feature,
@@ -204,7 +206,7 @@ private fun ChangelogPage(releases: List<WhatsNewRelease>) {
         releases.flatMap { r -> listOf<ChangeRow>(ChangeRow.Version(r.version)) + r.changes.map { ChangeRow.Entry(it) } }
     }
     LazyColumn(
-        Modifier.fillMaxWidth().heightIn(min = 360.dp, max = 560.dp).padding(horizontal = 24.dp),
+        Modifier.fillMaxWidth().heightIn(max = 560.dp).padding(horizontal = 24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         items(rows) { row ->

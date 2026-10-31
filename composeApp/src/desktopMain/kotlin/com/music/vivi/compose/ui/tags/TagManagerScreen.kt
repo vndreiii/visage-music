@@ -152,6 +152,15 @@ fun TagManagerScreen(navController: NavController) {
                             actionLabel = "Manage folders",
                             onAction = { navController.navigate(com.music.vivi.compose.navigation.Routes.SETTINGS_LOCAL_OFFLINE) },
                         )
+                        com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth -> Box(Modifier.fillMaxSize()) {
+                            // Narrow windows: the edit panel covers the list while something is selected.
+                            TrackBrowser(state, Modifier.fillMaxSize())
+                            if (state.selection.ids.isNotEmpty()) {
+                                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surface) {
+                                    Box(Modifier.fillMaxSize().padding(end = 8.dp, start = 8.dp, bottom = 8.dp)) { SidePanel(state) }
+                                }
+                            }
+                        }
                         else -> Row(Modifier.fillMaxSize()) {
                             TrackBrowser(state, Modifier.weight(1f).fillMaxHeight())
                             val open = state.selection.ids.isNotEmpty()
@@ -193,7 +202,18 @@ private fun Toolbar(state: TagManagerState) {
     val needy = remember(visible) { visible.filter { TagHealth.of(it).any } }
     Column(Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         // The search field takes the height of the grouping selector, so the two sit flush in one row.
-        Row(
+        if (com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                SearchField(state.query, { state.query = it }, Modifier.fillMaxWidth())
+                ConnectedButtonGroup(
+                    options = TagGrouping.entries.map { it to it.label },
+                    selected = state.grouping,
+                    onSelect = { state.grouping = it },
+                    size = ExpressiveSize.Small,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        } else Row(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
