@@ -62,7 +62,8 @@ sealed interface SyncAction {
 data class SyncDecision(val action: SyncAction, val videoPaused: Boolean)
 
 object VideoSync {
-    const val DRIFT_SEC = 0.25
+    /** Wider than a frame or two on purpose: each correcting seek re-fetches and stutters, so small drift is tolerated. */
+    const val DRIFT_SEC = 0.4
     /** While paused, only correct larger gaps so a scrub shows the right frame. */
     const val PAUSED_DRIFT_SEC = 0.5
 

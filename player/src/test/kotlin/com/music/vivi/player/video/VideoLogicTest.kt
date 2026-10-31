@@ -25,7 +25,8 @@ class VideoLogicTest {
 
     @Test fun driftDecisions() {
         assertEquals(SyncAction.None, VideoSync.decide(10.0, 10.1, true).action)
-        assertEquals(SyncAction.Seek(10.0), VideoSync.decide(10.0, 10.4, true).action)
+        assertEquals(SyncAction.None, VideoSync.decide(10.0, 10.3, true).action)
+        assertEquals(SyncAction.Seek(10.0), VideoSync.decide(10.0, 10.5, true).action)
         assertEquals(SyncAction.Seek(5.0), VideoSync.decide(5.0, 1.0, true).action)
         assertEquals(SyncAction.None, VideoSync.decide(10.0, 10.4, false).action)
         assertTrue(VideoSync.decide(10.0, 10.0, false).videoPaused)

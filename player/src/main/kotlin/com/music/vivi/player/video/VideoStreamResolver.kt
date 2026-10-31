@@ -36,8 +36,15 @@ object VideoStreamResolver {
             if (viaYtDlp != null && viaYtDlp.height > (picked?.height ?: 0)) viaYtDlp else picked
         }
         // Serve it to mpv through the chunking proxy (see VideoChunkProxy) instead of a throttled open read.
-        best?.copy(url = VideoChunkProxy.wrap(best.url, best.httpHeaders))
+        best?.let { b ->
+            b.copy(url = VideoChunkProxy.wrap(b.url, b.httpHeaders, refresh = { length -> refreshedUrl(videoId, b.height, length) }))
+        }
     }
+
+    /** A fresh URL for [videoId] at [height] with the same byte length (for an expired one), or null. */
+    private fun refreshedUrl(videoId: String, height: Int, length: Long): String? =
+        NewPipeExtractor.videoStreams(videoId)
+            .firstOrNull { it.height == height && UrlExpiry.contentLength(it.url) == length }?.url
 
     /** Auto: probe the CDN with the smallest stream NewPipe found; without a measurement assume a middling link. */
     private fun autoCap(candidates: List<VideoStreamCandidate>): VideoQuality {

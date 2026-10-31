@@ -56,6 +56,8 @@ class MpvVideoRenderer(
     private val startSec: Double = 0.0,
     /** Already-played data kept for seeks back; canvas loops want the whole clip, music videos need little. */
     backCacheMiB: Int = 96,
+    /** Music video read through the chunk proxy: read further ahead and reconnect dropped HTTP reads. */
+    networkStream: Boolean = false,
 ) : AutoCloseable {
     @Volatile var maxEdge: Int = maxEdge
     private val lib = MpvLib.INSTANCE
@@ -102,6 +104,15 @@ class MpvVideoRenderer(
         opt("demuxer-seekable-cache", "yes")
         opt("cache-secs", "120")
         opt("hr-seek", "yes")
+        if (networkStream) {
+            // Keep reading ahead of the playhead so one slow chunk does not drain the buffer, and only pause
+            // for cache once it has really run dry (after 2 s of refill).
+            opt("demuxer-readahead-secs", "20")
+            opt("cache-pause-wait", "2")
+            opt("network-timeout", "15")
+            // Reconnect a dropped HTTP read instead of letting a short body end the stream as EOF.
+            opt("stream-lavf-o", "reconnect=1,reconnect_streamed=1,reconnect_delay_max=2")
+        }
         if (startSec > 0.0) opt("start", startSec.toString())
         httpHeaders["Referer"]?.let { opt("referrer", it) }
         // Canvas HLS ladders go up to 4K HEVC; cap so software scaling stays cheap.

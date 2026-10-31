@@ -48,6 +48,7 @@ import com.music.vivi.player.mpv.FrameSink
 import com.music.vivi.player.mpv.MpvVideoRenderer
 import com.music.vivi.player.mpv.PixelTarget
 import com.music.vivi.player.video.MusicVideoResolver
+import com.music.vivi.player.video.QualityStepDown
 import com.music.vivi.player.video.ResolvedVideo
 import com.music.vivi.player.video.SyncAction
 import com.music.vivi.player.video.VideoQuality
@@ -73,10 +74,12 @@ fun rememberTrackVideo(track: NowPlaying?): ResolvedVideo? {
     val quality = VideoQuality.parse(prefs.getString(PrefKeys.PlayerVideoQuality, VideoQuality.AUTO.name))
     val id = track?.videoId
     val eligible = enabled && VisualChain.hasVideoCandidate(id, track?.localPath)
+    // Bumped when a stall step-down swaps the stream, which re-resolves the track at the lower quality.
+    val revision by MusicVideoResolver.revision.collectAsState()
     // Seeded from the resolver cache so a second view of the same track (fullscreen) shows the video at once.
     val state = produceState(
         if (eligible && id != null) MusicVideoResolver.cached(id, quality) else null,
-        id, eligible, quality,
+        id, eligible, quality, revision,
     ) {
         if (!eligible || id == null) { value = null; return@produceState }
         val hit = MusicVideoResolver.cached(id, quality)
@@ -197,6 +200,7 @@ fun MusicVideoSurface(
                     startHeld = !playing,
                     startSec = controller.positionMs.value / 1000.0,
                     backCacheMiB = 24,
+                    networkStream = true,
                 )
             }.onFailure { System.err.println("MusicVideo: ${it.message}") }.getOrNull()
             SharedVideo(sink, r)
@@ -228,6 +232,9 @@ fun MusicVideoSurface(
         var consecutiveSeeks = 0
         var lastFrames = sink.framesRendered
         var lastFrameAt = System.nanoTime()
+        // Stalls that began while a frame was showing, as wall-clock ms, for the quality step-down.
+        val stalls = ArrayDeque<Long>()
+        var stallOpen = false
         var statAt = System.nanoTime()
         var statFrames = sink.framesRendered
         while (true) {
@@ -248,8 +255,18 @@ fun MusicVideoSurface(
             r.setPaused(decision.videoPaused)
             val action = decision.action
             val frames = sink.framesRendered
-            if (frames != lastFrames) { lastFrames = frames; lastFrameAt = now }
+            if (frames != lastFrames) { lastFrames = frames; lastFrameAt = now; stallOpen = false }
             val stalledNs = now - lastFrameAt
+            if (!stallOpen && sink.frame != null && !decision.videoPaused && stalledNs > 1_000_000_000L) {
+                stallOpen = true
+                stalls.addLast(System.currentTimeMillis())
+            }
+            val nowMs = System.currentTimeMillis()
+            while (stalls.isNotEmpty() && nowMs - stalls.first() > QualityStepDown.WINDOW_MS) stalls.removeFirst()
+            // Repeated stalls: step the quality down one level. The re-resolved stream replaces this renderer.
+            if (QualityStepDown.shouldStepDown(stalls, nowMs) && MusicVideoResolver.stepDown(video.videoId, video.height)) {
+                stalls.clear()
+            }
             // Seeking a stream that is still buffering restarts the download and makes the lag worse (stutter
             // loop), so seek only while frames are flowing, and back off exponentially when seeks keep recurring.
             val cooldownNs = minOf(10_000_000_000L, 700_000_000L shl consecutiveSeeks.coerceAtMost(4))
