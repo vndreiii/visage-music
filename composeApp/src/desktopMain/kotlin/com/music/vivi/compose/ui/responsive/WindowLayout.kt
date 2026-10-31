@@ -125,11 +125,18 @@ fun ProvideWindowLayout(width: Dp, height: Dp, content: @Composable () -> Unit) 
 
 /** Provide the layout of the window this composition is in (from its container size). Call once, near the root. */
 @Composable
-fun ProvideWindowLayoutFromWindow(content: @Composable () -> Unit) {
+fun ProvideWindowLayoutFromWindow(
+    /** Used until the window reports its size (first frame), e.g. `windowState.size`. */
+    fallback: androidx.compose.ui.unit.DpSize? = null,
+    content: @Composable () -> Unit,
+) {
     val size = LocalWindowInfo.current.containerSize
     val density = LocalDensity.current
-    val layout = remember(size, density.density) {
-        if (size.width <= 0 || size.height <= 0) windowLayoutOf(1280.dp, 800.dp)
+    val layout = remember(size, density.density, fallback) {
+        if (size.width <= 0 || size.height <= 0) {
+            if (fallback != null && fallback.width.value > 0f && fallback.height.value > 0f) windowLayoutOf(fallback.width, fallback.height)
+            else windowLayoutOf(1280.dp, 800.dp)
+        }
         else windowLayoutOf((size.width / density.density).dp, (size.height / density.density).dp)
     }
     CompositionLocalProvider(LocalWindowLayout provides layout, content = content)

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -166,7 +167,11 @@ fun FrameWindowScope.AppScaffold(
     val queueTrayOn = fullscreenQueue || (pinnedQueue && compact)
     // The rail that opened itself on Home stays when you navigate (Search, Library, ...): it only goes when closed.
     // (Never on compact windows: the auto-open queue must not pop a modal tray.)
-    LaunchedEffect(queueAuto, compact) { if (queueAuto && !compact) pinnedQueue = true }
+    // The first frame can report a default window size; if the rail was auto-opened before we knew the window is
+    // compact, take it back (an explicit open by the user is never undone).
+    var autoPinned by remember { mutableStateOf(false) }
+    LaunchedEffect(queueAuto, compact) { if (queueAuto && !compact) { pinnedQueue = true; autoPinned = true } }
+    LaunchedEffect(compact) { if (compact && autoPinned) { pinnedQueue = false; autoPinned = false } }
     fun closePinnedQueue() {
         pinnedQueue = false
         if (sidebarCfg.queueOnHome) queueDismissedOnHome = true
@@ -400,7 +405,11 @@ fun FrameWindowScope.AppScaffold(
                     }
                 },
             ) {
-                Box(Modifier.weight(1f).fillMaxSize().trackMainPane()) {
+                // Large / ultra wide windows: pages keep a readable width and sit centred instead of stretching edge to edge.
+                // (Now Playing lays itself out; compact windows are unbounded.)
+                val pageCap = windowLayout.contentMaxWidth
+                val capPages = !onNowPlaying && pageCap.value.isFinite()
+                Box(Modifier.weight(1f).fillMaxSize().trackMainPane(), contentAlignment = Alignment.TopCenter) {
                     VisageNavHost(
                         navController = navController,
                         startDestination = com.music.vivi.nativelib.AppEnv.get("DEV_ROUTE") ?: if (sessionManager.isLoggedIn()) Routes.HOME else Routes.LIBRARY,
@@ -408,7 +417,8 @@ fun FrameWindowScope.AppScaffold(
                         onOpenFullscreenQueue = { openFullscreenQueue() },
                         queueOpen = queueRailOn || queueTrayOn,
                         onCloseQueue = { closePinnedQueue(); fullscreenQueue = false },
-                        modifier = Modifier.fillMaxSize().nestedScroll(backdropNested).glassSource(glassState),
+                        modifier = (if (capPages) Modifier.fillMaxHeight().widthIn(max = pageCap).fillMaxWidth() else Modifier.fillMaxSize())
+                            .nestedScroll(backdropNested).glassSource(glassState),
                     )
                 }
             }

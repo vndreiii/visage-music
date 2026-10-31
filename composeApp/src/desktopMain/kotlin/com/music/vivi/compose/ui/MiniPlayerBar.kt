@@ -247,10 +247,13 @@ private fun MiniPlayerBarContent(
         MiniPlayerStyle.FLOATING_PILL -> RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp, bottomStart = 0.dp, bottomEnd = 0.dp)
         MiniPlayerStyle.COMPACT_EDGE -> RoundedCornerShape(20.dp)
     }
+    // Phones: fewer buttons so the title keeps room; the edge style spans the width instead of 42% of it.
+    val layoutClass = com.music.vivi.compose.ui.responsive.windowLayout()
+    val phone = layoutClass.isMobile
     val surfaceWidth = when (miniStyle) {
         MiniPlayerStyle.FULL_WIDTH_BAR -> Modifier.fillMaxWidth()
         MiniPlayerStyle.FLOATING_PILL -> Modifier.widthIn(max = 720.dp).fillMaxWidth()
-        MiniPlayerStyle.COMPACT_EDGE -> Modifier.widthIn(max = 360.dp).fillMaxWidth(0.42f)
+        MiniPlayerStyle.COMPACT_EDGE -> if (layoutClass.isCompactWidth) Modifier.fillMaxWidth() else Modifier.widthIn(max = 360.dp).fillMaxWidth(0.42f)
     }
     val elevation = when (miniStyle) {
         MiniPlayerStyle.FULL_WIDTH_BAR -> 4.dp
@@ -373,7 +376,7 @@ private fun MiniPlayerBarContent(
                             }
                         }
 
-                        if (miniStyle != MiniPlayerStyle.COMPACT_EDGE) {
+                        if (miniStyle != MiniPlayerStyle.COMPACT_EDGE && !phone) {
                             IconButton(
                                 onClick = { if (interactive) controller.previous() },
                                 enabled = interactive && (canPrev || track != null),
@@ -404,7 +407,7 @@ private fun MiniPlayerBarContent(
                         ) {
                             Icon(Icons.Filled.SkipNext, "Next", tint = ink.text())
                         }
-                        if (miniStyle != MiniPlayerStyle.COMPACT_EDGE) {
+                        if (miniStyle != MiniPlayerStyle.COMPACT_EDGE && !phone) {
                             Box {
                                 IconButton(onClick = { if (interactive) showAudioOutput = true }) {
                                     Icon(

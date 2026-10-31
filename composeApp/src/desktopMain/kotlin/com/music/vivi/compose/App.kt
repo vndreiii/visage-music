@@ -120,7 +120,7 @@ fun FrameWindowScope.App(
                 shape = if (osFullscreen) RectangleShape else windowShape,
                 color = MaterialTheme.colorScheme.background,
             ) {
-                com.music.vivi.compose.ui.responsive.ProvideWindowLayoutFromWindow {
+                com.music.vivi.compose.ui.responsive.ProvideWindowLayoutFromWindow(fallback = windowState.size) {
                     AppScaffold(
                         windowState = windowState,
                         onClose = onClose,
