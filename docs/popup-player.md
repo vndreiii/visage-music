@@ -5,9 +5,12 @@ shortcuts -> Player views). It is a second Compose `Window` in the same `applica
 `PlaybackController`. Closing it only hides it; closing the main window exits the app and takes it down.
 
 Layout is aspect driven (`PopupGeometry.modeFor`): portrait/square shows art, title/artist/album, seek bar, prev /
-play-pause / next and a volume slider. A window at least 520 px wide and 1.3x wider than tall also shows the lyrics
-panel (the same `LyricsPanel` Now Playing uses) beside art + info, with the transport strip underneath. Below 430 px of
-height the album line and volume row drop out so art keeps room. Size is clamped to 280x340 .. 1100x900.
+play-pause / next and a volume slider. A window at least 520 px wide and 1.3x wider than tall switches to landscape: a fixed-width player column on the left
+(46% of the width, capped 264..330 dp: cover, title/artist/album, seek, transport, volume) and the lyrics (the same
+`LyricsPanel` Now Playing uses) filling the entire right side, top to bottom. In the popup the lyrics toolbar and delay
+pill fade out after ~1.2 s and show only while the pointer is over the lyrics. Below 430 px of height the album line
+and volume row drop out so art keeps room (the cover shrinks first). The art + info block is passed through a
+`dragArea` hook so the host window can make it the drag surface. Size is clamped to 280x340 .. 1100x900.
 
 Code: `composeApp/.../ui/popup/` (`PopupGeometry` pure logic, `PopupPlayerLayout` slots, `PopupPlayerContent`,
 `PopupPlayerWindow`, `WindowsPopupChrome`). Hooks elsewhere: one line in `alex.kt`, one enum entry + one branch in the

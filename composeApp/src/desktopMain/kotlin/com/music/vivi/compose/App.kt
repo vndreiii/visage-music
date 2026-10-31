@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.first
 import org.koin.compose.koinInject
 
 @Composable
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 fun FrameWindowScope.App(
     windowState: WindowState,
     onClose: () -> Unit,
