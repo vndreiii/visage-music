@@ -123,7 +123,7 @@ fun ArtistItemsScreen(
                 val smoothScroll1 = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
                 LazyVerticalGrid(
                     state = smoothScroll1,
-                    columns = GridCells.Adaptive(minSize = 180.dp),
+                    columns = GridCells.Adaptive(minSize = if (com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth) 150.dp else 180.dp),
                     contentPadding = PaddingValues(start = PageInset, end = PageInset, bottom = MiniPlayerClearance),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),

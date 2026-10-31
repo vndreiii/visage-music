@@ -111,7 +111,7 @@ fun BrowseScreen(
             loaded.isNullOrEmpty() -> PageEmptyState("Nothing here", "This page has no items.")
             else -> LazyVerticalGrid(
                 state = gridState,
-                columns = GridCells.Adaptive(minSize = 172.dp),
+                columns = GridCells.Adaptive(minSize = if (com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth) 150.dp else 172.dp),
                 contentPadding = PaddingValues(start = PageInset, end = PageInset, bottom = MiniPlayerClearance),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),

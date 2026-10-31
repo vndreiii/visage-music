@@ -43,8 +43,13 @@ fun DetailPageHeader(
     /** Optional control on the header row's right edge (e.g. a page search field), vertically centred with the title. */
     trailing: (@Composable () -> Unit)? = null,
 ) {
-    Row(
+    // Phones: the trailing control (search field ...) gets its own row under the title instead of crowding it out.
+    val stackTrailing = trailing != null && com.music.vivi.compose.ui.responsive.windowLayout().isMobile
+    androidx.compose.foundation.layout.Column(
         modifier.fillMaxWidth().padding(start = PageInset, end = PageInset, top = PageHeaderTopPadding, bottom = PageHeaderBottomPadding),
+    ) {
+    Row(
+        Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         com.music.vivi.compose.ui.component.VisageBackButton(onClick = onBack)
@@ -62,7 +67,12 @@ fun DetailPageHeader(
                 Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
-        trailing?.let { Spacer(Modifier.width(16.dp)); it() }
+        if (!stackTrailing) trailing?.let { Spacer(Modifier.width(16.dp)); it() }
+    }
+    if (stackTrailing) {
+        Spacer(Modifier.height(8.dp))
+        trailing?.invoke()
+    }
     }
 }
 

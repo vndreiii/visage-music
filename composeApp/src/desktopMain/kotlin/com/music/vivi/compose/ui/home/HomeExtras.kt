@@ -81,7 +81,10 @@ internal fun HomeHeader(
             modifier = Modifier.visageMarquee(),
         )
         Spacer(Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        androidx.compose.foundation.layout.FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             ShortcutPill(Icons.Outlined.NewReleases, "New releases", onNewReleases)
             ShortcutPill(Icons.AutoMirrored.Outlined.TrendingUp, "Charts", onCharts)
             ShortcutPill(Icons.Outlined.Mood, "Moods & genres", onMoods)

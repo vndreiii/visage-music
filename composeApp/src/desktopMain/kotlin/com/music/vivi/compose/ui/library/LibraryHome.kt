@@ -250,7 +250,7 @@ private fun SectionContainer(
             .padding(horizontal = 16.dp, vertical = 10.dp),
     ) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            val headerParts: @Composable () -> Unit = {
                 Box(
                     Modifier.size(36.dp).clip(CircleShape).background(
                         if (accent) MaterialTheme.colorScheme.tertiaryContainer else MaterialTheme.colorScheme.primaryContainer,
@@ -266,8 +266,23 @@ private fun SectionContainer(
                 if (badge != null) {
                     AssistChip(onClick = {}, label = { Text(badge, style = MaterialTheme.typography.labelMedium) })
                 }
-                Spacer(Modifier.weight(1f))
-                action?.invoke()
+            }
+            if (com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth) {
+                // Narrow: the action drops under the title instead of squeezing it.
+                androidx.compose.foundation.layout.FlowRow(
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    itemVerticalAlignment = Alignment.CenterVertically,
+                ) {
+                    headerParts()
+                    action?.invoke()
+                }
+            } else {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    headerParts()
+                    Spacer(Modifier.weight(1f))
+                    action?.invoke()
+                }
             }
             content()
         }

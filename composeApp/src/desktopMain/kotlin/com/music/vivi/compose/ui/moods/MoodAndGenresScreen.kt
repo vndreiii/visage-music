@@ -161,8 +161,8 @@ private fun MoodContent(
     val state = rememberLazyListState()
     val gap = 16.dp
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val cols = ((maxWidth - 40.dp) / 270.dp).toInt().coerceIn(2, 4)
-        val heroCount = if (maxWidth < 760.dp) 2 else 3
+        val cols = ((maxWidth - 40.dp) / 270.dp).toInt().coerceIn(if (maxWidth < 540.dp) 1 else 2, 4)
+        val heroCount = when { maxWidth < 480.dp -> 1; maxWidth < 760.dp -> 2; else -> 3 }
 
         val showHero = query.isEmpty() && filter != MoodFilter.Genres
         val heroes = remember(sections, showHero, heroCount) {

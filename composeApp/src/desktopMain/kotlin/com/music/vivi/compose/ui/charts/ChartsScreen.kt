@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -314,7 +315,11 @@ private fun ChartsContent(
             Spacer(Modifier.weight(1f))
             ChartCountryPicker(country, onCountry)
             Spacer(Modifier.width(8.dp))
-            ExpressiveButton(
+            if (com.music.vivi.compose.ui.responsive.windowLayout().isMobile) {
+                androidx.compose.material3.IconButton(onClick = onRefresh, enabled = !refreshing) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = "Refresh")
+                }
+            } else ExpressiveButton(
                 "Refresh", onClick = onRefresh, enabled = !refreshing, size = ExpressiveSize.Small, style = ExpressiveStyle.Tonal,
                 leadingIcon = Icons.Outlined.Refresh,
             )
@@ -438,19 +443,21 @@ private fun ChartList(
 ) {
     val state = rememberLazyListState()
     val podium = entries.take(3)
-    val rest = entries.drop(3)
     BoxWithConstraints(Modifier.fillMaxSize()) {
+        val rest = if (maxWidth < 600.dp) entries else entries.drop(3)
         val twoColumns = maxWidth >= 1150.dp
+        // Narrow panes (phones): no podium cards, every entry is a compact row.
+        val narrow = maxWidth < 600.dp
         LazyColumn(
             state = state,
-            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 140.dp),
+            contentPadding = PaddingValues(start = if (narrow) 12.dp else 24.dp, end = if (narrow) 12.dp else 24.dp, bottom = 140.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier.fillMaxSize().pageScrollEdge { state.edgeProgress() }.smoothWheelScroll(state),
         ) {
             item(key = "header") {
-                ChartHeader(tab, entries.size, onPlayAll, onShuffle, showButtons = tab !is ChartTab.Artists)
+                ChartHeader(tab, entries.size, onPlayAll, onShuffle, showButtons = tab !is ChartTab.Artists, narrow = narrow)
             }
-            if (podium.isNotEmpty()) item(key = "podium") {
+            if (podium.isNotEmpty() && !narrow) item(key = "podium") {
                 Podium(podium, playingId, isPlaying, onPlayEntry, onOpenEntry)
             }
             if (twoColumns) {
@@ -458,18 +465,18 @@ private fun ChartList(
                 items(half) { i ->
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         Box(Modifier.weight(1f)) {
-                            RankRow(rest[i], rest.size + 3, i, playingId, isPlaying, onPlayEntry, onOpenEntry, onOpenArtistName)
+                            RankRow(rest[i], rest.size + 3, i, playingId, isPlaying, onPlayEntry, onOpenEntry, onOpenArtistName, narrow = false)
                         }
                         Box(Modifier.weight(1f)) {
                             rest.getOrNull(i + half)?.let {
-                                RankRow(it, rest.size + 3, i, playingId, isPlaying, onPlayEntry, onOpenEntry, onOpenArtistName)
+                                RankRow(it, rest.size + 3, i, playingId, isPlaying, onPlayEntry, onOpenEntry, onOpenArtistName, narrow = false)
                             }
                         }
                     }
                 }
             } else {
                 itemsIndexed(rest, key = { _, e -> e.id + e.rank }) { i, e ->
-                    RankRow(e, rest.size + 3, i, playingId, isPlaying, onPlayEntry, onOpenEntry, onOpenArtistName)
+                    RankRow(e, rest.size + 3, i, playingId, isPlaying, onPlayEntry, onOpenEntry, onOpenArtistName, narrow = narrow)
                 }
             }
         }
@@ -477,7 +484,7 @@ private fun ChartList(
 }
 
 @Composable
-private fun ChartHeader(tab: ChartTab, count: Int, onPlayAll: () -> Unit, onShuffle: () -> Unit, showButtons: Boolean) {
+private fun ChartHeader(tab: ChartTab, count: Int, onPlayAll: () -> Unit, onShuffle: () -> Unit, showButtons: Boolean, narrow: Boolean = false) {
     val title = when (tab) {
         is ChartTab.Playlist -> tab.item.title
         is ChartTab.Songs -> tab.title
@@ -488,18 +495,21 @@ private fun ChartHeader(tab: ChartTab, count: Int, onPlayAll: () -> Unit, onShuf
         is ChartTab.Songs -> "YouTube Music chart  ·  $count tracks"
         is ChartTab.Artists -> "Ranked by subscribers  ·  $count artists"
     }
+    val buttons: @Composable () -> Unit = {
+        ExpressiveButton("Play", onClick = onPlayAll, size = ExpressiveSize.Small, leadingIcon = Icons.Filled.PlayArrow)
+        ExpressiveButton("Shuffle", onClick = onShuffle, size = ExpressiveSize.Small, style = ExpressiveStyle.Tonal, leadingIcon = Icons.Filled.Shuffle)
+    }
     Row(Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-        Box(Modifier.width(6.dp).height(64.dp).clip(RoundedCornerShape(3.dp)).background(MaterialTheme.colorScheme.primary))
-        Spacer(Modifier.width(16.dp))
+        Box(Modifier.width(6.dp).height(if (narrow) 88.dp else 64.dp).clip(RoundedCornerShape(3.dp)).background(MaterialTheme.colorScheme.primary))
+        Spacer(Modifier.width(if (narrow) 12.dp else 16.dp))
         Column(Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(title, style = if (narrow) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
             Text(sub, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 4.dp))
+            // Narrow: the buttons sit under the title instead of squeezing it.
+            if (showButtons && narrow) Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(top = 10.dp)) { buttons() }
         }
-        if (showButtons) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(start = 16.dp)) {
-                ExpressiveButton("Play", onClick = onPlayAll, size = ExpressiveSize.Small, leadingIcon = Icons.Filled.PlayArrow)
-                ExpressiveButton("Shuffle", onClick = onShuffle, size = ExpressiveSize.Small, style = ExpressiveStyle.Tonal, leadingIcon = Icons.Filled.Shuffle)
-            }
+        if (showButtons && !narrow) {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.padding(start = 16.dp)) { buttons() }
         }
     }
 }
@@ -638,6 +648,7 @@ private fun RankRow(
     onPlay: (ChartEntry) -> Unit,
     onOpen: (ChartEntry) -> Unit,
     onOpenArtistName: (String) -> Unit,
+    narrow: Boolean = false,
 ) {
     val appear = rememberAppear(index)
     val source = remember { MutableInteractionSource() }
@@ -668,12 +679,12 @@ private fun RankRow(
     ) {
         Text(
             e.rank.toString(),
-            modifier = Modifier.width(64.dp),
-            fontSize = 28.sp,
+            modifier = Modifier.width(if (narrow) 40.dp else 64.dp),
+            fontSize = if (narrow) 22.sp else 28.sp,
             fontWeight = FontWeight.Black,
             color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.85f),
         )
-        Box(Modifier.width(44.dp)) { MoveBadge(e.move) }
+        if (!narrow) Box(Modifier.width(44.dp)) { MoveBadge(e.move) }
         Box(Modifier.size(56.dp)) {
             CoverImage(
                 model = e.cover, seed = e.id, label = e.title,
@@ -689,7 +700,7 @@ private fun RankRow(
                 }
             }
         }
-        Spacer(Modifier.width(16.dp))
+        Spacer(Modifier.width(if (narrow) 10.dp else 16.dp))
         Column(Modifier.weight(1f)) {
             Text(
                 e.title,
@@ -714,7 +725,7 @@ private fun RankRow(
                 }
             }
         }
-        if (e.song != null) {
+        if (e.song != null && !narrow) {
             Box(
                 Modifier.padding(horizontal = 16.dp).width(110.dp).height(6.dp).clip(CircleShape)
                     .background(MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f)),
@@ -724,7 +735,9 @@ private fun RankRow(
                         .background(if (e.rank <= 10) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline),
                 )
             }
-            Text(e.duration, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(48.dp))
+        }
+        if (e.song != null) {
+            Text(e.duration, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, softWrap = false, modifier = Modifier.padding(start = if (narrow) 8.dp else 0.dp).widthIn(min = 48.dp))
         }
     }
 }

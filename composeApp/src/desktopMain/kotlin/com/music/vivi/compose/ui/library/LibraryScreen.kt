@@ -497,18 +497,16 @@ fun LibraryScreen(navController: NavController) {
 
     Column(Modifier.fillMaxSize()) {
         // Tabs and actions share one row, vertically centred, with room below so content never touches the sticky header.
-        Row(
-            Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(Modifier.weight(1f)) {
-                ChipsRow(
-                    chips = LibraryTab.entries.map { it to it.label },
-                    currentValue = tab,
-                    onValueUpdate = { next -> if (next != null) { tab = next; openCollection = null } },
-                    gutter = 16.dp, // the page's content inset, so the first chip lines up with the cards below
-                )
-            }
+        val libCompact = com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth
+        val tabChips: @Composable () -> Unit = {
+            ChipsRow(
+                chips = LibraryTab.entries.map { it to it.label },
+                currentValue = tab,
+                onValueUpdate = { next -> if (next != null) { tab = next; openCollection = null } },
+                gutter = 16.dp, // the page's content inset, so the first chip lines up with the cards below
+            )
+        }
+        val tabActions: @Composable () -> Unit = {
             com.music.vivi.compose.ui.expressive.ExpressiveButton(
                 text = "Tag Manager",
                 modifier = Modifier.tourAnchor("library.tagmanager"),
@@ -522,10 +520,23 @@ fun LibraryScreen(navController: NavController) {
                 style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Text,
             )
         }
+        if (libCompact) {
+            // Narrow: tabs get the whole width, the actions sit on their own line below.
+            Column(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp)) {
+                tabChips()
+                Row(Modifier.fillMaxWidth().padding(end = 8.dp), horizontalArrangement = Arrangement.End) { tabActions() }
+            }
+        } else Row(
+            Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(Modifier.weight(1f)) { tabChips() }
+            tabActions()
+        }
         com.music.vivi.compose.ui.library.sidebar.SearchField(
             query = query,
             onQuery = { query = it; openCollection = null },
-            placeholder = "Search your library — songs, artists, albums",
+            placeholder = if (libCompact) "Search your library" else "Search your library — songs, artists, albums",
             height = 48.dp,
             // Full content width: same 16dp inset as the cards and the first tab chip.
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
@@ -1000,8 +1011,9 @@ private fun LikedSplit(
         EmptyContent(emptyMessage)
         return
     }
-    Row(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
-        Column(Modifier.weight(1f).fillMaxHeight()) {
+    val stackLiked = com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth
+    val ytBlock: @Composable (Modifier) -> Unit = { m ->
+        Column(m) {
             LikedColumnHeader("YouTube", songs.size)
             if (songs.isEmpty()) EmptyContent("No liked YouTube songs") else {
                 val state = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -1017,8 +1029,9 @@ private fun LikedSplit(
                 }
             }
         }
-        androidx.compose.material3.VerticalDivider(Modifier.padding(vertical = 12.dp))
-        Column(Modifier.weight(1f).fillMaxHeight()) {
+    }
+    val localBlock: @Composable (Modifier) -> Unit = { m ->
+        Column(m) {
             LikedColumnHeader("Local", localLiked.size)
             if (localLiked.isEmpty()) EmptyContent("No liked local songs") else {
                 val state = androidx.compose.foundation.lazy.rememberLazyListState()
@@ -1030,6 +1043,20 @@ private fun LikedSplit(
                     }
                 }
             }
+        }
+    }
+    if (stackLiked) {
+        // Narrow windows stack the YouTube and Local lists instead of squeezing them side by side.
+        Column(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+            ytBlock(Modifier.weight(1f).fillMaxWidth())
+            androidx.compose.material3.HorizontalDivider(Modifier.padding(horizontal = 12.dp))
+            localBlock(Modifier.weight(1f).fillMaxWidth())
+        }
+    } else {
+        Row(Modifier.fillMaxSize().padding(horizontal = 8.dp)) {
+            ytBlock(Modifier.weight(1f).fillMaxHeight())
+            androidx.compose.material3.VerticalDivider(Modifier.padding(vertical = 12.dp))
+            localBlock(Modifier.weight(1f).fillMaxHeight())
         }
     }
 }
