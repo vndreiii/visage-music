@@ -1,6 +1,7 @@
 package com.music.vivi.compose.ui
 
 import androidx.compose.foundation.Image
+import com.music.vivi.compose.ui.component.panelInset
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -521,7 +522,7 @@ fun NavTray(
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = {}),
             ) {
                 Column(
-                    Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 16.dp),
+                    Modifier.padding(panelInset()),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
                     items.forEach { dest ->

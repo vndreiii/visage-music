@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.BoxWithConstraints
 import com.music.vivi.compose.ui.expressive.VisageTextField
 import com.music.vivi.compose.ui.component.visageMarquee
+import com.music.vivi.compose.ui.component.PanelHeaderGap
+import com.music.vivi.compose.ui.component.panelInset
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -635,8 +637,10 @@ internal fun LibraryDialogShell(
             tonalElevation = 6.dp,
             modifier = Modifier.padding(24.dp).widthIn(max = maxWidth).heightIn(max = 760.dp).fillMaxWidth(),
         ) {
+            // One PanelInset on every edge of the title block, body and action bar (see design-system.md section 6).
+            val inset = panelInset()
             Column {
-                Column(Modifier.padding(start = 32.dp, end = 32.dp, top = 28.dp, bottom = 8.dp)) {
+                Column(Modifier.padding(start = inset, end = inset, top = inset)) {
                     Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
                     if (subtitle != null) {
                         Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -644,12 +648,12 @@ internal fun LibraryDialogShell(
                 }
                 Column(
                     Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
-                        .padding(horizontal = 32.dp, vertical = 16.dp),
+                        .padding(start = inset, end = inset, top = PanelHeaderGap, bottom = PanelHeaderGap),
                     content = content,
                 )
                 Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)))
                 Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                    Modifier.fillMaxWidth().padding(inset),
                     horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                     verticalAlignment = Alignment.CenterVertically,
                     content = actions,
