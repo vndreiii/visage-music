@@ -1,6 +1,7 @@
 package com.music.vivi.compose.ui.library
 
 import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.PanelHeaderGap
 import com.music.vivi.compose.ui.onboarding.tourAnchor
 import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.smoothWheelScroll
@@ -1444,6 +1445,7 @@ private fun PlaylistsGrid(
     }
     val smoothScroll8 = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     // YouTube playlists sit in their own tinted container so their origin is obvious.
+    val inset = com.music.vivi.compose.ui.component.panelInset()
     com.music.vivi.compose.ui.glass.GlassSurface(
         shape = RoundedCornerShape(24.dp),
         fallbackColor = MaterialTheme.colorScheme.surfaceContainer,
@@ -1455,12 +1457,12 @@ private fun PlaylistsGrid(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(start = 20.dp, top = 16.dp, end = 20.dp),
+                modifier = Modifier.padding(start = inset, top = inset, end = inset),
             )
             LazyVerticalGrid(
                 state = smoothScroll8,
                 columns = GridCells.Adaptive(minSize = 164.dp),
-                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = MiniPlayerClearance),
+                contentPadding = PaddingValues(start = inset, end = inset, top = PanelHeaderGap, bottom = MiniPlayerClearance),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.fillMaxSize().pageScrollEdge { smoothScroll8.edgeProgress() }.smoothWheelScroll(smoothScroll8),

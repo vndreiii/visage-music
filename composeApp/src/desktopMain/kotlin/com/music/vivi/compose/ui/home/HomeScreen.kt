@@ -75,6 +75,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
@@ -97,6 +98,15 @@ import com.music.vivi.compose.ui.component.HeroCardWidth
 import com.music.vivi.compose.ui.component.ListItemHeight
 import com.music.vivi.compose.ui.component.ListThumbnailSize
 import com.music.vivi.compose.ui.component.PlaylistShelfCard
+import com.music.vivi.compose.ui.component.PanelHeaderGap
+import com.music.vivi.compose.ui.component.panelInset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import com.music.vivi.compose.ui.component.ThumbnailCornerRadius
 import com.music.vivi.compose.ui.component.LocalArtistClick
 import com.music.vivi.compose.ui.component.LocalArtistNameClick
@@ -400,12 +410,7 @@ private fun HomeScreenContent(navController: NavController, vm: HomeViewModel) {
                         maxWidth * 0.475f >= 320.dp -> maxWidth * 0.475f
                         else -> maxWidth * 0.9f
                     }
-                    val gridRowHeight =
-                        GridThumbnailHeight +
-                            with(LocalDensity.current) {
-                                MaterialTheme.typography.bodyLarge.lineHeight.toDp() * 2 +
-                                    MaterialTheme.typography.bodyMedium.lineHeight.toDp() * 2
-                            }
+                    val gridRowHeight = shelfCardHeight(ShelfCoverSize)
 
                     fun playSong(song: SongItem, context: List<SongItem> = emptyList()) {
                         scope.launch(Dispatchers.IO) {
@@ -503,11 +508,12 @@ private fun HomeScreenContent(navController: NavController, vm: HomeViewModel) {
                                 val rowState = rememberLazyListState()
                                 LazyRow(
                                     state = rowState,
-                                    contentPadding = PaddingValues(horizontal = 12.dp),
+                                    contentPadding = PaddingValues(horizontal = 0.dp),
                                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(244.dp)
+                                        .height(shelfCardHeight(ShelfCoverSize))
+                                        .shelfRightFade()
                                         .horizontalWheelScroll(rowState),
                                 ) {
                                     items(
@@ -518,6 +524,9 @@ private fun HomeScreenContent(navController: NavController, vm: HomeViewModel) {
                                             item = item,
                                             onClick = { onYtItem(item) },
                                             modifier = Modifier.width(180.dp),
+                                            insetHorizontal = 0.dp,
+                                            insetVertical = 0.dp,
+                                            subtitleLines = 1,
                                         )
                                     }
                                 }
@@ -783,7 +792,8 @@ private fun HomeSectionBlock(
                 // Fill the row: as many ~280dp columns as fit, rows capped so the shelf
                 // stays compact; extra songs scroll sideways in whole columns.
                 val gap = 8.dp
-                val sidePad = 8.dp
+                // Framed (Quick picks): the frame already insets by PanelInset, so the grid starts flush with the title.
+                val sidePad = if (framed) 0.dp else 8.dp
                 val usable = maxWidth - sidePad * 2
                 val maxRows = if (isQuickPicks) 4 else 4
                 val minCol = if (halfWidth) 240.dp else 280.dp
@@ -813,6 +823,7 @@ private fun HomeSectionBlock(
                             isPlaying = isPlaying,
                             onClick = { onPlaySong(song, displaySongs) },
                             modifier = Modifier.width(colWidth).animateItem(),
+                            flush = framed,
                         )
                     }
                 }
@@ -829,11 +840,12 @@ private fun HomeSectionBlock(
                 val cardW = if (halfWidth) 168.dp else 200.dp
                 LazyRow(
                     state = rowState,
-                    contentPadding = PaddingValues(horizontal = if (halfWidth) 4.dp else 12.dp),
+                    contentPadding = PaddingValues(horizontal = if (framed) 0.dp else if (halfWidth) 4.dp else 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(cardH + 8.dp)
+                        .then(if (framed) Modifier.shelfRightFade() else Modifier)
                         .horizontalWheelScroll(rowState),
                 ) {
                     items(sectionData.items, key = { it.id }) { item ->
@@ -866,6 +878,9 @@ private fun HomeSectionBlock(
                                     isActive = item.id == playingId,
                                     isPlaying = isPlaying,
                                     modifier = Modifier.padding(top = 8.dp),
+                                    insetHorizontal = if (framed) 0.dp else 6.dp,
+                                    insetVertical = if (framed) 0.dp else 4.dp,
+                                    subtitleLines = 1,
                                 )
                             }
                         }
@@ -882,12 +897,13 @@ private fun HomeSectionBlock(
                 }
                 LazyRow(
                     state = rowState,
-                    contentPadding = PaddingValues(horizontal = if (halfWidth) 4.dp else 8.dp),
+                    contentPadding = PaddingValues(horizontal = if (framed) 0.dp else if (halfWidth) 4.dp else 8.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.Top,
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(rowH)
+                        .then(if (framed) Modifier.shelfRightFade() else Modifier)
                         .horizontalWheelScroll(rowState),
                 ) {
                     items(sectionData.items, key = { it.id }) { item ->
@@ -949,9 +965,7 @@ private fun HomeCategoryHeader(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth(),
     ) {
         thumbnail?.invoke()
         val softStrap = strapline?.takeIf { it.isNotBlank() }?.asSoftSentenceCase()
@@ -978,10 +992,13 @@ private fun HomeCategoryHeader(
                         }
                     }
                 },
-                style = MaterialTheme.typography.headlineSmall,
+                // Trim the font's leading so the panel inset is measured to the glyphs, not the line box.
+                style = MaterialTheme.typography.headlineSmall.copy(
+                    lineHeightStyle = LineHeightStyle(LineHeightStyle.Alignment.Center, LineHeightStyle.Trim.Both),
+                ),
                 maxLines = 1,
                 overflow = TextOverflow.Clip,
-                modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp).visageMarquee(),
+                modifier = Modifier.visageMarquee(),
             )
         }
         if (onClick != null) {
@@ -1030,6 +1047,36 @@ private fun HomeCategoryHeader(
     }
 }
 
+/** Square cover side of a shelf card (the grid thumbnail plus its old 16 dp frame), so every shelf card is the same size. */
+private val ShelfCoverSize = GridThumbnailHeight + 16.dp
+
+/**
+ * Height of a shelf card sized to its real content: cover, one title line and one subtitle line. Shelves use exactly
+ * this height (no reserved 2-line slot), so the frame's bottom inset sits directly under the card text.
+ */
+@Composable
+private fun shelfCardHeight(cover: Dp): Dp {
+    val density = LocalDensity.current
+    return cover + 6.dp +
+        with(density) { MaterialTheme.typography.bodyLarge.lineHeight.toDp() + MaterialTheme.typography.bodyMedium.lineHeight.toDp() }
+}
+
+/** Fades the last [ShelfEdgeFade] of a horizontal card row out, so a row that runs up to the frame inset does not look cut. */
+private fun Modifier.shelfRightFade(): Modifier = this
+    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen)
+    .drawWithContent {
+        drawContent()
+        val fade = (1f - ShelfEdgeFade.toPx() / size.width).coerceIn(0f, 1f)
+        drawRect(
+            brush = Brush.horizontalGradient(
+                colorStops = arrayOf(0f to Color.Black, fade to Color.Black, 1f to Color.Transparent),
+            ),
+            blendMode = BlendMode.DstIn,
+        )
+    }
+
+private val ShelfEdgeFade = 24.dp
+
 @Composable
 private fun HomeCategoryFrame(
     kind: HomeCategoryKind,
@@ -1063,7 +1110,11 @@ private fun HomeCategoryFrame(
             com.music.vivi.compose.ui.glass.panelGlassTint(0.5f)
         },
     ) {
-        Column(Modifier.padding(bottom = 14.dp, top = 10.dp, start = 8.dp, end = 8.dp)) {
+        // One inset on all four sides; header-to-content gap is PanelHeaderGap. Shelves inside align to this edge.
+        Column(
+            Modifier.padding(panelInset()),
+            verticalArrangement = Arrangement.spacedBy(PanelHeaderGap),
+        ) {
             content()
         }
     }

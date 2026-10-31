@@ -42,6 +42,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil3.compose.AsyncImage
 import com.music.innertube.models.AlbumItem
@@ -162,6 +163,11 @@ fun YouTubeGridItem(
     thumbnailRatio: Float = if (item is SongItem) 16f / 9f else 1f,
     /** Fill the parent's width (grid cells) instead of the fixed shelf width. */
     fillWidth: Boolean = false,
+    /** Space between the card edge and its cover/text. Shelves inside a panel pass 0 so the cover lines up with the title. */
+    insetHorizontal: Dp = 6.dp,
+    insetVertical: Dp = 4.dp,
+    /** Subtitle lines before ellipsis. Shelves clamp to 1 so every card in a row has the same height. */
+    subtitleLines: Int = 2,
 ) {
     val thumbShape =
         if (item is ArtistItem) CircleShape else RoundedCornerShape(ThumbnailCornerRadius)
@@ -179,7 +185,7 @@ fun YouTubeGridItem(
     ) {
         ItemContextMenu(item, menu, heightPx, onClick)
         Column(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = insetHorizontal, vertical = insetVertical),
             horizontalAlignment = if (item is ArtistItem) Alignment.CenterHorizontally else Alignment.Start,
         ) {
             Box(
@@ -233,7 +239,7 @@ fun YouTubeGridItem(
                 parts = subtitlePartsOf(item),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.secondary,
-                maxLines = 2,
+                maxLines = subtitleLines,
                 overflow = TextOverflow.Ellipsis,
                 textAlign = if (item is ArtistItem) TextAlign.Center else TextAlign.Start,
                 modifier = Modifier.fillMaxWidth(),
@@ -248,6 +254,8 @@ fun YouTubeListItem(
     modifier: Modifier = Modifier,
     isActive: Boolean = false,
     isPlaying: Boolean = false,
+    /** Inside a panel: no side inset, so the cover lines up with the panel's title. */
+    flush: Boolean = false,
     onClick: () -> Unit,
 ) {
     val shape =
@@ -263,7 +271,7 @@ fun YouTubeListItem(
         },
         onClick = onClick,
         modifier = modifier
-            .padding(horizontal = 8.dp)
+            .padding(horizontal = if (flush) 0.dp else 8.dp)
             .fillMaxWidth()
             .height(ListItemHeight)
             .onSizeChanged { heightPx = it.height }
@@ -274,7 +282,7 @@ fun YouTubeListItem(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp),
+                .padding(horizontal = if (flush) 0.dp else 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
