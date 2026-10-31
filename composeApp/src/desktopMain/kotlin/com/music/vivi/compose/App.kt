@@ -89,7 +89,10 @@ fun FrameWindowScope.App(
             // Clip to rounded bounds so glow/blur backgrounds can't bleed past the
             // compositor's window corner (the bottom-left "overflow" spit).
             // Skip rounding while OS-fullscreen so edges aren't inset.
-            @Suppress("UNUSED_VARIABLE") val geometry = windowState.size to windowState.position
+            // Windows only (see WindowMaximize.isMaximized); elsewhere it recomposed the whole app on every drag step.
+            if (com.music.vivi.nativelib.HostOs.isWindows) {
+                @Suppress("UNUSED_VARIABLE") val geometry = windowState.size to windowState.position
+            }
             val osFullscreen = windowState.placement == WindowPlacement.Fullscreen ||
                 (com.music.vivi.nativelib.HostOs.isWindows && WindowMaximize.isMaximized(window))
             val windowShape = RoundedCornerShape(16.dp)
