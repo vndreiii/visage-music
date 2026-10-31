@@ -130,6 +130,20 @@ Page skeleton, for every page:
 
 Settings pages are centred, max width 760 dp (600 dp with Adwaita-inspired), 24 dp side padding.
 
+**Panel padding is standard and equal on all four sides.** Every card, glass shelf, tray, dialog body and popup that has
+content inside it uses one inset on top, bottom, left and right: `PanelInset` (20 dp; 16 dp on compact windows, see
+`ui/responsive`), never a different number per edge. Header-to-content gap inside a panel is 12 dp
+(`PanelHeaderGap`). Rules:
+- The visual gap between the panel edge and its content must read equal on all sides. Count what actually draws: a
+  text line has internal line-height leading, so optically compensate (never leave a 20 dp left inset with a 12 dp
+  top).
+- Nothing outside the constants: a literal `padding(start = 22.dp, top = 14.dp)` on a panel is a bug, same as a literal
+  `fontSize`.
+- Content is centred in the space the inset leaves: a row of items that does not fill the width is centred or
+  start-aligned deliberately, not left with a big empty right edge by accident.
+- Floating chrome (pin/close, menu buttons) sits inside the inset, not on top of the content.
+- Check new panels with blur on and off at 360 dp wide and at ultrawide.
+
 Alignment: titles, search bars and content on a page share the same left edge (`PageInset`). Icons in a column share one
 x position; row icon is 22 dp with an 18 dp gap to text, 16 dp from the card edge.
 
