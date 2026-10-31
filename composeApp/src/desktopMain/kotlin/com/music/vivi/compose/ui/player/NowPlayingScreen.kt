@@ -679,25 +679,27 @@ private fun NowPlayingScreenContent(
                     // Compact layout: media (cover or lyrics) on top, controls under it, tools last.
                     val colMax = 560.dp
                     val showThumbStacked = showLyrics && !hideThumbnail && maxHeight >= 600.dp
-                    // Without lyrics the whole group (media, controls, tools) is centred as one block, so the
-                    // controls sit right under the cover/video instead of at the bottom of a tall empty slot.
+                    // Without lyrics the media and controls are centred as one block, so the controls sit right under
+                    // the cover/video instead of at the bottom of a tall empty slot; the tools row stays at the bottom.
                     val stackedMaxH = maxHeight
                     val stackedMaxW = maxWidth
-                    Column(
-                        Modifier.fillMaxSize(),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = if (showLyrics) Arrangement.Top else Arrangement.Center,
-                    ) {
+                    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
                         if (showLyrics) {
                             Box(Modifier.weight(1f).fillMaxWidth()) { lyricsSlot() }
+                            Spacer(Modifier.height(12.dp))
+                            controlsBlock(Modifier.widthIn(max = colMax).fillMaxWidth(), showThumbStacked)
                         } else {
-                            val aspect = if (trackVideo != null) 16f / 9f else 1f
-                            val availH = (stackedMaxH - 300.dp).coerceAtLeast(120.dp)
-                            val mediaW = minOf(stackedMaxW, colMax, availH * aspect)
-                            Box(Modifier.size(mediaW, mediaW / aspect), contentAlignment = Alignment.Center) { coverSlot() }
+                            Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                    val aspect = if (trackVideo != null) 16f / 9f else 1f
+                                    val availH = (stackedMaxH - 280.dp).coerceAtLeast(120.dp)
+                                    val mediaW = minOf(stackedMaxW, colMax, availH * aspect)
+                                    Box(Modifier.size(mediaW, mediaW / aspect), contentAlignment = Alignment.Center) { coverSlot() }
+                                    Spacer(Modifier.height(12.dp))
+                                    controlsBlock(Modifier.widthIn(max = colMax).fillMaxWidth(), showThumbStacked)
+                                }
+                            }
                         }
-                        Spacer(Modifier.height(12.dp))
-                        controlsBlock(Modifier.widthIn(max = colMax).fillMaxWidth(), showThumbStacked)
                         Spacer(Modifier.height(8.dp))
                         toolsRow(Modifier.widthIn(max = colMax).fillMaxWidth(), true)
                     }
