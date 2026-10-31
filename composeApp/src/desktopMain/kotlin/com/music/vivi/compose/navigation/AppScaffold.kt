@@ -156,7 +156,8 @@ fun FrameWindowScope.AppScaffold(
     val queueWanted = (pinnedQueue || queueAuto) && !onFullscreenPlayer
     // Compact windows have no room for a 360dp rail: the "pinned" queue opens as the bottom tray instead.
     val queueRailOn = queueWanted && !fullscreenQueue && !compact
-    val queueTrayOn = (fullscreenQueue && !onFullscreenPlayer) || (queueWanted && compact)
+    // The auto-open-on-Home queue never pops a modal tray on compact windows; only an explicit open does.
+    val queueTrayOn = (fullscreenQueue && !onFullscreenPlayer) || (pinnedQueue && !onFullscreenPlayer && compact)
     fun closePinnedQueue() {
         pinnedQueue = false
         if (queueAuto) queueDismissedOnHome = true
