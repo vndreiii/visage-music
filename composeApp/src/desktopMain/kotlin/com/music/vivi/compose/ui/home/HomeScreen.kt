@@ -812,7 +812,7 @@ private fun HomeSectionBlock(
                     // pull that slack out of the top and bottom so the frame's inset is measured to the text itself.
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(ListItemHeight * rows - (if (framed) 12.dp else 0.dp))
+                        .height(ListItemHeight * rows - (if (framed) 24.dp else 0.dp))
                         .offset(y = if (framed) -12.dp else 0.dp)
                         .horizontalWheelScroll(gridState),
                 ) {
@@ -1002,7 +1002,8 @@ private fun HomeCategoryHeader(
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Clip,
-                modifier = Modifier.visageMarquee(),
+                // Optical: the row is centred on its 48 dp trailing buttons, which leaves ~16 dp above the glyphs.
+                modifier = Modifier.offset(y = -16.dp).visageMarquee(),
             )
         }
         if (onClick != null) {
