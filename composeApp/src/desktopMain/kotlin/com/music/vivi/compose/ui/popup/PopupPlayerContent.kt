@@ -54,11 +54,12 @@ import org.koin.compose.koinInject
 
 /** Everything inside the popup except the window chrome (header), wired to the shared [LocalPlaybackController]. */
 @Composable
-fun PopupPlayerContent(modifier: Modifier = Modifier) {
+fun PopupPlayerContent(modifier: Modifier = Modifier, dragArea: PopupDragArea = NoPopupDragArea) {
     val controller = LocalPlaybackController.current
     val nowPlaying by controller.nowPlaying.collectAsState()
     PopupPlayerLayout(
         modifier = modifier,
+        dragArea = dragArea,
         art = {
             CoverImage(
                 model = nowPlaying?.artworkUrl,
@@ -71,7 +72,7 @@ fun PopupPlayerContent(modifier: Modifier = Modifier) {
         controls = { compact -> PopupControls(compact) },
         lyrics = {
             // Same panel as Now Playing: fetches, caches and syncs on its own from the shared controller.
-            LyricsPanel(onClose = {}, modifier = Modifier.fillMaxSize())
+            LyricsPanel(onClose = {}, modifier = Modifier.fillMaxSize(), autoHideControls = true)
         },
     )
 }
@@ -133,7 +134,7 @@ private fun PopupControls(compact: Boolean) {
     }
     val scheme = MaterialTheme.colorScheme
 
-    Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+    Column(Modifier.fillMaxWidth()) {
         PlayerSeekBar(
             progress = progress,
             onScrub = { scrubbing = true; scrubPos = it },
@@ -154,6 +155,7 @@ private fun PopupControls(compact: Boolean) {
             Text(formatMs(shown), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
             Text(formatMs(duration), style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
         }
+        Spacer(Modifier.height(if (compact) 2.dp else 6.dp))
         Row(
             Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
@@ -178,7 +180,8 @@ private fun PopupControls(compact: Boolean) {
                 Icon(Icons.Filled.SkipNext, "Next", Modifier.size(30.dp))
             }
         }
-        if (!compact) Row(Modifier.fillMaxWidth().padding(end = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+        if (!compact) Spacer(Modifier.height(18.dp))
+        if (!compact) Row(Modifier.fillMaxWidth().padding(horizontal = 6.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(
                 Icons.AutoMirrored.Filled.VolumeUp, "Volume", Modifier.size(18.dp),
                 tint = scheme.onSurfaceVariant,

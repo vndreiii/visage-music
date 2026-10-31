@@ -21,6 +21,9 @@ object PopupGeometry {
     /** Below this window height the layout drops optional rows (album, volume) and uses a one-line title. */
     const val COMPACT_BELOW_H = 430f
 
+    /** Left player column in landscape: ~46% of the window at the narrow end, then fixed (does not stretch). */
+    fun landscapeLeftWidth(windowWidth: Float): Float = (windowWidth * 0.46f).coerceIn(264f, 330f)
+
     fun modeFor(width: Float, height: Float): PopupMode =
         if (height > 0f && width >= LANDSCAPE_ASPECT * height && width >= LANDSCAPE_MIN_W) PopupMode.Landscape
         else PopupMode.Stack
