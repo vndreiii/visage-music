@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -807,9 +808,12 @@ private fun HomeSectionBlock(
                     state = gridState,
                     contentPadding = PaddingValues(horizontal = sidePad),
                     horizontalArrangement = Arrangement.spacedBy(gap),
+                    // A song row's text sits centred in a 64 dp slot, leaving 12 dp empty above and below. Inside a frame,
+                    // pull that slack out of the top and bottom so the frame's inset is measured to the text itself.
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(ListItemHeight * rows)
+                        .height(ListItemHeight * rows - (if (framed) 12.dp else 0.dp))
+                        .offset(y = if (framed) -12.dp else 0.dp)
                         .horizontalWheelScroll(gridState),
                 ) {
                     itemsIndexed(

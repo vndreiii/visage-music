@@ -48,6 +48,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Spacer
+import com.music.vivi.compose.ui.component.PanelHeaderGap
+import com.music.vivi.compose.ui.component.panelInset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -170,7 +173,8 @@ fun SettingsPreviewFrame(
                 shadowElevation = if (shift > 0) 6.dp else 0.dp,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Column(Modifier.padding(12.dp).animateContentSize(VisageMotion.glide())) {
+                // One PanelInset on all four sides; the action row and the preview are separated by PanelHeaderGap.
+                Column(Modifier.padding(panelInset()).animateContentSize(VisageMotion.glide())) {
                     val chevron by animateFloatAsState(if (collapsed) -90f else 0f, VisageMotion.effectsDefault(), label = "previewChevron")
                     Row(
                         Modifier.fillMaxWidth().height(40.dp),
@@ -201,12 +205,13 @@ fun SettingsPreviewFrame(
                         }
                     }
                     if (!collapsed) {
+                        Spacer(Modifier.height(PanelHeaderGap))
                         PreviewWindow(virtualWidth, virtualHeight, maxWindowWidth, live = visible || stick, content = content)
                         Text(
                             caption,
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(start = 4.dp, top = 8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                         )
                     }
                 }
