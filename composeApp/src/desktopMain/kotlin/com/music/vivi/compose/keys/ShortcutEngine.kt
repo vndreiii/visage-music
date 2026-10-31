@@ -43,6 +43,9 @@ class ShortcutEngine(
         return handled
     }
 
+    /** Forget held keys. A key-up that lands on a window which closed in between is never seen otherwise. */
+    fun resetHeld() { consumed.clear() }
+
     fun onReleased(input: KeyInput): Boolean = consumed.remove(KeyNames.normalize(input.keyCode))
 
     fun onTyped(input: KeyInput): Boolean {

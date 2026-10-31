@@ -129,7 +129,7 @@ object CrashReporter {
             has("OutOfMemoryError") ->
                 "VIsage ran out of memory" to "The app needed more memory than it was given. Closing other apps or restarting VIsage usually fixes it."
             has("UnsatisfiedLinkError", "NoClassDefFoundError") ->
-                "A required component is missing" to "A native library (for example libmpv) or a part of the app could not be loaded. Reinstalling or rebuilding VIVI should fix it."
+                "A required component is missing" to "A native library (for example libmpv) or a part of the app could not be loaded. Reinstalling or rebuilding VIsage should fix it."
             has("SQLite", "SQLException") ->
                 "The music library database hit a problem" to "Reading or writing the local library failed. Restarting usually clears it; if it keeps happening, report it."
             has("UnknownHost", "ConnectException", "SocketTimeout", "SSLException") ->
@@ -149,18 +149,18 @@ object CrashReporter {
         appendLine("Java: ${System.getProperty("java.version")} (${System.getProperty("java.vendor")})")
         appendLine("OS: ${System.getProperty("os.name")} ${System.getProperty("os.version")} ${System.getProperty("os.arch")}")
         appendLine("Session: ${System.getenv("XDG_SESSION_TYPE") ?: "?"} / ${System.getenv("XDG_CURRENT_DESKTOP") ?: "?"}")
-        appendLine("Log file: ${AppLog.logFile ?: "-"}")
+        appendLine("Log file: ${AppLog.logFile?.let { AppLog.redact(it.path) } ?: "-"}")
         appendLine()
         appendLine("--- Error ---")
-        appendLine(report.exceptionSummary)
-        appendLine(report.stackTrace.trimEnd())
+        appendLine(AppLog.redact(report.exceptionSummary))
+        appendLine(AppLog.redact(report.stackTrace.trimEnd()))
         appendLine()
         appendLine("--- Last log lines ---")
         appendLine(AppLog.snapshot(logLines))
     }
 
     fun copyToClipboard(text: String) {
-        runCatching { Toolkit.getDefaultToolkit().systemClipboard.setContents(StringSelection(text), null) }
+        com.music.vivi.compose.ui.component.SystemClipboard.copy(text)
     }
 
     /** Short issue body (URLs can't carry a whole log); the full report is put on the clipboard. */
@@ -171,14 +171,14 @@ object CrashReporter {
             appendLine()
             appendLine("**Error**")
             appendLine("```")
-            appendLine(report.exceptionSummary)
-            appendLine(report.stackTrace.lines().take(12).joinToString("\n"))
+            appendLine(AppLog.redact(report.exceptionSummary))
+            appendLine(AppLog.redact(report.stackTrace.lines().take(12).joinToString("\n")))
             appendLine("```")
             appendLine()
             appendLine("_Full report copied to clipboard; paste it below._")
         }.take(1800)
         fun enc(s: String) = URLEncoder.encode(s, Charsets.UTF_8)
-        return "$ISSUES_URL?title=${enc("[crash] " + report.exceptionSummary.take(90))}&body=${enc(body)}"
+        return "$ISSUES_URL?title=${enc("[crash] " + AppLog.redact(report.exceptionSummary).take(90))}&body=${enc(body)}"
     }
 
     fun openInBrowser(url: String) {

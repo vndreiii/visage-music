@@ -29,6 +29,8 @@ data class NowPlaying(
     val localPath: String? = null,
     val lyricsPath: String? = null,
     val embeddedLyrics: String? = null,
+    /** YouTube Music browse id of [album] when known (MPREb…), so the UI can open the album page. */
+    val albumId: String? = null,
 )
 
 /** One entry in the playback queue (ids alone are not enough for UI). */
@@ -43,6 +45,8 @@ data class QueueTrack(
     val album: String? = null,
     val lyricsPath: String? = null,
     val embeddedLyrics: String? = null,
+    /** YouTube Music browse id of [album] when known (MPREb…); null for local files and old saved queues. */
+    val albumId: String? = null,
 )
 
 /**
@@ -55,6 +59,9 @@ interface PlaybackController {
     val durationMs: StateFlow<Long>
     val isFavorite: StateFlow<Boolean>
     val lastError: StateFlow<String?>
+    /** Short friendly note for a toast (e.g. a song was skipped because it would not load); null when none. */
+    val notice: StateFlow<String?>
+    fun clearNotice()
     val queueIds: StateFlow<List<String>>
     val queueTracks: StateFlow<List<QueueTrack>>
     val queueIndex: StateFlow<Int>
@@ -87,6 +94,8 @@ interface PlaybackController {
     fun playNext(track: QueueTrack)
     /** Append [track] to the end of the queue. */
     fun addToQueue(track: QueueTrack)
+    /** Insert [track] at absolute queue [index] (never before the current song); an existing copy moves there. */
+    fun insertIntoQueue(track: QueueTrack, index: Int) = addToQueue(track)
     /** Move queue entry [from] to [to] (absolute queue indexes); playback of the current song is untouched. */
     fun moveQueueItem(from: Int, to: Int)
     /** Remove queue entry at [index] (the current song cannot be removed). */
@@ -108,6 +117,9 @@ interface PlaybackController {
     fun toggleShuffle()
     fun cycleRepeatMode()
     suspend fun toggleFavorite()
+
+    /** Likes or unlikes any track (YouTube and the local library) and updates the heart if it is the one playing. */
+    suspend fun setLiked(videoId: String, like: Boolean)
     fun release()
 }
 
@@ -119,6 +131,7 @@ fun com.music.innertube.models.YTItem.toQueueTrack(): QueueTrack = when (this) {
         artworkUrl = thumbnail,
         durationMs = (duration?.toLong() ?: 0L) * 1000L,
         album = album?.name,
+        albumId = album?.id?.takeIf { it.isNotBlank() },
     ).also { ArtistIdRegistry.remember(artists) }
     else -> QueueTrack(
         videoId = id,

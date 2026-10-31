@@ -15,10 +15,13 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.DownloadDone
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.FolderOpen
 import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -40,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.music.vivi.compose.download.TrackDownloadService
 import com.music.vivi.compose.local.LocalFoldersPrefs
+import com.music.vivi.compose.local.ScanStart
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.database.DatabaseFactory
@@ -63,7 +67,9 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
     val bootstrap = koinInject<com.music.vivi.compose.local.LocalLibraryBootstrap>()
     val prefVersion = rememberPrefsVersion(prefs)
     val progress by scanner.progress.collectAsState()
-    var folders by remember { mutableStateOf(LocalFoldersPrefs.folders(prefs)) }
+    val folders = remember(prefVersion) { LocalFoldersPrefs.folders(prefs) }
+    // Per folder: how many indexed tracks live under it, and whether it can be reached right now (drive mounted).
+    var folderStats by remember { mutableStateOf<Map<String, Pair<Boolean, Int>>>(emptyMap()) }
     var trackCount by remember { mutableStateOf(0L) }
     var offlineCount by remember { mutableStateOf(0L) }
     var statusMsg by remember { mutableStateOf<String?>(null) }
@@ -72,188 +78,173 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
         val counts = withContext(Dispatchers.IO) { localRepo.trackCount() to downloadedRepo.count() }
         trackCount = counts.first
         offlineCount = counts.second
-        folders = LocalFoldersPrefs.folders(prefs)
+        folderStats = withContext(Dispatchers.IO) {
+            val paths = localRepo.allTracks().map { File(it.file_path).toPath().normalize() }
+            LocalFoldersPrefs.folders(prefs).associateWith { folder ->
+                val root = File(folder).toPath().normalize()
+                File(folder).isDirectory to paths.count { it.startsWith(root) }
+            }
+        }
     }
     LaunchedEffect(progress.running, prefVersion) {
         if (!progress.running) refreshCounts()
-        statusMsg = progress.message
+        progress.message?.let { statusMsg = it }
     }
+    fun startScan() {
+        statusMsg = when (val r = bootstrap.scanNow()) {
+            ScanStart.Started -> "Scanning…"
+            ScanStart.NoFolders -> "Add a music folder first."
+            ScanStart.AlreadyRunning -> "A scan is already running."
+            is ScanStart.Unreachable -> "Can't reach ${r.missing.joinToString()} — is the drive mounted?"
+        }
+    }
+
+    var confirmClear by remember { mutableStateOf(false) }
 
     SettingsPage(title = "Local files", onBack = { navController.navigateUp() }) {
 
-        SettingsSection("Offline (app downloads)") {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Text(
-                    "Managed folder",
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    downloads.resolveFolder().absolutePath,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-                Text(
-                    "$offlineCount tracks registered",
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-                Text(
-                    "Offline is only what VIVI downloads — not your OS Downloads folder.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp),
-                )
-            }
-        }
-
-        SettingsSection("Local music folders") {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Text(
-                    "$trackCount local tracks indexed",
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-                Spacer(Modifier.height(8.dp))
-                folders.forEach { path ->
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Icon(
-                            Icons.Outlined.Folder,
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp),
-                        )
-                        Spacer(Modifier.width(12.dp))
-                        Text(
-                            path,
-                            style = MaterialTheme.typography.bodyMedium,
-                            modifier = Modifier.weight(1f),
-                        )
+        SettingsSection("Music folders") {
+            folders.forEach { path ->
+                val stat = folderStats[path]
+                val reachable = stat?.first ?: File(path).isDirectory
+                SettingsRowFrame(
+                    Icons.Outlined.Folder,
+                    path,
+                    if (reachable) "${stat?.second ?: 0} tracks" else "Not found. Is the drive mounted?",
+                    onClick = null,
+                    trailing = {
                         TextButton(
                             onClick = {
                                 scope.launch {
                                     LocalFoldersPrefs.removeFolder(prefs, path)
                                     withContext(Dispatchers.IO) {
-                                        val root = File(path).toPath()
-                                        localRepo.removeTracks(localRepo.allTracks().filter { File(it.file_path).toPath().startsWith(root) }.map { it.id })
+                                        scanner.pruneOutside(LocalFoldersPrefs.folders(prefs).map { File(it) })
                                     }
                                     refreshCounts()
                                 }
                             },
                             enabled = !progress.running,
                         ) { Text("Remove") }
-                    }
-                }
-                if (folders.isEmpty()) {
-                    Text(
-                        "Add folders that hold your personal music collection.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                OutlinedButton(
-                    onClick = {
-                        scope.launch {
-                            val dir = LocalFoldersPrefs.pickDirectory()
-                            if (dir != null) {
-                                LocalFoldersPrefs.addFolder(prefs, dir.absolutePath)
-                                refreshCounts()
-                            }
-                        }
                     },
-                ) {
-                    Icon(Icons.Outlined.FolderOpen, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Add folder")
-                }
+                )
+                SettingsDivider()
             }
+            SettingsRowFrame(
+                Icons.Outlined.FolderOpen,
+                "Add folders",
+                if (folders.isEmpty()) "Pick the folders that hold your music. Subfolders are included"
+                else "$trackCount local tracks indexed. Subfolders are included",
+                onClick = {
+                    scope.launch {
+                        val picked = LocalFoldersPrefs.pickDirectories()
+                        if (picked.isNotEmpty()) {
+                            val r = LocalFoldersPrefs.addFolders(prefs, picked)
+                            statusMsg = buildString {
+                                if (r.added.isNotEmpty()) append("Added ${r.added.size} folder${if (r.added.size == 1) "" else "s"}. ")
+                                if (r.alreadyCovered.isNotEmpty()) append("Already included: ${r.alreadyCovered.joinToString()}. ")
+                                if (r.notFolders.isNotEmpty()) append("Not a folder: ${r.notFolders.joinToString()}.")
+                            }.trim()
+                            refreshCounts()
+                            if (r.added.isNotEmpty()) startScan()
+                        }
+                    }
+                },
+            )
         }
 
         SettingsSection("Scan") {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                Button(
-                    onClick = {
-                        bootstrap.scanNow()
-                    },
-                    enabled = !progress.running && folders.isNotEmpty(),
-                ) {
-                    Icon(Icons.Outlined.Refresh, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(if (progress.running) "Scanning…" else "Scan now")
-                }
-                if (progress.running) {
-                    TextButton(onClick = { scanner.requestCancel() }) { Text("Cancel scan") }
-                    Spacer(Modifier.height(10.dp))
-                    LinearProgressIndicator(
-                        progress = {
-                            if (progress.totalHint <= 0) 0f
-                            else progress.scanned.toFloat() / progress.totalHint
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                    Text(
-                        progress.currentFile ?: "Working…",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp),
-                    )
-                }
-                statusMsg?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-                Spacer(Modifier.height(8.dp))
-                SwitchItem(
-                    icon = Icons.Outlined.Refresh,
-                    title = "Auto-scan on startup",
-                    subtitle = "Quietly look for new files when VIVI launches",
-                    checked = prefs.getBoolean(PrefKeys.LocalAutoScanOnStartup, false),
-                    onChecked = { prefs.setBoolean(PrefKeys.LocalAutoScanOnStartup, it) },
-                )
-                Text(
-                    "Local files use their embedded tags and artwork. Lyrics are read from matching .lrc files or embedded tags.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(16.dp),
-                )
-            }
+            SettingsRowFrame(
+                Icons.Outlined.Refresh,
+                if (progress.running) "Scanning" else "Scan now",
+                when {
+                    progress.running -> progress.currentFile ?: "Working"
+                    statusMsg != null -> statusMsg
+                    else -> "Reads tags, artwork and .lrc lyrics from your folders"
+                },
+                onClick = if (progress.running) null else ({ startScan() }),
+                belowSubtitle = {
+                    if (progress.running) {
+                        LinearProgressIndicator(
+                            progress = {
+                                if (progress.totalHint <= 0) 0f
+                                else progress.scanned.toFloat() / progress.totalHint
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        )
+                    }
+                },
+                trailing = {
+                    if (progress.running) TextButton(onClick = { scanner.requestCancel() }) { Text("Cancel") }
+                },
+            )
+            SettingsDivider()
+            SwitchItem(
+                icon = Icons.Outlined.Schedule,
+                title = "Auto-scan on startup",
+                subtitle = "Quietly look for new files when VIsage launches",
+                checked = prefs.getBoolean(PrefKeys.LocalAutoScanOnStartup, false),
+                onChecked = { prefs.setBoolean(PrefKeys.LocalAutoScanOnStartup, it) },
+            )
+        }
+
+        SettingsSection("Offline downloads") {
+            SettingsRowFrame(
+                Icons.Outlined.Folder,
+                "Download folder",
+                downloads.resolveFolder().absolutePath,
+                onClick = null,
+            )
+            SettingsDivider()
+            SettingsRowFrame(
+                Icons.Outlined.DownloadDone,
+                "Offline tracks",
+                "$offlineCount downloaded by VIsage. Your OS Downloads folder is not included",
+                onClick = null,
+            )
         }
 
         SettingsSection("Tag Manager") {
-            Column(Modifier.padding(vertical = 4.dp)) {
-                SwitchItem(
-                    icon = Icons.Outlined.Folder,
-                    title = "Back up originals before writing",
-                    subtitle = "Keeps copies of changed files (last 10 batches) so a batch can be undone later",
-                    checked = prefs.getBoolean(PrefKeys.TagBackupEnabled, true),
-                    onChecked = { prefs.setBoolean(PrefKeys.TagBackupEnabled, it) },
-                )
-                SwitchItem(
-                    icon = Icons.Outlined.Album,
-                    title = "Write ID3v2.3 tags",
-                    subtitle = "Better compatibility with old players; default is ID3v2.4",
-                    checked = prefs.getBoolean(PrefKeys.TagId3v23, false),
-                    onChecked = { prefs.setBoolean(PrefKeys.TagId3v23, it) },
-                )
-                OutlinedButton(
-                    onClick = { navController.navigate(com.music.vivi.compose.navigation.Routes.TAG_MANAGER) },
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                ) { Text("Open Tag Manager") }
-            }
+            SwitchItem(
+                icon = Icons.Outlined.Folder,
+                title = "Back up originals before writing",
+                subtitle = "Keeps copies of changed files (last 10 batches) so a batch can be undone later",
+                checked = prefs.getBoolean(PrefKeys.TagBackupEnabled, true),
+                onChecked = { prefs.setBoolean(PrefKeys.TagBackupEnabled, it) },
+            )
+            SettingsDivider()
+            SwitchItem(
+                icon = Icons.Outlined.Album,
+                title = "Write ID3v2.3 tags",
+                subtitle = "Better compatibility with old players; default is ID3v2.4",
+                checked = prefs.getBoolean(PrefKeys.TagId3v23, false),
+                onChecked = { prefs.setBoolean(PrefKeys.TagId3v23, it) },
+            )
+            SettingsDivider()
+            SettingsNavItem(
+                icon = Icons.Outlined.Edit,
+                title = "Bulk tag editor",
+                subtitle = "Edit tags and artwork for many files at once",
+                onClick = { navController.navigate(com.music.vivi.compose.navigation.Routes.TAG_MANAGER) },
+            )
         }
 
         SettingsSection("Cache") {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
-                OutlinedButton(
-                    onClick = {
+            SettingsRowFrame(
+                Icons.Outlined.Delete,
+                "Clear local cache",
+                if (progress.running) "Wait for the scan to finish" else "Removes indexed metadata and cached covers. Your music files stay in their folders",
+                onClick = if (progress.running) null else ({ confirmClear = true }),
+            )
+        }
+
+        if (confirmClear) {
+            AlertDialog(
+                onDismissRequest = { confirmClear = false },
+                title = { Text("Clear the local cache?") },
+                text = { Text("The index of your local tracks and the cached covers are removed. Your music files are not touched; a new scan rebuilds the index.") },
+                confirmButton = {
+                    TextButton(onClick = {
+                        confirmClear = false
                         scope.launch(Dispatchers.IO) {
                             val result = runCatching { scanner.clearCache() }
                             withContext(Dispatchers.Main) {
@@ -261,20 +252,10 @@ fun LocalOfflineSettingsScreen(navController: NavController) {
                                 statusMsg = result.fold({ "Local library and cover cache cleared" }, { it.message })
                             }
                         }
-                    },
-                    enabled = !progress.running,
-                ) {
-                    Icon(Icons.Outlined.Delete, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Clear local cache")
-                }
-                Text(
-                    "Removes indexed metadata and cached covers. Your music files stay in their folders.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-            }
+                    }) { Text("Clear", color = MaterialTheme.colorScheme.error) }
+                },
+                dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancel") } },
+            )
         }
     }
 }

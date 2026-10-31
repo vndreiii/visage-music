@@ -8,6 +8,8 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.NewReleases
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
@@ -24,6 +26,7 @@ import com.music.vivi.compose.ui.expressive.ExpressiveButton
 import com.music.vivi.compose.ui.expressive.ExpressiveSize
 import com.music.vivi.compose.ui.expressive.ExpressiveStyle
 import com.music.vivi.compose.ui.settings.SettingsDivider
+import com.music.vivi.compose.ui.settings.SettingsNavItem
 import com.music.vivi.compose.ui.settings.SettingsSection
 import java.text.DateFormat
 import java.util.Date
@@ -53,6 +56,13 @@ fun UpdateSettingsSection() {
                 )
             }
         }
+        SettingsDivider()
+        SettingsNavItem(
+            icon = Icons.Outlined.NewReleases,
+            title = "What's new",
+            subtitle = "Feature walkthroughs and the changelog",
+            onClick = { com.music.vivi.compose.whatsnew.WhatsNew.show() },
+        )
         SettingsDivider()
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp),

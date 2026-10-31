@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.player
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.animateDpAsState
@@ -25,10 +26,8 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredHeight
-import androidx.compose.foundation.layout.requiredSize
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
@@ -37,6 +36,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.QueueMusic
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.outlined.Radio
@@ -47,6 +47,8 @@ import androidx.compose.material.icons.outlined.VolumeDown
 import androidx.compose.material.icons.outlined.VolumeUp
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import com.music.vivi.compose.theme.LocalPlayerInk
+import com.music.vivi.compose.theme.ProvidePlayerInk
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import com.music.vivi.compose.ui.glass.glassSource
@@ -64,7 +66,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
@@ -73,7 +74,10 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.layoutId
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.music.vivi.compose.LocalPlaybackController
@@ -81,8 +85,9 @@ import com.music.vivi.compose.LocalWindowState
 import com.music.vivi.compose.WindowFullscreen
 import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.FullscreenCoverShape
-import com.music.vivi.compose.prefs.FullscreenLayout
+import com.music.vivi.compose.prefs.FullscreenKeys
 import com.music.vivi.compose.prefs.FullscreenSettings
+import com.music.vivi.compose.prefs.QueuePanelMode
 import com.music.vivi.compose.prefs.PlayerBackgroundStyle
 import com.music.vivi.compose.prefs.PrefKeys
 import com.music.vivi.compose.prefs.VolumeControlStyle
@@ -90,6 +95,7 @@ import com.music.vivi.compose.prefs.SliderStyle
 import com.music.vivi.compose.prefs.reader
 import com.music.vivi.compose.ui.artist.ArtistLinks
 import com.music.vivi.compose.ui.artist.openArtistByName
+import com.music.vivi.compose.ui.album.openAlbumOf
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.VisageBackButton
 import com.music.vivi.compose.ui.component.rememberReadyArtwork
@@ -124,7 +130,7 @@ private fun FullscreenCoverShape.toShape(): Shape = when (this) {
  * [FullscreenCoverShape] as an outline that stays sensible when the cover morphs to 16:9:
  * a circle relaxes into a rounded rectangle as [progress] goes 0 -> 1.
  */
-private class MorphingCoverShape(
+internal class MorphingCoverShape(
     private val base: FullscreenCoverShape,
     private val progress: () -> Float,
 ) : Shape {
@@ -156,14 +162,14 @@ private val blankCursor: PointerIcon by lazy {
 }
 
 /** Swallows pointer input before children see it, so invisible (faded) controls cannot be clicked. */
-private fun Modifier.blockPointer(block: Boolean): Modifier = if (!block) this else pointerInput(Unit) {
+internal fun Modifier.blockPointer(block: Boolean): Modifier = if (!block) this else pointerInput(Unit) {
     awaitPointerEventScope {
         while (true) awaitPointerEvent(PointerEventPass.Initial).changes.forEach { it.consume() }
     }
 }
 
 @Composable
-private fun PrefHorizontal(visible: Boolean, content: @Composable () -> Unit) {
+internal fun PrefHorizontal(visible: Boolean, content: @Composable () -> Unit) {
     PlainAnimatedVisibility(
         visible,
         enter = fadeIn() + expandHorizontally(),
@@ -173,7 +179,7 @@ private fun PrefHorizontal(visible: Boolean, content: @Composable () -> Unit) {
 }
 
 @Composable
-private fun PrefVertical(visible: Boolean, content: @Composable () -> Unit) {
+internal fun PrefVertical(visible: Boolean, content: @Composable () -> Unit) {
     PlainAnimatedVisibility(
         visible,
         enter = fadeIn() + expandVertically(),
@@ -187,7 +193,35 @@ private fun PrefVertical(visible: Boolean, content: @Composable () -> Unit) {
  * seek bar, controls width, ...) with optional overrides from Settings -> Fullscreen player.
  */
 @Composable
-fun NowPlayingFullscreenScreen(navController: NavController) {
+fun NowPlayingFullscreenScreen(
+    navController: NavController,
+    onOpenPinnedQueue: (() -> Unit)? = null,
+    onOpenFullscreenQueue: (() -> Unit)? = null,
+    queueOpen: Boolean = false,
+    onCloseQueue: (() -> Unit)? = null,
+) {
+    val prefs = koinInject<DesktopPrefs>()
+    val prefsVersion = com.music.vivi.compose.ui.settings.rememberPrefsVersion(prefs)
+    val cfg = remember(prefsVersion) { FullscreenSettings.resolve(prefs.reader()) }
+    ProvidePlayerInk(
+        solid = cfg.backgroundStyle == PlayerBackgroundStyle.DEFAULT,
+        backdrop = MaterialTheme.colorScheme.surface,
+        darkness = prefs.getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100) / 100f,
+        framedControls = cfg.framedControls,
+    ) {
+        NowPlayingFullscreenContent(navController, onOpenPinnedQueue, onOpenFullscreenQueue, queueOpen, onCloseQueue)
+    }
+}
+
+@Composable
+private fun NowPlayingFullscreenContent(
+    navController: NavController,
+    onOpenPinnedQueue: (() -> Unit)?,
+    onOpenFullscreenQueue: (() -> Unit)?,
+    queueOpen: Boolean,
+    onCloseQueue: (() -> Unit)?,
+) {
+    val ink = LocalPlayerInk.current
     val controller = LocalPlaybackController.current
     val windowState = LocalWindowState.current
     val prefs = koinInject<DesktopPrefs>()
@@ -231,11 +265,23 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
         queueTracks.mapIndexedNotNull { i, t -> if (i > queueIndex) i to t else null }
     }
 
-    var showLyrics by remember { mutableStateOf(cfg.lyricsByDefault) }
-    com.music.vivi.compose.keys.ShortcutEventEffect { e ->
-        if (e == com.music.vivi.compose.keys.ShortcutEvent.ToggleLyrics) showLyrics = !showLyrics
+    // Opens the way it was left; the first time it follows "Show lyrics by default" (on unless turned off).
+    var showLyrics by remember { mutableStateOf(prefs.getBoolean(FullscreenKeys.LyricsOpen, cfg.lyricsByDefault)) }
+    fun setLyrics(open: Boolean) {
+        showLyrics = open
+        prefs.setBoolean(FullscreenKeys.LyricsOpen, open)
     }
-    var showQueue by remember { mutableStateOf(false) }
+    com.music.vivi.compose.keys.ShortcutEventEffect { e ->
+        if (e == com.music.vivi.compose.keys.ShortcutEvent.ToggleLyrics) setLyrics(!showLyrics)
+    }
+    // The queue follows the app-wide Queue setting (Settings -> Player): side panel and sheet are owned by the
+    // app scaffold, inline sits under the controls.
+    val queueMode = remember(prefsVersion) {
+        runCatching { QueuePanelMode.valueOf(prefs.getString(PrefKeys.QueuePanelMode, QueuePanelMode.PINNED_RIGHT.name)) }
+            .getOrDefault(QueuePanelMode.PINNED_RIGHT)
+    }
+    var underPlaybarOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
+    val inlineQueue = queueMode == QueuePanelMode.UNDER_PLAYBAR && underPlaybarOpen
 
     // Canvas video (same resolver as Now Playing).
     var canvasArt by remember { mutableStateOf<com.music.vivi.canvas.CanvasArtwork?>(null) }
@@ -321,8 +367,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
 
         com.music.vivi.compose.ui.player.swap.SongSwapLoadingIndicator(swap.anim, Modifier.fillMaxSize())
 
-        val fsLayout = com.music.vivi.compose.ui.responsive.windowLayout()
-        val fsCompact = fsLayout.isCompactWidth
+        val fsCompact = com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth
         BoxWithConstraints(
             Modifier
                 .fillMaxSize()
@@ -333,317 +378,91 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                     bottom = if (fsCompact) 16.dp else 40.dp,
                 ),
         ) {
-            val w = maxWidth
-            val h = maxHeight
-            // Narrow screens: always cover over controls, and lyrics replace the cover instead of sitting beside the controls.
-            val narrow = w < 700.dp
-            val vertical = cfg.layout == FullscreenLayout.CENTERED || narrow
-            val coverShown = !hideCover && !showLyrics
-            // With lyrics open the cover slot is gone; a playing music video takes the room above the controls.
-            val lyricsVideo = showLyrics && !hideCover && trackVideo != null
-            val baseGap = if (vertical) 32.dp else 48.dp
-            val autoCover = if (vertical) {
-                minOf(h - 380.dp, w * (if (narrow) 0.9f else 0.5f), 520.dp).coerceAtLeast(if (narrow) 96.dp else 160.dp)
-            } else {
-                minOf(h, w * 0.42f, 600.dp)
+            val coverShown = !hideCover
+            val ctrlLimit = if (cfg.limitControlsWidth) cfg.controlsMaxWidthDp.dp else Dp.Infinity
+            // Stable lists: TransportRow can skip while the layout springs run.
+            val previousPreview = remember(queueIndex, queueTracks) {
+                queuePreviewIndices(queueIndex, queueTracks.size, true, 3).map { it to queueTracks[it] }
             }
-            val baseCover = autoCover * cfg.coverScale
-            // A real video should be big: as the cover morphs to the video's aspect, its width grows to
-            // fill most of the page (heights left for the controls when centred, space beside the controls otherwise).
-            val wideProgress = ((coverMorph.aspect - 1f) / 0.78f).coerceIn(0f, 1f)
-            val wideWidth = if (vertical) {
-                minOf(w, (h - 330.dp) * coverMorph.aspect, 1500.dp)
-            } else {
-                minOf(w - 360.dp - baseGap, h * coverMorph.aspect, 1300.dp)
-            }.coerceAtLeast(baseCover)
-            val coverSize = baseCover + (wideWidth - baseCover) * wideProgress
-            val ctrlLimit = if (cfg.limitControlsWidth) cfg.controlsMaxWidthDp.dp else 520.dp
-            val idleCtrlW = when {
-                vertical || hideCover -> minOf(ctrlLimit, w)
-                else -> minOf(ctrlLimit, (w - coverSize - baseGap).coerceAtLeast(320.dp))
+            val nextPreview = remember(queueIndex, queueTracks) {
+                queuePreviewIndices(queueIndex, queueTracks.size, false, 3).map { it to queueTracks[it] }
             }
-            val lyricsMainW = if (narrow) w else (w * 0.46f).coerceAtMost(560.dp)
-            val spring = VisageMotion.glide<Dp>()
-            val mainW by animateDpAsState(if (showLyrics) lyricsMainW else w, spring, label = "fsMainW")
-            val ctrlW by animateDpAsState(
-                if (showLyrics) minOf(ctrlLimit, lyricsMainW) else idleCtrlW, spring, label = "fsCtrlW",
-            )
-            val coverDim by animateDpAsState(if (coverShown) coverSize else 0.dp, spring, label = "fsCoverDim")
-            val coverGap by animateDpAsState(if (coverShown) baseGap else 0.dp, spring, label = "fsCoverGap")
-            val paneGap by animateDpAsState(if (showLyrics) 32.dp else 0.dp, spring, label = "fsPaneGap")
-            val lyricsW = (w - mainW - paneGap).coerceAtLeast(0.dp)
-
-            val coverContent: @Composable () -> Unit = {
-                val coverH = coverSize / coverMorph.aspect
-                val slotMod = if (vertical) Modifier.width(coverSize).height(coverDim * (coverH / coverSize)) else Modifier.width(coverDim).height(coverH)
-                Box(slotMod, contentAlignment = Alignment.Center) {
-                    PlainAnimatedVisibility(
-                        visible = coverShown,
-                        enter = fadeIn() + scaleIn(initialScale = 0.92f),
-                        exit = fadeOut() + scaleOut(targetScale = 0.92f),
-                        label = "fsCover",
+            // Big cover / video in one column, lyrics over the controls in the other. The queue overlays this
+            // (it never narrows it), so the geometry only depends on the window and the cover side.
+            FullscreenStage(
+                width = maxWidth,
+                height = maxHeight,
+                side = cfg.coverSide,
+                coverShown = coverShown,
+                coverScale = cfg.coverScale,
+                showLyrics = showLyrics,
+                controlsMaxWidth = ctrlLimit,
+                cover = { dim ->
+                    AlbumGestureCard(
+                        controller,
+                        Modifier.fillMaxWidth().heightOf { dim() / coverMorph.aspect }.songSwapCover(swap).volumeWheel(),
                     ) {
-                        AlbumGestureCard(controller, Modifier.requiredWidth(coverSize).requiredHeight(coverH).songSwapCover(swap)) {
-                            FullscreenCover(
-                                artworkUrl = coverTrack?.artworkUrl,
-                                seed = coverTrack?.videoId ?: coverTrack?.title ?: "none",
-                                canvasUrl = canvasSquareUrl,
-                                video = trackVideo,
-                                playing = playing,
-                                shape = remember(cfg.coverShape, coverMorph) { MorphingCoverShape(cfg.coverShape) { coverMorph.progress } },
-                                morph = coverMorph,
-                                modifier = Modifier.fillMaxSize(),
-                            )
-                        }
-                    }
-                }
-            }
-
-            val lyricsVideoCard: @Composable () -> Unit = {
-                val cardShape = RoundedCornerShape(20.dp)
-                Box(
-                    Modifier
-                        .width(ctrlW)
-                        .height(minOf(ctrlW * 9f / 16f, h - 340.dp).coerceAtLeast(120.dp))
-                        // Same swap layer as the controls below it, so the two move in step instead of colliding.
-                        .songSwapControls(swap)
-                        .shadow(24.dp, cardShape, clip = false)
-                        .clip(cardShape)
-                        .background(Color.Black),
-                ) {
-                    trackVideo?.let {
-                        com.music.vivi.compose.ui.player.video.MusicVideoSurface(video = it, modifier = Modifier.fillMaxSize())
-                    }
-                }
-            }
-
-            val controlsContent: @Composable () -> Unit = {
-                Column(
-                    Modifier
-                        .width(ctrlW)
-                        .songSwapControls(swap)
-                        .playerControlsSurface(cfg.framedControls),
-                ) {
-                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.Top) {
-                        PrefHorizontal(showLyrics && !hideCover && !lyricsVideo) {
-                            CoverImage(
-                                model = track?.artworkUrl,
-                                seed = track?.videoId ?: "none",
-                                modifier = Modifier
-                                    .padding(end = 14.dp, top = 4.dp)
-                                    .size(72.dp)
-                                    .clip(RoundedCornerShape(14.dp)),
-                            )
-                        }
-                        Column(Modifier.weight(1f)) {
-                            Text(
-                                track?.title ?: "Nothing playing",
-                                style = MaterialTheme.typography.headlineMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                maxLines = 2,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            val credits = track?.artist.orEmpty()
-                            if (credits.isBlank()) {
-                                Text(
-                                    state.name,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = Color.White.copy(alpha = 0.65f),
-                                    modifier = Modifier.padding(top = 6.dp),
-                                )
-                            } else {
-                                PrefVertical(cfg.showArtist) {
-                                    ArtistLinks(
-                                        credits = credits,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        color = Color.White.copy(alpha = 0.65f),
-                                        hoverColor = Color.White,
-                                        onOpen = {
-                                            WindowFullscreen.exit(windowState)
-                                            navController.openArtistByName(it)
-                                        },
-                                        maxLines = 2,
-                                        modifier = Modifier.padding(top = 6.dp),
-                                    )
-                                }
-                            }
-                            val album = track?.album.orEmpty()
-                            PrefVertical(cfg.showAlbum && album.isNotBlank()) {
-                                Text(
-                                    album,
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.White.copy(alpha = 0.5f),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.padding(top = 4.dp),
-                                )
-                            }
-                        }
-                        Spacer(Modifier.width(12.dp))
-                        ToolIconButton(
-                            if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                            "Favorite",
-                            active = isFavorite,
-                        ) { scope.launch { controller.toggleFavorite() } }
-                    }
-
-                    Column(chromeMod) {
-                        Spacer(Modifier.height(24.dp))
-                        NowPlayingSeekSection(
-                            duration = duration,
-                            sliderStyle = cfg.sliderStyle,
-                            squiggly = cfg.squiggly,
-                            showTimes = cfg.showTimes,
-                        )
-                        Spacer(Modifier.height(20.dp))
-                        TransportRow(
+                        FullscreenCover(
+                            artworkUrl = coverTrack?.artworkUrl,
+                            seed = coverTrack?.videoId ?: coverTrack?.title ?: "none",
+                            canvasUrl = canvasSquareUrl,
+                            video = trackVideo,
                             playing = playing,
-                            canPrev = canPrev || track != null,
-                            canNext = canNext,
-                            enabledPlay = track != null || state != PlaybackState.Idle,
-                            style = cfg.buttonsStyle,
-                            playPauseHeight = cfg.playPauseHeightDp.dp,
-                            onPrev = { if (canPrev) controller.previous() },
-                            onPlayPause = { if (playing) controller.pause() else controller.play() },
-                            onNext = { controller.next() },
-                            previousTracks = queuePreviewIndices(queueIndex, queueTracks.size, true, 3).map { it to queueTracks[it] },
-                            nextTracks = queuePreviewIndices(queueIndex, queueTracks.size, false, 3).map { it to queueTracks[it] },
-                            onPickTrack = { index -> scope.launch(Dispatchers.IO) { controller.playQueue(queueTracks, index) } },
-                        )
-                        Spacer(Modifier.height(20.dp))
-                        Row(
-                            Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            PrefHorizontal(cfg.showShuffle) {
-                                Row {
-                                    ToolIconButton(Icons.Outlined.Shuffle, "Shuffle", active = shuffle) { controller.toggleShuffle() }
-                                    Spacer(Modifier.width(10.dp))
-                                }
-                            }
-                            PrefHorizontal(cfg.showRepeat) {
-                                Row {
-                                    ToolIconButton(
-                                        if (repeat == RepeatMode.One) Icons.Outlined.RepeatOne else Icons.Outlined.Repeat,
-                                        "Repeat",
-                                        active = repeat != RepeatMode.Off,
-                                    ) { controller.cycleRepeatMode() }
-                                    Spacer(Modifier.width(10.dp))
-                                }
-                            }
-                            PrefHorizontal(cfg.showRadio) {
-                                Row {
-                                    ToolIconButton(Icons.Outlined.Radio, "Start radio") {
-                                        track?.let { t -> scope.launch { runCatching { controller.startRadio(t.videoId) } } }
-                                    }
-                                    Spacer(Modifier.width(10.dp))
-                                }
-                            }
-                            Box(Modifier.weight(1f)) {
-                                PrefHorizontal(cfg.showVolume) {
-                                    VolumeGroup(
-                                        style = cfg.volumeStyle,
-                                        volume = displayVolume,
-                                        onChange = {
-                                            scrubVolume = true
-                                            scrubVol = it
-                                            controller.setVolume(it)
-                                        },
-                                        onFinished = {
-                                            scrubVolume = false
-                                            prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
-                                        },
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            if (narrow && showLyrics) {
-                Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
-                    Box(Modifier.weight(1f).fillMaxWidth()) {
-                        LyricsPanel(onClose = { showLyrics = false }, modifier = Modifier.fillMaxSize())
-                    }
-                    Spacer(Modifier.height(12.dp))
-                    controlsContent()
-                }
-            } else
-            Row(Modifier.fillMaxSize()) {
-                Box(Modifier.width(mainW).fillMaxHeight(), contentAlignment = Alignment.Center) {
-                    if (showLyrics) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            PlainAnimatedVisibility(
-                                visible = lyricsVideo,
-                                enter = fadeIn(),
-                                exit = fadeOut(),
-                                label = "fsLyricsVideo",
-                            ) {
-                                Column {
-                                    lyricsVideoCard()
-                                    Spacer(Modifier.height(20.dp))
-                                }
-                            }
-                            controlsContent()
-                        }
-                    } else if (vertical) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                            coverContent()
-                            Spacer(Modifier.height(coverGap))
-                            controlsContent()
-                        }
-                    } else {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            if (cfg.layout == FullscreenLayout.COVER_LEFT) {
-                                coverContent(); Spacer(Modifier.width(coverGap)); controlsContent()
-                            } else {
-                                controlsContent(); Spacer(Modifier.width(coverGap)); coverContent()
-                            }
-                        }
-                    }
-                }
-                Spacer(Modifier.width(paneGap))
-                Box(Modifier.width(lyricsW).fillMaxHeight()) {
-                    PlainAnimatedVisibility(
-                        visible = showLyrics,
-                        enter = fadeIn() + slideInHorizontally { it / 8 },
-                        exit = fadeOut() + slideOutHorizontally { it / 8 },
-                        label = "fsLyrics",
-                    ) {
-                        LyricsPanel(
-                            onClose = { showLyrics = false },
+                            shape = remember(cfg.coverShape, coverMorph) { MorphingCoverShape(cfg.coverShape) { coverMorph.progress } },
+                            morph = coverMorph,
                             modifier = Modifier.fillMaxSize(),
                         )
                     }
-                }
-            }
-        }
-
-        // Up-next overlay.
-        Box(Modifier.fillMaxSize().padding(top = if (fsCompact) 76.dp else 96.dp, end = if (fsCompact) 12.dp else 32.dp, start = if (fsCompact) 12.dp else 0.dp, bottom = if (fsCompact) 16.dp else 32.dp), contentAlignment = Alignment.CenterEnd) {
-            PlainAnimatedVisibility(
-                visible = showQueue,
-                enter = fadeIn() + slideInHorizontally { it / 2 },
-                exit = fadeOut() + slideOutHorizontally { it / 2 },
-                label = "fsQueue",
-            ) {
-                Column(
-                    Modifier
-                        .then(if (fsCompact) Modifier.fillMaxWidth() else Modifier.width(380.dp))
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(28.dp))
-                        .background(Color.Black.copy(alpha = 0.5f))
-                        .padding(20.dp),
-                ) {
-                    QueuePillStrip(
+                },
+                lyrics = { LyricsPanel(onClose = { setLyrics(false) }, modifier = Modifier.fillMaxSize()) },
+                controls = {
+                    FullscreenControlsCard(
+                        cfg = cfg,
+                        track = track,
+                        stateName = state.name,
+                        playing = playing,
+                        isFavorite = isFavorite,
+                        duration = duration,
+                        canPrev = canPrev,
+                        canNext = canNext,
+                        shuffle = shuffle,
+                        repeat = repeat,
+                        volume = displayVolume,
+                        inlineQueue = inlineQueue,
                         upcoming = upcoming,
+                        previousPreview = previousPreview,
+                        nextPreview = nextPreview,
+                        chromeMod = chromeMod,
+                        onOpenArtist = {
+                            WindowFullscreen.exit(windowState)
+                            navController.openArtistByName(it)
+                        },
+                        onOpenAlbum = {
+                            val t = track
+                            WindowFullscreen.exit(windowState)
+                            scope.launch { navController.openAlbumOf(t?.albumId, t?.album.orEmpty(), t?.artist.orEmpty()) }
+                        },
+                        onToggleFavorite = { scope.launch { controller.toggleFavorite() } },
+                        onPrev = { if (canPrev) controller.previous() },
+                        onPlayPause = { if (playing) controller.pause() else controller.play() },
+                        onNext = { controller.next() },
+                        onShuffle = { controller.toggleShuffle() },
+                        onRepeat = { controller.cycleRepeatMode() },
+                        onRadio = { track?.let { t -> scope.launch { runCatching { controller.startRadio(t.videoId) } } } },
+                        onVolumeChange = {
+                            scrubVolume = true
+                            scrubVol = it
+                            controller.setVolume(it)
+                        },
+                        onVolumeFinished = {
+                            scrubVolume = false
+                            prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
+                        },
                         onPlayIndex = { index -> scope.launch(Dispatchers.IO) { controller.playQueue(queueTracks, index) } },
-                        modifier = Modifier.fillMaxSize(),
+                        modifier = Modifier.songSwapControls(swap),
                     )
-                }
-            }
+                },
+            )
         }
 
         // Toolbar.
@@ -658,11 +477,19 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
             Spacer(Modifier.weight(1f))
             PrefHorizontal(cfg.showQueueButton) {
                 Row {
-                    ToolIconButton(Icons.AutoMirrored.Outlined.QueueMusic, "Queue", active = showQueue) { showQueue = !showQueue }
+                    ToolIconButton(Icons.AutoMirrored.Outlined.QueueMusic, "Queue", active = inlineQueue || queueOpen) {
+                        when {
+                            queueOpen -> onCloseQueue?.invoke()
+                            queueMode == QueuePanelMode.FULLSCREEN -> onOpenFullscreenQueue?.invoke()
+                            queueMode == QueuePanelMode.PINNED_RIGHT ->
+                                onOpenPinnedQueue?.invoke() ?: onOpenFullscreenQueue?.invoke()
+                            else -> underPlaybarOpen = !underPlaybarOpen
+                        }
+                    }
                     Spacer(Modifier.width(10.dp))
                 }
             }
-            ToolIconButton(Icons.Outlined.Lyrics, "Lyrics", active = showLyrics) { showLyrics = !showLyrics }
+            ToolIconButton(Icons.Outlined.Lyrics, "Lyrics", active = showLyrics) { setLyrics(!showLyrics) }
         }
 
         // Clock stays visible while the controls are hidden.
@@ -681,7 +508,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
                     now.format(DateTimeFormatter.ofPattern("HH:mm")),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color.White.copy(alpha = 0.8f),
+                    color = ink.text(0.8f),
                 )
             }
         }
@@ -690,7 +517,7 @@ fun NowPlayingFullscreenScreen(navController: NavController) {
 }
 
 @Composable
-private fun FullscreenCover(
+internal fun FullscreenCover(
     artworkUrl: String?,
     seed: String,
     canvasUrl: String?,
@@ -738,18 +565,19 @@ private fun FullscreenCover(
 }
 
 @Composable
-private fun VolumeGroup(
+internal fun VolumeGroup(
     style: VolumeControlStyle,
     volume: Float,
     onChange: (Float) -> Unit,
     onFinished: () -> Unit,
 ) {
+    val ink = LocalPlayerInk.current
     Row(
-        Modifier.fillMaxWidth(),
+        Modifier.fillMaxWidth().volumeWheel(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Icon(Icons.Outlined.VolumeDown, null, tint = Color.White.copy(alpha = 0.75f), modifier = Modifier.size(20.dp))
+        Icon(Icons.Outlined.VolumeDown, null, tint = ink.text(0.75f), modifier = Modifier.size(20.dp))
         if (style == VolumeControlStyle.COMPACT_PILL) {
             VolumePillControl(volume = volume, onVolumeChange = onChange, onVolumeChangeFinished = onFinished)
         } else {
@@ -757,18 +585,36 @@ private fun VolumeGroup(
                 progress = volume,
                 onScrub = onChange,
                 onScrubFinished = onFinished,
+                activeColor = ink.primary,
+                inactiveColor = ink.fill(0.28f),
                 style = SliderStyle.M3_EXPRESSIVE,
                 squiggly = false,
                 compact = true,
                 modifier = Modifier.weight(1f),
             )
-            Icon(Icons.Outlined.VolumeUp, null, tint = Color.White.copy(alpha = 0.75f), modifier = Modifier.size(20.dp))
+            Icon(Icons.Outlined.VolumeUp, null, tint = ink.text(0.75f), modifier = Modifier.size(20.dp))
             Text(
                 "${(volume * 100).toInt()}%",
-                style = MaterialTheme.typography.labelMedium,
-                color = Color.White.copy(alpha = 0.7f),
+                style = com.music.vivi.compose.theme.VisageType.readout,
+                color = ink.text(0.7f),
                 modifier = Modifier.widthIn(min = 40.dp),
             )
         }
     }
+}
+
+internal val InlineQueueHeight = 220.dp
+
+/** Fixed width read in the layout phase, so an animated value never recomposes the screen. */
+internal fun Modifier.widthOf(width: () -> Dp): Modifier = layout { m, c ->
+    val px = width().roundToPx().coerceIn(c.minWidth, c.maxWidth.coerceAtLeast(c.minWidth))
+    val p = m.measure(c.copy(minWidth = px, maxWidth = px))
+    layout(p.width, p.height) { p.place(0, 0) }
+}
+
+/** Fixed height read in the layout phase, so an animated value never recomposes the screen. */
+internal fun Modifier.heightOf(height: () -> Dp): Modifier = layout { m, c ->
+    val px = height().roundToPx().coerceIn(c.minHeight, c.maxHeight.coerceAtLeast(c.minHeight))
+    val p = m.measure(c.copy(minHeight = px, maxHeight = px))
+    layout(p.width, p.height) { p.place(0, 0) }
 }

@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.player
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.AnimatedVisibilityScope
@@ -29,6 +30,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -49,11 +51,13 @@ import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Pets
 import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.outlined.Album
 import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material.icons.outlined.Lyrics
 import androidx.compose.material.icons.outlined.MoreVert
 import androidx.compose.material.icons.outlined.OpenInFull
+import androidx.compose.material.icons.outlined.PictureInPictureAlt
 import androidx.compose.material.icons.outlined.Repeat
 import androidx.compose.material.icons.outlined.RepeatOne
 import androidx.compose.material.icons.outlined.Shuffle
@@ -63,6 +67,8 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import com.music.vivi.compose.theme.LocalPlayerInk
+import com.music.vivi.compose.theme.ProvidePlayerInk
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
@@ -99,6 +105,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.music.vivi.compose.ui.artist.openArtistByName
+import com.music.vivi.compose.ui.album.openAlbumOf
 import coil3.compose.AsyncImage
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -139,6 +146,7 @@ import com.music.vivi.compose.ui.player.video.morphClip
 import com.music.vivi.compose.ui.player.canvas.CanvasResolver
 import com.music.vivi.compose.ui.player.canvas.CanvasSource
 import com.music.vivi.compose.ui.player.lyrics.LyricsPanel
+import com.music.vivi.player.NowPlaying
 import com.music.vivi.player.PlaybackState
 import com.music.vivi.player.QueueTrack
 import com.music.vivi.player.RepeatMode
@@ -180,11 +188,33 @@ fun NowPlayingScreen(
     queueOpen: Boolean = false,
     onCloseQueue: (() -> Unit)? = null,
 ) {
+    val prefs = koinInject<DesktopPrefs>()
+    @Suppress("UNUSED_VARIABLE")
+    val observeInk = rememberPrefsVersion(prefs)
+    val outerLook = prefs.nowPlayingLook()
+    ProvidePlayerInk(
+        solid = outerLook.backgroundStyle == PlayerBackgroundStyle.DEFAULT,
+        backdrop = MaterialTheme.colorScheme.surface,
+        darkness = outerLook.darkness,
+        framedControls = outerLook.framedControls,
+    ) {
+        NowPlayingScreenContent(navController, onOpenPinnedQueue, onOpenFullscreenQueue, queueOpen, onCloseQueue)
+    }
+}
+
+@Composable
+private fun NowPlayingScreenContent(
+    navController: NavController,
+    onOpenPinnedQueue: (() -> Unit)? = null,
+    onOpenFullscreenQueue: (() -> Unit)? = null,
+    queueOpen: Boolean = false,
+    onCloseQueue: (() -> Unit)? = null,
+) {
+    val ink = LocalPlayerInk.current
     val controller = LocalPlaybackController.current
     val prefs = koinInject<DesktopPrefs>()
     @Suppress("UNUSED_VARIABLE")
     val observeSquare = rememberPrefsVersion(prefs)
-    val squareCover = prefs.getBoolean(PrefKeys.SquareCover, false)
     val downloads = koinInject<com.music.vivi.compose.download.TrackDownloadService>()
     val scope = rememberCoroutineScope()
     var toastMessage by remember { mutableStateOf<String?>(null) }
@@ -208,14 +238,16 @@ fun NowPlayingScreen(
     }
     @Suppress("UNUSED_VARIABLE")
     val observePrefs = prefsTick
-    val limitControlsWidth = prefs.getBoolean(PrefKeys.LimitPlayerControlsWidth, prefs.getBoolean(PrefKeys.AdwaitaInspired, false))
-    val controlsMaxWidth = prefs.getInt(PrefKeys.PlayerControlsWidth, 600).coerceIn(400, 600).dp
-    val playPauseHeight = prefs.getInt(PrefKeys.PlayPauseHeight, 56).coerceIn(48, 96).dp
+    val look = prefs.nowPlayingLook()
+    val squareCover = look.squareCover
+    val limitControlsWidth = look.limitControlsWidth
+    val controlsMaxWidth = look.controlsMaxWidth
+    val playPauseHeight = look.playPauseHeight
     val queueMode = runCatching {
         QueuePanelMode.valueOf(
-            prefs.getString(PrefKeys.QueuePanelMode, QueuePanelMode.FULLSCREEN.name),
+            prefs.getString(PrefKeys.QueuePanelMode, QueuePanelMode.PINNED_RIGHT.name),
         )
-    }.getOrDefault(QueuePanelMode.FULLSCREEN)
+    }.getOrDefault(QueuePanelMode.PINNED_RIGHT)
     var underPlaybarOpen by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(true) }
     val showUnderPlaybar = queueMode == QueuePanelMode.UNDER_PLAYBAR && underPlaybarOpen
     val nowPlaying by controller.nowPlaying.collectAsState()
@@ -246,21 +278,11 @@ fun NowPlayingScreen(
         queueTracks.mapIndexedNotNull { i, t -> if (i > queueIndex) i to t else null }
     }
 
-    val bgStyle = runCatching {
-        PlayerBackgroundStyle.valueOf(
-            prefs.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name),
-        )
-    }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
-    val sliderStyle = runCatching {
-        SliderStyle.valueOf(prefs.getString(PrefKeys.SliderStyle, SliderStyle.M3_EXPRESSIVE.name))
-    }.getOrDefault(SliderStyle.M3_EXPRESSIVE)
-    val squigglySlider = prefs.getBoolean(PrefKeys.SquigglySlider, false)
-    val framedControls = prefs.getBoolean(PrefKeys.UsePlayerV2, false)
-    val buttonsStyle = runCatching {
-        PlayerButtonsStyle.valueOf(
-            prefs.getString(PrefKeys.PlayerButtonsStyle, PlayerButtonsStyle.DEFAULT.name),
-        )
-    }.getOrDefault(PlayerButtonsStyle.DEFAULT)
+    val bgStyle = look.backgroundStyle
+    val sliderStyle = look.sliderStyle
+    val squigglySlider = look.squiggly
+    val framedControls = look.framedControls
+    val buttonsStyle = look.buttonsStyle
     val enableCanvas = prefs.getBoolean(PrefKeys.EnableCanvas, true)
     val canvasSource = runCatching {
         CanvasSource.valueOf(prefs.getString(PrefKeys.CanvasSource, CanvasSource.AUTO.name))
@@ -303,7 +325,7 @@ fun NowPlayingScreen(
         canvasArt = art
     }
 
-    val hideThumbnail = prefs.getBoolean(PrefKeys.HidePlayerThumbnail, false)
+    val hideThumbnail = look.hideCover
     // Only animate to artwork that is already decoded at full quality.
     val readyArt = com.music.vivi.compose.ui.component.rememberReadyArtwork(track?.artworkUrl)
     var artTarget by remember { mutableStateOf<Pair<String?, String?>>(null to null) }
@@ -357,20 +379,13 @@ fun NowPlayingScreen(
                 val stacked = maxWidth < 760.dp || maxHeight > maxWidth * 1.25f
                 // Three panes (cover | lyrics | controls) when lyrics are open and the pane is ultra wide.
                 val triple = !stacked && showLyrics && maxWidth >= 1700.dp && maxWidth.value / maxHeight.value >= 1.85f
-                val paneGap = if (stacked) 16.dp else 28.dp
-                val bottomChromeH = 60.dp
+                val paneGap = if (stacked) 16.dp else NowPlayingPaneGap
                 val underQueue = showUnderPlaybar && !showLyrics && !stacked
-                val mainH = (maxHeight - bottomChromeH).coerceAtLeast(200.dp)
-                // Cover from height, then stack takes the rest so the row is wide and stack isn't skinny.
-                val idleArtSize = minOf(mainH * 0.92f, maxWidth * 0.40f, 900.dp)
-                val availableStackW = (maxWidth - paneGap - idleArtSize).coerceAtLeast(0.dp)
-                // Large screens: keep the controls column a readable width instead of stretching it across the pane.
-                val stackCap = if (windowLayout.isExpanded) 820.dp else 1200.dp
-                val idleStackW = minOf(
-                    if (limitControlsWidth) adwaitaClampWidth(availableStackW, controlsMaxWidth) else availableStackW,
-                    stackCap,
-                )
-                val idleContentW = (idleArtSize + paneGap + idleStackW).coerceAtMost(maxWidth)
+                val idle = nowPlayingIdleMetrics(maxWidth, maxHeight, limitControlsWidth, controlsMaxWidth, expanded = windowLayout.isExpanded)
+                val mainH = idle.mainHeight
+                val idleArtSize = idle.coverSize
+                val idleStackW = idle.stackWidth
+                val idleContentW = idle.contentWidth
                 val tripleArt = minOf(mainH * 0.78f, maxWidth * 0.24f)
                 val lyricsStackW = if (triple) 520.dp else (maxWidth * 0.44f).coerceAtMost(440.dp)
                 val lyricsContentW = if (triple) minOf(maxWidth, 3000.dp) else if (windowLayout.isExpanded) minOf(maxWidth, 2000.dp) else maxWidth
@@ -423,6 +438,7 @@ fun NowPlayingScreen(
                                     controller = controller,
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .volumeWheel()
                                         .morphAspect { coverMorph.aspect }
                                         .sharedBounds(
                                             sharedContentState = coverState,
@@ -445,7 +461,7 @@ fun NowPlayingScreen(
                                         label = "npArtwork",
                                         modifier = Modifier.fillMaxSize()
                                             .songSwapCover(swap)
-                                            .morphClip(elevation = 28.dp) { if (squareCover) 0.dp else (28f - 8f * coverMorph.progress.coerceIn(0f, 1f)).dp },
+                                            .morphClip(elevation = 28.dp) { nowPlayingCoverRadius(squareCover, coverMorph.progress) },
                                     ) { (_, artUrl) ->
                                         Box(Modifier.fillMaxSize().then(Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest))) {
                                             val squareUrl = canvasSquareUrl
@@ -535,53 +551,29 @@ fun NowPlayingScreen(
                                                     Alignment.Center,
                                                 ),
                                             )
-                                            .clip(RoundedCornerShape(14.dp)),
+                                            .clip(if (squareCover) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(14.dp)),
                                     )
                                 }
-                                Column(Modifier.weight(1f)) {
-                                    Text(
-                                        track?.title ?: "Nothing playing",
-                                        style = if (stacked) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color.White,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    val credits = track?.artist.orEmpty()
-                                    if (credits.isBlank()) {
-                                        Text(
-                                            state.name,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = Color.White.copy(alpha = 0.65f),
-                                            modifier = Modifier.padding(top = 6.dp),
-                                        )
-                                    } else {
-                                        com.music.vivi.compose.ui.artist.ArtistLinks(
-                                            credits = credits,
-                                            style = MaterialTheme.typography.titleMedium,
-                                            color = Color.White.copy(alpha = 0.65f),
-                                            hoverColor = Color.White,
-                                            onOpen = { navController.openArtistByName(it) },
-                                            maxLines = 2,
-                                            modifier = Modifier.padding(top = 6.dp),
-                                        )
-                                    }
-                                }
-                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    ToolIconButton(Icons.Outlined.Download, "Make available offline") {
+                                NowPlayingTrackInfo(
+                                    compactTitle = stacked,
+                                    track = track,
+                                    stateName = state.name,
+                                    onOpenArtist = { navController.openArtistByName(it) },
+                                    onOpenAlbum = { t -> scope.launch { navController.openAlbumOf(t.albumId, t.album.orEmpty(), t.artist) } },
+                                    modifier = Modifier.weight(1f),
+                                )
+                                NowPlayingTrackActions(
+                                    isFavorite = isFavorite,
+                                    onDownload = {
                                         val t = track
                                         if (t == null) {
                                             toastMessage = "Nothing playing"
                                         } else {
                                             downloads.enqueue(t.videoId, t.title, t.artist)
                                         }
-                                    }
-                                    ToolIconButton(
-                                        if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
-                                        "Favorite",
-                                        active = isFavorite,
-                                    ) { scope.launch { controller.toggleFavorite() } }
-                                }
+                                    },
+                                    onFavorite = { scope.launch { controller.toggleFavorite() } },
+                                )
                             }
 
                             Spacer(Modifier.height(stackGap))
@@ -624,107 +616,45 @@ fun NowPlayingScreen(
                             } // Close inner Column
                 }
                 val toolsRow: @Composable (Modifier, Boolean) -> Unit = { toolsMod, compactTools ->
-                    Row(
-                        toolsMod,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Row(
-                            if (compactTools) Modifier.weight(1f).padding(end = 12.dp) else Modifier,
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = if (compactTools) Arrangement.SpaceBetween else Arrangement.spacedBy(8.dp),
-                        ) {
-                            ToolIconButton(
-                                Icons.AutoMirrored.Outlined.QueueMusic,
-                                "Queue",
-                                active = showUnderPlaybar || queueOpen,
-                            ) {
-                                when {
-                                    queueOpen -> onCloseQueue?.invoke()
-                                    queueMode == QueuePanelMode.FULLSCREEN ->
-                                        onOpenFullscreenQueue?.invoke()
-                                    queueMode == QueuePanelMode.PINNED_RIGHT ->
-                                        onOpenPinnedQueue?.invoke()
-                                            ?: onOpenFullscreenQueue?.invoke()
-                                    else -> underPlaybarOpen = !underPlaybarOpen
-                                }
+                    NowPlayingBottomBar(
+                        modifier = toolsMod,
+                        compact = compactTools,
+                        queueActive = showUnderPlaybar || queueOpen,
+                        lyricsActive = showLyrics,
+                        shuffle = shuffle,
+                        repeat = repeat,
+                        volume = displayVolume,
+                        volumeStyle = look.volumeStyle,
+                        onQueue = {
+                            when {
+                                queueOpen -> onCloseQueue?.invoke()
+                                queueMode == QueuePanelMode.FULLSCREEN ->
+                                    onOpenFullscreenQueue?.invoke()
+                                queueMode == QueuePanelMode.PINNED_RIGHT ->
+                                    onOpenPinnedQueue?.invoke()
+                                        ?: onOpenFullscreenQueue?.invoke()
+                                else -> underPlaybarOpen = !underPlaybarOpen
                             }
-                            ToolIconButton(Icons.Outlined.Lyrics, "Lyrics", active = showLyrics) {
-                                showLyrics = !showLyrics
+                        },
+                        onLyrics = { showLyrics = !showLyrics },
+                        onShuffle = { controller.toggleShuffle() },
+                        onRepeat = { controller.cycleRepeatMode() },
+                        onFullscreen = {
+                            WindowFullscreen.enter(windowState)
+                            navController.navigate(Routes.NOW_PLAYING_FULLSCREEN) {
+                                launchSingleTop = true
                             }
-                            ToolIconButton(
-                                Icons.Outlined.Shuffle,
-                                "Shuffle",
-                                active = shuffle,
-                            ) { controller.toggleShuffle() }
-                            ToolIconButton(
-                                if (repeat == RepeatMode.One) Icons.Outlined.RepeatOne else Icons.Outlined.Repeat,
-                                "Repeat",
-                                active = repeat != RepeatMode.Off,
-                            ) { controller.cycleRepeatMode() }
-                            ToolIconButton(Icons.Outlined.OpenInFull, "Fullscreen player") {
-                                WindowFullscreen.enter(windowState)
-                                navController.navigate(Routes.NOW_PLAYING_FULLSCREEN) {
-                                    launchSingleTop = true
-                                }
-                            }
-                        }
-                        if (!compactTools) {
-                        val volumeStyle = runCatching { VolumeControlStyle.valueOf(prefs.getString(PrefKeys.VolumeControlStyle, VolumeControlStyle.SLIDER.name)) }.getOrDefault(VolumeControlStyle.SLIDER)
-                        Row(
-                            Modifier
-                                .weight(1f)
-                                .padding(horizontal = 12.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            Icon(
-                                Icons.Outlined.VolumeDown,
-                                contentDescription = null,
-                                tint = Color.White.copy(alpha = 0.75f),
-                                modifier = Modifier.size(20.dp),
-                            )
-                            if (volumeStyle == VolumeControlStyle.COMPACT_PILL) {
-                                VolumePillControl(
-                                    volume = displayVolume,
-                                    onVolumeChange = {
-                                        scrubVolume = true
-                                        scrubVol = it
-                                        controller.setVolume(it)
-                                    },
-                                    onVolumeChangeFinished = {
-                                        scrubVolume = false
-                                        prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
-                                    }
-                                )
-                                
-                            } else {
-                                PlayerSeekBar(
-                                    progress = displayVolume,
-                                    onScrub = {
-                                        scrubVolume = true
-                                        scrubVol = it
-                                        controller.setVolume(it)
-                                    },
-                                    onScrubFinished = {
-                                        scrubVolume = false
-                                        prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
-                                    },
-                                    style = SliderStyle.M3_EXPRESSIVE,
-                                    squiggly = false,
-                                    compact = true,
-                                    modifier = Modifier.weight(1f)
-                                )
-                                Text(
-                                    "${(displayVolume * 100).toInt()}%",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = Color.White.copy(alpha = 0.7f),
-                                    modifier = Modifier.widthIn(min = 36.dp),
-                                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
-                                )
-                            }
-                        }
-                        }
-                        Box {
+                        },
+                        onVolumeChange = {
+                            scrubVolume = true
+                            scrubVol = it
+                            controller.setVolume(it)
+                        },
+                        onVolumeFinished = {
+                            scrubVolume = false
+                            prefs.setFloat(PrefKeys.PlaybackVolume, scrubVol)
+                        },
+                        more = {
                             ToolIconButton(Icons.Outlined.MoreVert, "More", circle = true) {
                                 showTrackActions = true
                             }
@@ -733,8 +663,9 @@ fun NowPlayingScreen(
                                 track = track,
                                 onDismiss = { showTrackActions = false },
                             )
-                        }
-                    }
+                        },
+                    )
+
                 }
 
                 if (stacked) {
@@ -846,6 +777,8 @@ fun NowPlayingScreen(
                                                 playing = playing,
                                                 modifier = Modifier
                                                     .fillMaxSize()
+                                                    // Moves with the swap like the cover does.
+                                                    .songSwapCover(swap)
                                                     .padding(bottom = 16.dp)
                                                     .clip(if (squareCover) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(24.dp))
                                                     .graphicsLayer {
@@ -869,7 +802,7 @@ fun NowPlayingScreen(
                             }
 
                             controlsBlock(
-                                Modifier.align(Alignment.CenterHorizontally).then(if (limitControlsWidth) Modifier.widthIn(max = if (showLyrics) adwaitaClampWidth(stackW, controlsMaxWidth) else controlsMaxWidth) else Modifier).fillMaxWidth().then(if (underQueue && !showCanvasOnRight) Modifier.weight(1f) else Modifier),
+                                Modifier.align(Alignment.CenterHorizontally).nowPlayingControlsWidth(limitControlsWidth, if (showLyrics) adwaitaClampWidth(stackW, controlsMaxWidth) else controlsMaxWidth).then(if (underQueue && !showCanvasOnRight) Modifier.weight(1f) else Modifier),
                                 showLyrics && !triple && !hideThumbnail && !showCanvasOnRight,
                             )
                             if (!underQueue) {
@@ -888,6 +821,240 @@ fun NowPlayingScreen(
     }
 }
 
+/** Gap between the cover and the controls column. */
+internal val NowPlayingPaneGap = 28.dp
+
+/** Sizes of the idle (no lyrics) Now Playing layout in a window of [maxWidth] x [maxHeight]. */
+internal class NowPlayingIdleMetrics(val mainHeight: Dp, val coverSize: Dp, val stackWidth: Dp, val contentWidth: Dp)
+
+/** Shared by the screen and the settings preview, so both lay the cover and the controls out the same way. */
+internal fun nowPlayingIdleMetrics(
+    maxWidth: Dp,
+    maxHeight: Dp,
+    limitControlsWidth: Boolean,
+    controlsMaxWidth: Dp,
+    bottomChrome: Dp = 60.dp,
+    /** Large / ultra wide windows: cap the cover and the controls column instead of stretching them. */
+    expanded: Boolean = false,
+): NowPlayingIdleMetrics {
+    val mainH = (maxHeight - bottomChrome).coerceAtLeast(200.dp)
+    // Cover from height, then stack takes the rest so the row is wide and stack isn't skinny.
+    val art = minOf(mainH * 0.92f, maxWidth * 0.40f, 900.dp)
+    val available = (maxWidth - NowPlayingPaneGap - art).coerceAtLeast(0.dp)
+    val stack = minOf(if (limitControlsWidth) adwaitaClampWidth(available, controlsMaxWidth) else available, if (expanded) 820.dp else 1200.dp)
+    return NowPlayingIdleMetrics(mainH, art, stack, (art + NowPlayingPaneGap + stack).coerceAtMost(maxWidth))
+}
+
+/** Corner radius of the big cover: square when the setting says so, easing from 28 to 20 dp while it morphs to a video. */
+internal fun nowPlayingCoverRadius(square: Boolean, morphProgress: Float = 0f): Dp =
+    if (square) 0.dp else (28f - 8f * morphProgress.coerceIn(0f, 1f)).dp
+
+/** Width rule of the controls column ("Limit controls width"). */
+internal fun Modifier.nowPlayingControlsWidth(limit: Boolean, maxWidth: Dp): Modifier =
+    (if (limit) widthIn(max = maxWidth) else this).fillMaxWidth()
+
+/** Title, credited artists (linked) and album of the playing song. Used by Now Playing and its settings preview. */
+@Composable
+internal fun NowPlayingTrackInfo(
+    track: NowPlaying?,
+    stateName: String,
+    onOpenArtist: (String) -> Unit,
+    onOpenAlbum: (NowPlaying) -> Unit,
+    modifier: Modifier = Modifier,
+    /** Smaller title for narrow, stacked layouts. */
+    compactTitle: Boolean = false,
+) {
+    val ink = LocalPlayerInk.current
+    Column(modifier) {
+        Text(
+            track?.title ?: "Nothing playing",
+            style = if (compactTitle) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold,
+            color = ink.text(),
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+        val credits = track?.artist.orEmpty()
+        if (credits.isBlank()) {
+            Text(
+                stateName,
+                style = MaterialTheme.typography.titleMedium,
+                color = ink.text(0.65f),
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        } else {
+            com.music.vivi.compose.ui.artist.ArtistLinks(
+                credits = credits,
+                style = MaterialTheme.typography.titleMedium,
+                color = ink.text(0.65f),
+                hoverColor = ink.text(),
+                onOpen = onOpenArtist,
+                maxLines = 2,
+                modifier = Modifier.padding(top = 6.dp),
+            )
+        }
+        val albumName = track?.album.orEmpty()
+        if (albumName.isNotBlank()) {
+            val canOpenAlbum = com.music.vivi.compose.ui.album.AlbumLinks.isOpenable(albumName, track?.albumId, track?.localPath != null)
+            Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.Album, "Album", tint = ink.text(0.5f), modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                com.music.vivi.compose.ui.album.AlbumLink(
+                    albumName,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = ink.text(0.55f),
+                    hoverColor = ink.text(),
+                    modifier = Modifier.weight(1f, fill = false),
+                    onClick = if (!canOpenAlbum || track == null) null else { { onOpenAlbum(track) } },
+                )
+            }
+        }
+    }
+}
+
+/** Download and favourite buttons next to the title. */
+@Composable
+internal fun NowPlayingTrackActions(isFavorite: Boolean, onDownload: () -> Unit, onFavorite: () -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        ToolIconButton(Icons.Outlined.Download, "Make available offline", onClick = onDownload)
+        ToolIconButton(
+            if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
+            "Favorite",
+            active = isFavorite,
+            onClick = onFavorite,
+        )
+    }
+}
+
+/** Bottom row of Now Playing: tool buttons | volume (fills) | more. Shared with the settings preview. */
+@Composable
+internal fun NowPlayingBottomBar(
+    queueActive: Boolean,
+    lyricsActive: Boolean,
+    shuffle: Boolean,
+    repeat: RepeatMode,
+    volume: Float,
+    volumeStyle: VolumeControlStyle,
+    onQueue: () -> Unit,
+    onLyrics: () -> Unit,
+    onShuffle: () -> Unit,
+    onRepeat: () -> Unit,
+    onFullscreen: () -> Unit,
+    onVolumeChange: (Float) -> Unit,
+    onVolumeFinished: () -> Unit,
+    modifier: Modifier = Modifier,
+    /** Compact windows: icons spread over the row, no volume slider (the system volume / wheel still work). */
+    compact: Boolean = false,
+    more: @Composable () -> Unit,
+) {
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            if (compact) Modifier.weight(1f).padding(end = 12.dp) else Modifier,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = if (compact) Arrangement.SpaceBetween else Arrangement.spacedBy(8.dp),
+        ) {
+            ToolIconButton(Icons.AutoMirrored.Outlined.QueueMusic, "Queue", active = queueActive, onClick = onQueue)
+            ToolIconButton(Icons.Outlined.Lyrics, "Lyrics", active = lyricsActive, onClick = onLyrics)
+            ToolIconButton(Icons.Outlined.Shuffle, "Shuffle", active = shuffle, onClick = onShuffle)
+            ToolIconButton(
+                if (repeat == RepeatMode.One) Icons.Outlined.RepeatOne else Icons.Outlined.Repeat,
+                "Repeat",
+                active = repeat != RepeatMode.Off,
+                onClick = onRepeat,
+            )
+            ToolIconButton(Icons.Outlined.PictureInPictureAlt, "Pop out mini player") {
+                com.music.vivi.compose.ui.popup.PopupPlayer.toggle()
+            }
+            ToolIconButton(Icons.Outlined.OpenInFull, "Fullscreen player", onClick = onFullscreen)
+        }
+        if (!compact) Row(
+            Modifier.weight(1f).volumeWheel().padding(horizontal = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            NowPlayingVolumeControl(volume = volume, style = volumeStyle, onChange = onVolumeChange, onFinished = onVolumeFinished)
+        }
+        Box { more() }
+    }
+}
+
+/**
+ * The Now Playing look settings, read in one place for the screen and the settings preview. Call it with a prefs version
+ * you observe ([com.music.vivi.compose.ui.settings.rememberPrefsVersion]) so a change recomposes the caller.
+ */
+internal data class NowPlayingLook(
+    val backgroundStyle: PlayerBackgroundStyle,
+    val darkness: Float,
+    val squareCover: Boolean,
+    val hideCover: Boolean,
+    val framedControls: Boolean,
+    val buttonsStyle: PlayerButtonsStyle,
+    val sliderStyle: SliderStyle,
+    val squiggly: Boolean,
+    val limitControlsWidth: Boolean,
+    val controlsMaxWidth: Dp,
+    val playPauseHeight: Dp,
+    val volumeStyle: VolumeControlStyle,
+)
+
+internal fun DesktopPrefs.nowPlayingLook(): NowPlayingLook {
+    fun <E : Enum<E>> enumOf(key: String, default: E, parse: (String) -> E): E =
+        runCatching { parse(getString(key, default.name)) }.getOrDefault(default)
+    return NowPlayingLook(
+        backgroundStyle = enumOf(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle) { PlayerBackgroundStyle.valueOf(it) },
+        darkness = getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100) / 100f,
+        squareCover = getBoolean(PrefKeys.SquareCover, false),
+        hideCover = getBoolean(PrefKeys.HidePlayerThumbnail, false),
+        framedControls = getBoolean(PrefKeys.UsePlayerV2, false),
+        buttonsStyle = enumOf(PrefKeys.PlayerButtonsStyle, PlayerButtonsStyle.DEFAULT) { PlayerButtonsStyle.valueOf(it) },
+        sliderStyle = enumOf(PrefKeys.SliderStyle, SliderStyle.M3_EXPRESSIVE) { SliderStyle.valueOf(it) },
+        squiggly = getBoolean(PrefKeys.SquigglySlider, false),
+        limitControlsWidth = getBoolean(PrefKeys.LimitPlayerControlsWidth, getBoolean(PrefKeys.AdwaitaInspired, false)),
+        controlsMaxWidth = getInt(PrefKeys.PlayerControlsWidth, 600).coerceIn(400, 600).dp,
+        playPauseHeight = getInt(PrefKeys.PlayPauseHeight, 56).coerceIn(48, 96).dp,
+        volumeStyle = enumOf(PrefKeys.VolumeControlStyle, VolumeControlStyle.SLIDER) { VolumeControlStyle.valueOf(it) },
+    )
+}
+
+/** Volume icon plus the slider or pill (and its percentage), per the "Volume control" setting. */
+@Composable
+internal fun RowScope.NowPlayingVolumeControl(
+    volume: Float,
+    style: VolumeControlStyle,
+    onChange: (Float) -> Unit,
+    onFinished: () -> Unit,
+) {
+    val ink = LocalPlayerInk.current
+    Icon(
+        Icons.Outlined.VolumeDown,
+        contentDescription = null,
+        tint = ink.text(0.75f),
+        modifier = Modifier.size(20.dp),
+    )
+    if (style == VolumeControlStyle.COMPACT_PILL) {
+        VolumePillControl(volume = volume, onVolumeChange = onChange, onVolumeChangeFinished = onFinished)
+    } else {
+        PlayerSeekBar(
+            progress = volume,
+            onScrub = onChange,
+            onScrubFinished = onFinished,
+            activeColor = ink.primary,
+            inactiveColor = ink.fill(0.28f),
+            style = SliderStyle.M3_EXPRESSIVE,
+            squiggly = false,
+            compact = true,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            "${(volume * 100).toInt()}%",
+            style = com.music.vivi.compose.theme.VisageType.readout,
+            color = ink.text(0.7f),
+            modifier = Modifier.widthIn(min = 40.dp),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+        )
+    }
+}
+
 /** Seek bar + time labels; the only part of Now Playing that recomposes per position tick. */
 @Composable
 internal fun NowPlayingSeekSection(
@@ -897,6 +1064,7 @@ internal fun NowPlayingSeekSection(
     modifier: Modifier = Modifier,
     showTimes: Boolean = true,
 ) {
+    val ink = LocalPlayerInk.current
     val controller = LocalPlaybackController.current
     val positionMs by controller.positionMs.collectAsState()
     val playbackState by controller.state.collectAsState()
@@ -916,14 +1084,16 @@ internal fun NowPlayingSeekSection(
                 scrubbing = false
                 controller.seekTo((scrubPos * duration).toLong().coerceAtLeast(0L))
             },
+            activeColor = ink.primary,
+            inactiveColor = ink.fill(0.28f),
             style = sliderStyle,
             squiggly = squiggly,
             isPlaying = playbackState == com.music.vivi.player.PlaybackState.Playing,
             modifier = Modifier.fillMaxWidth(),
         )
         if (showTimes) Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            Text(formatMs(displayPos), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
-            Text(formatMs(duration), style = MaterialTheme.typography.labelMedium, color = Color.White.copy(alpha = 0.7f))
+            Text(formatMs(displayPos), style = com.music.vivi.compose.theme.VisageType.readout, color = ink.text(0.7f))
+            Text(formatMs(duration), style = com.music.vivi.compose.theme.VisageType.readout, color = ink.text(0.7f))
         }
     }
 }
@@ -943,21 +1113,22 @@ internal fun TransportRow(
     nextTracks: List<Pair<Int, QueueTrack>> = emptyList(),
     onPickTrack: (Int) -> Unit = {},
 ) {
+    val ink = LocalPlayerInk.current
     var eat by androidx.compose.runtime.remember { mutableStateOf(0f) }
     var eatSide by androidx.compose.runtime.remember { mutableStateOf(0) }
     val scheme = MaterialTheme.colorScheme
     val (pillBg, pillIcon) = when (style) {
-        PlayerButtonsStyle.DEFAULT -> Color.White.copy(alpha = 0.12f) to Color.White
+        PlayerButtonsStyle.DEFAULT -> ink.fill(0.12f) to ink.primary
         PlayerButtonsStyle.PRIMARY -> scheme.primary.copy(alpha = 0.85f) to scheme.onPrimary
         PlayerButtonsStyle.TERTIARY -> scheme.tertiary.copy(alpha = 0.85f) to scheme.onTertiary
     }
     val playBg = when (style) {
-        PlayerButtonsStyle.DEFAULT -> Color.White
+        PlayerButtonsStyle.DEFAULT -> ink.primary
         PlayerButtonsStyle.PRIMARY -> scheme.primary
         PlayerButtonsStyle.TERTIARY -> scheme.tertiary
     }
     val playFg = when (style) {
-        PlayerButtonsStyle.DEFAULT -> Color.Black
+        PlayerButtonsStyle.DEFAULT -> ink.inverse
         PlayerButtonsStyle.PRIMARY -> scheme.onPrimary
         PlayerButtonsStyle.TERTIARY -> scheme.onTertiary
     }
@@ -1014,13 +1185,6 @@ internal fun TransportRow(
                 horizontalArrangement = Arrangement.Center,
             ) {
                 PlayPauseIcon(playing = playing, tint = playFg, iconSize = 28.dp)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    if (playing) "Pause" else "Play",
-                    color = playFg,
-                    fontWeight = FontWeight.SemiBold,
-                    style = MaterialTheme.typography.titleMedium,
-                )
             }
         }
         TransportPill(
@@ -1050,11 +1214,12 @@ internal fun QueuePillStrip(
     onPlayIndex: (Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val ink = LocalPlayerInk.current
     Column(modifier.fillMaxWidth()) {
         Text(
             if (upcoming.isEmpty()) "Up next" else "Up next · ${upcoming.size}",
             style = MaterialTheme.typography.labelLarge,
-            color = Color.White.copy(alpha = 0.55f),
+            color = ink.text(0.55f),
             modifier = Modifier.padding(bottom = 10.dp),
         )
         LazyColumn(
@@ -1066,7 +1231,7 @@ internal fun QueuePillStrip(
                 Surface(
                     onClick = { onPlayIndex(index) },
                     shape = RoundedCornerShape(50),
-                    color = Color.White.copy(alpha = 0.14f),
+                    color = ink.text(0.14f),
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                 ) {
                     Row(
@@ -1085,19 +1250,21 @@ internal fun QueuePillStrip(
                         Column(Modifier.weight(1f)) {
                             Text(
                                 track.title,
-                                color = Color.White,
+                                color = ink.text(),
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                overflow = TextOverflow.Clip,
+                                modifier = Modifier.visageMarquee(),
                             )
                             if (track.artist.isNotBlank()) {
                                 Text(
                                     track.artist,
-                                    color = Color.White.copy(alpha = 0.6f),
+                                    color = ink.text(0.6f),
                                     style = MaterialTheme.typography.labelSmall,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    overflow = TextOverflow.Clip,
+                                    modifier = Modifier.visageMarquee(),
                                 )
                             }
                         }
@@ -1107,7 +1274,7 @@ internal fun QueuePillStrip(
             item(key = "queue-end-sentinel") {
                 Surface(
                     shape = RoundedCornerShape(50),
-                    color = Color.White.copy(alpha = 0.08f),
+                    color = ink.text(0.08f),
                     modifier = Modifier.fillMaxWidth().height(52.dp),
                 ) {
                     Row(
@@ -1117,13 +1284,13 @@ internal fun QueuePillStrip(
                         Icon(
                             Icons.Filled.Pets,
                             contentDescription = null,
-                            tint = Color.White.copy(alpha = 0.55f),
+                            tint = ink.text(0.55f),
                             modifier = Modifier.size(22.dp),
                         )
                         Spacer(Modifier.width(12.dp))
                         Text(
                             "Nothing to see here...",
-                            color = Color.White.copy(alpha = 0.45f),
+                            color = ink.text(0.45f),
                             style = MaterialTheme.typography.bodyMedium,
                         )
                     }
@@ -1138,7 +1305,7 @@ internal fun TransportPill(
     enabled: Boolean,
     onClick: () -> Unit,
     width: androidx.compose.ui.unit.Dp,
-    containerColor: Color = Color.White.copy(alpha = 0.12f),
+    containerColor: Color = LocalPlayerInk.current.fill(0.12f),
     /** Queue entries (index, track) listed in a dropdown while the pill is held; empty disables hold. */
     previewTracks: List<Pair<Int, QueueTrack>> = emptyList(),
     onPickPreview: (Int) -> Unit = {},
@@ -1147,6 +1314,7 @@ internal fun TransportPill(
     onEat: (Float) -> Unit = {},
     content: @Composable () -> Unit,
 ) {
+    val ink = LocalPlayerInk.current
     var pressed by androidx.compose.runtime.remember { mutableStateOf(false) }
     var menu by androidx.compose.runtime.remember { mutableStateOf(false) }
     var dragX by androidx.compose.runtime.remember { mutableStateOf(0f) }
@@ -1225,13 +1393,14 @@ internal fun TransportPill(
 internal fun ToolIconButton(
     icon: ImageVector,
     contentDescription: String,
-    tint: Color = Color.White,
+    tint: Color = LocalPlayerInk.current.primary,
     circle: Boolean = false,
     active: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val bg = if (active) Color.White else Color.White.copy(alpha = 0.12f)
-    val iconTint = if (active) Color.Black else tint
+    val ink = LocalPlayerInk.current
+    val bg = if (active) ink.primary else ink.fill(0.12f)
+    val iconTint = if (active) ink.inverse else tint
     Surface(
         onClick = onClick,
         shape = if (circle) CircleShape else RoundedCornerShape(12.dp),
@@ -1257,6 +1426,7 @@ fun VolumePillControl(
     onVolumeChangeFinished: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val ink = LocalPlayerInk.current
     var editing by remember { mutableStateOf(false) }
     var text by remember(volume) { mutableStateOf((volume * 100).toInt().toString()) }
     val focusRequester = remember { FocusRequester() }
@@ -1269,7 +1439,7 @@ fun VolumePillControl(
     
     Surface(
         shape = RoundedCornerShape(999.dp),
-        color = Color.White.copy(alpha = 0.12f),
+        color = ink.text(0.12f),
         modifier = modifier.height(28.dp)
     ) {
         Row(
@@ -1283,7 +1453,7 @@ fun VolumePillControl(
                 },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Remove, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Remove, null, tint = ink.text(), modifier = Modifier.size(16.dp))
             }
             
             Box(
@@ -1294,8 +1464,8 @@ fun VolumePillControl(
                     BasicTextField(
                         value = text,
                         onValueChange = { if (it.length <= 3) text = it.filter { c -> c.isDigit() } },
-                        textStyle = MaterialTheme.typography.labelSmall.copy(color = Color.White, textAlign = androidx.compose.ui.text.style.TextAlign.Center),
-                        cursorBrush = SolidColor(Color.White),
+                        textStyle = MaterialTheme.typography.labelSmall.copy(color = ink.text(), textAlign = androidx.compose.ui.text.style.TextAlign.Center),
+                        cursorBrush = SolidColor(ink.text()),
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = {
@@ -1310,7 +1480,7 @@ fun VolumePillControl(
                     Text(
                         "${(volume * 100).toInt()}",
                         style = MaterialTheme.typography.labelSmall,
-                        color = Color.White,
+                        color = ink.text(),
                         textAlign = androidx.compose.ui.text.style.TextAlign.Center
                     )
                 }
@@ -1323,7 +1493,7 @@ fun VolumePillControl(
                 },
                 contentAlignment = Alignment.Center
             ) {
-                Icon(Icons.Default.Add, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                Icon(Icons.Default.Add, null, tint = ink.text(), modifier = Modifier.size(16.dp))
             }
         }
     }

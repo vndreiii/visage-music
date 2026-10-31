@@ -3,9 +3,10 @@ package com.music.vivi.compose.ui.glass
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -25,33 +26,21 @@ fun PageBackground(modifier: Modifier = Modifier.fillMaxSize(), nowPlayingStyle:
     rememberPrefsVersion(prefs)
     // On Now Playing the floating chrome blurs that page's own background, so mirror its style and darkness.
     val style = runCatching {
-        if (nowPlayingStyle) PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name))
-        else PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PageBackgroundStyle, PlayerBackgroundStyle.BLUR.name))
+        if (nowPlayingStyle) PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle.name))
+        else PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PageBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PageStyle.name))
     }.getOrDefault(PlayerBackgroundStyle.BLUR)
-    val darkness = if (nowPlayingStyle) prefs.getInt(PrefKeys.PlayerBackgroundDarkness, 0).coerceIn(0, 100) / 100f
-    else prefs.getInt(PrefKeys.PageBackgroundDarkness, 50).coerceIn(0, 100) / 100f
+    val darkness = if (nowPlayingStyle) prefs.getInt(PrefKeys.PlayerBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PlayerDarkness).coerceIn(0, 100) / 100f
+    else prefs.getInt(PrefKeys.PageBackgroundDarkness, com.music.vivi.compose.prefs.LookDefaults.PageDarkness).coerceIn(0, 100) / 100f
     val track by LocalPlaybackController.current.nowPlaying.collectAsState()
     val scroll = LocalBackdropScroll.current
-    // Drift down as the page scrolls: the layer is drawn taller than the window and slid up by a fraction of the
-    // scroll distance (up to the spare height), which reads as the background sitting behind the page.
-    Box(
-        modifier
-            .clipToBounds()
-            .layout { measurable, c ->
-                val extra = if (nowPlayingStyle) 0 else (c.maxHeight * 0.6f).toInt()
-                val placeable = measurable.measure(Constraints.fixed(c.maxWidth, c.maxHeight + extra))
-                layout(c.maxWidth, c.maxHeight) { placeable.place(0, 0) }
-            },
-    ) {
-        PlayerBackgroundLayer(
-            style = style,
-            artworkUrl = track?.artworkUrl,
-            showClearArtwork = false,
-            modifier = Modifier.fillMaxSize().graphicsLayer {
-                val spare = size.height * 0.6f / 1.6f
-                translationY = -((scroll?.y ?: 0f) * 0.25f).coerceIn(0f, spare)
-            },
-            darknessOverride = darkness,
-        )
-    }
+    // The background drifts down as the page scrolls (a quarter of the distance). The shader mirrors its own
+    // coordinates, so it repeats forever with no tiles and no seam, and only the visible pixels are drawn.
+    PlayerBackgroundLayer(
+        style = style,
+        artworkUrl = track?.artworkUrl,
+        showClearArtwork = false,
+        modifier = modifier.clipToBounds(),
+        darknessOverride = darkness,
+        scrollY = if (nowPlayingStyle) null else { { (scroll?.y ?: 0f) * 0.25f } },
+    )
 }

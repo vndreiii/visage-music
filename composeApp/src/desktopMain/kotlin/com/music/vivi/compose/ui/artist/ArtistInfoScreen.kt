@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.artist
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
@@ -12,6 +14,9 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.layout.height
+import com.music.vivi.compose.ui.component.horizontalWheelScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -39,6 +44,8 @@ import com.music.vivi.compose.navigation.Routes
 import com.music.vivi.compose.ui.component.NavigationTitle
 import com.music.vivi.compose.ui.component.rememberNowPlayingIds
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 import com.music.vivi.compose.ui.library.LazyCoverImage
 import com.music.vivi.compose.ui.motion.VisageMotion
 import com.music.vivi.database.LocalMusicRepository
@@ -58,15 +65,12 @@ fun NavController.openArtistByName(name: String) {
     navigate(if (id != null) Routes.artist(id) else Routes.artistInfo(name))
 }
 
-/** Local tracks credited to [name] (split credits, so "A, B" appears on both A's and B's pages). */
+/** Local tracks whose artist tag is [name] (ignoring case and accents). A collaboration is its own artist and is not included. */
 private fun tracksFor(repo: LocalMusicRepository, name: String): List<Local_track> {
-    val byId = LinkedHashMap<String, Local_track>()
     val key = ArtistNames.normalize(name)
-    repo.allArtists().filter { ArtistNames.normalize(it.name) == key }.forEach { a ->
-        (repo.tracksCreditedTo(a.id).ifEmpty { repo.tracksForArtist(a.id) }).forEach { byId.putIfAbsent(it.id, it) }
-    }
-    repo.allTracks().filter { ArtistNames.credited(it.artist_name, name) }.forEach { byId.putIfAbsent(it.id, it) }
-    return byId.values.sortedWith(compareByDescending<Local_track> { it.play_count }.thenBy { it.title.lowercase() })
+    return repo.allTracks()
+        .filter { ArtistNames.normalize(it.artist_name) == key }
+        .sortedWith(compareByDescending<Local_track> { it.play_count }.thenBy { it.title.lowercase() })
 }
 
 /**
@@ -82,7 +86,28 @@ fun ArtistInfoScreen(name: String, navController: NavController) {
     val lookup by rememberArtistLookup(name)
     val info = lookup.info
     var tracks by remember(name) { mutableStateOf<List<Local_track>?>(null) }
-    LaunchedEffect(name) { tracks = withContext(Dispatchers.IO) { tracksFor(repo, name) } }
+    LaunchedEffect(name) {
+        val local = withContext(Dispatchers.IO) { tracksFor(repo, name) }
+        tracks = local
+        // No local files by this name: it is a YouTube Music artist we only know by name, so find and open the real
+        // artist page (with their songs, albums and videos) instead of an empty library page.
+        if (local.isEmpty()) {
+            val hit = withContext(Dispatchers.IO) {
+                com.music.innertube.YouTube.search(name, com.music.innertube.YouTube.SearchFilter.FILTER_ARTIST)
+                    .getOrNull()?.items.orEmpty()
+                    .filterIsInstance<com.music.innertube.models.ArtistItem>()
+                    .let { artists -> artists.firstOrNull { it.title.equals(name, ignoreCase = true) } ?: artists.firstOrNull() }
+            }
+            if (hit != null) {
+                ArtistIdRegistry.remember(name, hit.id)
+                runCatching {
+                    navController.navigate(Routes.artist(hit.id)) {
+                        popUpTo(Routes.ARTIST_INFO) { inclusive = true }
+                    }
+                }
+            }
+        }
+    }
     val list = tracks.orEmpty()
     val ytId = remember(name) { ArtistIdRegistry.idFor(name) }
 
@@ -93,8 +118,8 @@ fun ArtistInfoScreen(name: String, navController: NavController) {
     val state = rememberLazyListState()
     LazyColumn(
         state = state,
-        modifier = Modifier.fillMaxSize().smoothWheelScroll(state),
-        contentPadding = PaddingValues(bottom = 128.dp),
+        modifier = Modifier.fillMaxSize().pageScrollEdge { state.edgeProgress() }.smoothWheelScroll(state),
+        contentPadding = PaddingValues(bottom = MiniPlayerClearance),
     ) {
         item(key = "toolbar") { ArtistBackBar { navController.navigateUp() } }
         item(key = "header") {
@@ -145,26 +170,52 @@ fun ArtistInfoScreen(name: String, navController: NavController) {
                 )
             }
         }
-        items(list, key = { it.id }) { track ->
-            val active = playingId == "local:${track.id}"
-            Surface(
-                onClick = { play(list.indexOfFirst { it.id == track.id }.coerceAtLeast(0)) },
-                shape = RoundedCornerShape(12.dp),
-                color = if (active && isPlaying) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp),
-            ) {
-                Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    LazyCoverImage(coverPath = track.cover_path, modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)))
-                    Spacer(Modifier.width(14.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(track.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(
-                            listOfNotNull(track.artist_name.takeIf { it.isNotBlank() }, track.album_title).joinToString(" · "),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
+        if (list.isNotEmpty()) {
+            item(key = "songs") {
+                androidx.compose.foundation.layout.BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    // Same shelf as Home's Quick picks: up to 4 rows, extra songs scroll sideways in whole columns.
+                    val gap = 8.dp
+                    val sidePad = 8.dp
+                    val usable = maxWidth - sidePad * 2
+                    val fitCols = ((usable + gap) / (280.dp + gap)).toInt().coerceAtLeast(1)
+                    val rows = ((list.size + fitCols - 1) / fitCols).coerceIn(1, 4)
+                    val colWidth = (usable - gap * (fitCols - 1)) / fitCols
+                    val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
+                    androidx.compose.foundation.lazy.grid.LazyHorizontalGrid(
+                        rows = androidx.compose.foundation.lazy.grid.GridCells.Fixed(rows),
+                        state = gridState,
+                        contentPadding = PaddingValues(horizontal = sidePad),
+                        horizontalArrangement = Arrangement.spacedBy(gap),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(com.music.vivi.compose.ui.component.ListItemHeight * rows)
+                            .horizontalWheelScroll(gridState),
+                    ) {
+                        itemsIndexed(items = list, key = { _, t -> t.id }) { i, track ->
+                            val active = playingId == "local:${track.id}"
+                            Surface(
+                                onClick = { play(i) },
+                                shape = RoundedCornerShape(12.dp),
+                                color = if (active && isPlaying) MaterialTheme.colorScheme.secondaryContainer else Color.Transparent,
+                                modifier = Modifier.width(colWidth).height(com.music.vivi.compose.ui.component.ListItemHeight),
+                            ) {
+                                Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    LazyCoverImage(coverPath = track.cover_path, modifier = Modifier.size(48.dp).clip(RoundedCornerShape(8.dp)))
+                                    Spacer(Modifier.width(14.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(track.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
+                                        Text(
+                                            listOfNotNull(track.artist_name.takeIf { it.isNotBlank() }, track.album_title).joinToString(" · "),
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Clip,
+                                            modifier = Modifier.visageMarquee(),
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }

@@ -37,7 +37,17 @@ class LyricsRenderTest {
         val scene = ImageComposeScene(width = 700, height = 420, coroutineContext = coroutineContext) {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Box(Modifier.fillMaxSize().background(Color(0xFF14161A))) {
-                    LyricsList(timeline, cfg, clock, accent = Color(0xFFFF6FA5), onSeek = null)
+                    when {
+                        cfg.scene == LyricsScene.ROW && timeline.isSynced -> {
+                            Lyrics3DScene(timeline, cfg, clock, accent = Color(0xFFFF6FA5))
+                        }
+                        cfg.scene == LyricsScene.CUTS && timeline.isSynced -> {
+                            LyricsCutsScene(timeline, cfg, clock, accent = Color(0xFFFF6FA5))
+                        }
+                        else -> {
+                            LyricsList(timeline, cfg, clock, accent = Color(0xFFFF6FA5), onSeek = null)
+                        }
+                    }
                 }
             }
         }
@@ -75,6 +85,20 @@ class LyricsRenderTest {
     fun visibilityModesRender() {
         for (v in LyricsVisibility.entries) {
             render(LyricsConfig(visibility = v), 11500f, "vis-$v")
+        }
+    }
+
+    @Test
+    fun scene3DModesRender() {
+        for (s in listOf(LyricsScene.ROW, LyricsScene.CUTS)) {
+            // Early in song, line 0 active
+            render(LyricsConfig(scene = s), 1500f, "scene-$s-start")
+            // Line 0 completes
+            render(LyricsConfig(scene = s), 3800f, "scene-$s-complete")
+            // Transition: line 0 to line 1
+            render(LyricsConfig(scene = s), 4400f, "scene-$s-transition")
+            // Fast succession lines
+            render(LyricsConfig(scene = s), 7700f, "scene-$s-fast")
         }
     }
 }

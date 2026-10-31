@@ -17,6 +17,8 @@ kotlin {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(libs.junit)
+                @OptIn(org.jetbrains.compose.ExperimentalComposeLibrary::class)
+                implementation(compose.uiTest)
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose:2.9.6")
                 implementation("org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose:2.9.6")
                 val cefArch = when (System.getProperty("os.arch")) {
@@ -34,8 +36,8 @@ kotlin {
                 // Backdrop blur for the "Material 3 Expressive Blur" glass surfaces.
                 implementation("dev.chrisbanes.haze:haze:1.7.0")
                 implementation("me.friwi:jcefmaven:152.0.6")
-                // The Chromium runtime (about 150 MB) is not bundled. jcefmaven downloads it the first time the
-                // user opens the sign-in page (see EmbeddedLoginBrowser). Tests bundle it, below.
+                // The Chromium runtime (about 150 MB) is bundled on Windows (stageJcefRuntime). Elsewhere, jcefmaven
+                // downloads it the first time the user opens the sign-in page (see EmbeddedLoginBrowser).
                 implementation(project(":core"))
                 implementation(project(":nativelib"))
                 implementation(project(":lyrics"))
@@ -68,7 +70,7 @@ kotlin {
     }
 }
 
-val visageVersion: String = (System.getenv("VISAGE_VERSION") ?: "1.2.0").removePrefix("v")
+val visageVersion: String = (System.getenv("VISAGE_VERSION") ?: "1.3.0").removePrefix("v")
 
 // Stage the optional native helper where Compose copies "linux"/"windows" resources from.
 // On Windows, `scripts/package-windows.ps1` (Linux: `scripts/fetch-ytdlp-linux.sh`) also puts libmpv-2.dll and yt-dlp.exe in build/windows-deps.
@@ -255,7 +257,20 @@ kotlin.sourceSets.getByName("desktopMain").dependencies {
     runtimeOnly(files(slimDir.map { it.file("material-icons-extended-slim.jar") }, slimDir.map { it.file("sqlite-jdbc-slim.jar") }).builtBy(slimIcons, slimSqlite))
 }
 
-tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(stageNativeLib) }
+// Windows: bundle the Chromium runtime for the embedded sign-in browser, so it is not downloaded on first use.
+// The jcef-natives jar carries the runtime; it is unpacked into the resources dir as jcef-152.0.6 (see
+// EmbeddedLoginBrowser.bundledJcefRuntime). Set VISAGE_JCEF_BUNDLE=0 to skip and keep the jcefmaven download.
+val stageJcefRuntime by tasks.registering(Copy::class) {
+    onlyIf { isWindowsHost && System.getenv("VISAGE_JCEF_BUNDLE") != "0" }
+    from(provider {
+        configurations.getByName("desktopRuntimeClasspath").files
+            .filter { it.name.startsWith("jcef-natives-windows") }
+            .map { zipTree(it) }
+    })
+    into(nativeResources.map { it.dir("windows/jcef-152.0.6") })
+}
+
+tasks.matching { it.name == "prepareAppResources" }.configureEach { dependsOn(stageNativeLib, stageJcefRuntime) }
 tasks.withType<AbstractJPackageTask>().configureEach {
     dependsOn(stageNativeLib)
     // Custom launcher template (adds StartupWMClass so docks match the window to its icon).
@@ -289,3 +304,22 @@ tasks.matching { !isWindowsHost && (it.name == "createDistributable" || it.name 
             .forEach { it.setExecutable(true, false) }
     }
 }
+
+// The settings search index is generated from the settings screens; regenerate it on every build so a new setting or
+// page is searchable without anyone remembering to run the script. Skipped (with a warning) when python3 is missing.
+val generateSettingsIndex by tasks.registering {
+    val script = rootProject.file("tools/gen-settings-index.py")
+    val screens = layout.projectDirectory.dir("src/desktopMain/kotlin/com/music/vivi/compose/ui/settings")
+    inputs.file(script)
+    inputs.files(fileTree(screens) { include("*.kt"); exclude("SettingsIndex.kt") })
+    outputs.file(screens.file("SettingsIndex.kt"))
+    doLast {
+        val result = runCatching {
+            providers.exec { commandLine("python3", script.absolutePath); isIgnoreExitValue = true }.result.get().exitValue
+        }
+        if (result.getOrNull() != 0) logger.warn("Settings index not regenerated (python3 missing or the script failed); run tools/gen-settings-index.py")
+    }
+}
+tasks.matching { it.name == "compileKotlinDesktop" }.configureEach { dependsOn(generateSettingsIndex) }
+// Other tasks read composeApp/src (icons, compile); the generated file must be settled before any of them starts.
+tasks.configureEach { if (name != "generateSettingsIndex") mustRunAfter(generateSettingsIndex) }

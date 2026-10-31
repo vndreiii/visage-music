@@ -43,6 +43,7 @@ enum class ShortcutAction(
     TOGGLE_QUEUE("Show / hide queue", ShortcutCategory.Player, listOf(key(K.VK_Q))),
     TOGGLE_FULLSCREEN("Fullscreen player", ShortcutCategory.Player, listOf(key(K.VK_F), key(K.VK_F11))),
     OPEN_PLAYER("Open Now Playing", ShortcutCategory.Player, listOf(key(K.VK_ENTER, ctrl = true))),
+    POPUP_PLAYER("Pop out mini player", ShortcutCategory.Player, listOf(key(K.VK_M, ctrl = true, shift = true))),
     TRACK_ACTIONS("Track actions (add to playlist, share, …)", ShortcutCategory.Player, listOf(char('.'))),
     LEAVE_FULLSCREEN("Leave fullscreen / close overlay", ShortcutCategory.Player, listOf(key(K.VK_ESCAPE)),
         hint = "Only acts when there is something to leave or close"),

@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.library
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.border
@@ -36,6 +38,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,6 +54,8 @@ import com.music.innertube.models.YTItem
 import com.music.vivi.compose.ui.component.YouTubeGridItem
 import com.music.vivi.compose.ui.component.horizontalWheelScroll
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 import com.music.vivi.database.LocalMusicRepository
 import com.music.vivi.database.Local_album
 import com.music.vivi.database.Local_artist
@@ -88,23 +93,30 @@ internal fun LibraryHomeFeed(
     androidx.compose.runtime.LaunchedEffect(resetTick) {
         if (resetTick > 0) state.animateScrollToItem(0)
     }
-    val mixes = remember(local.tracks, local.rediscover, local.genres) {
-        buildMixes(local.tracks, local.rediscover, local.genres)
+    // Derived collections are built off the UI thread (they walk every track).
+    val mixes by androidx.compose.runtime.produceState(emptyList<LibraryMix>(), local.tracks, local.rediscover, local.genres) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { buildMixes(local.tracks, local.rediscover, local.genres) }
     }
     val artistCovers = remember(local.albums) {
         local.albums.filter { it.artist_id != null && it.cover_path != null }
             .groupBy { it.artist_id!! }
             .mapValues { it.value.first().cover_path }
     }
-    val genreCoverMap = remember(local.tracks) { genreCovers(local.tracks) }
-    val yearCoverMap = remember(local.tracks) { yearCovers(local.tracks) }
-    val composerCoverMap = remember(local.tracks) { composerCovers(local.tracks) }
+    val genreCoverMap by androidx.compose.runtime.produceState(emptyMap<String, List<String>>(), local.tracks) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { genreCovers(local.tracks) }
+    }
+    val yearCoverMap by androidx.compose.runtime.produceState(emptyMap<String, List<String>>(), local.tracks) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { yearCovers(local.tracks) }
+    }
+    val composerCoverMap by androidx.compose.runtime.produceState(emptyMap<String, List<String>>(), local.tracks) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { composerCovers(local.tracks) }
+    }
     val hasLocal = local.tracks.isNotEmpty()
 
     LazyColumn(
         state = state,
-        contentPadding = PaddingValues(bottom = 128.dp),
-        modifier = Modifier.fillMaxSize().smoothWheelScroll(state),
+        contentPadding = PaddingValues(bottom = MiniPlayerClearance),
+        modifier = Modifier.fillMaxSize().pageScrollEdge { state.edgeProgress() }.smoothWheelScroll(state),
     ) {
         item(key = "local-header") {
             SectionContainer(
@@ -340,7 +352,7 @@ private fun LabelCard(
         ) {
             Icon(icon, null, tint = Color.White.copy(alpha = 0.22f), modifier = Modifier.align(Alignment.TopEnd).padding(8.dp).size(44.dp))
             Column(Modifier.align(Alignment.BottomStart).padding(14.dp)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
                 Text(subtitle, style = MaterialTheme.typography.labelSmall, color = Color.White.copy(alpha = 0.8f))
             }
         }

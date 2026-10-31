@@ -32,7 +32,12 @@ import org.koin.dsl.module
 import org.koin.java.KoinJavaComponent.getKoin
 
 val desktopModule = module {
-    single { DesktopPrefs() }
+    single {
+        DesktopPrefs().also {
+            // API keys live in the system keyring; this moves any plain-text ones out of settings.properties and fills the cache.
+            com.music.vivi.compose.prefs.Secrets.start(it, com.music.vivi.compose.ui.player.lyrics.LyricsAiProviders.all.map { p -> p.id })
+        }
+    }
     single { com.music.vivi.compose.local.QueuePersistence(get(), get()) }
     single { com.music.vivi.compose.download.TrackDownloadService(get(), get()) }
     single { com.music.vivi.compose.local.LocalLibraryBootstrap(get(), get()) }
@@ -53,6 +58,7 @@ val desktopModule = module {
         val library = get<LibraryRepository>()
         val fades = get<PlaybackFadeSettingsProvider>()
         get<DesktopPrefs>().let { prefs ->
+            com.music.vivi.compose.audio.AudioOutputs.restore(prefs)
             com.music.vivi.player.video.MusicVideoResolver.prefetchQuality = {
                 if (prefs.getBoolean(PrefKeys.PlayerVideoEnabled, false)) {
                     com.music.vivi.player.video.VideoQuality.parse(prefs.getString(PrefKeys.PlayerVideoQuality, "AUTO"))
@@ -64,6 +70,7 @@ val desktopModule = module {
             favorites = object : FavoriteStore {
                 override fun isLiked(videoId: String) = library.isLiked(videoId)
                 override fun setLiked(videoId: String, liked: Boolean) = library.setLiked(videoId, liked)
+                override val changes get() = library.likedChanges
             },
             fadeSettings = { fades.current() },
             fileTrackResolver = { id ->
@@ -72,6 +79,14 @@ val desktopModule = module {
                     id.startsWith("offline:") -> get<com.music.vivi.database.DownloadedTrackRepository>().all().firstOrNull { it.video_id == id.removePrefix("offline:") }?.toQueueTrack()
                     else -> null
                 }
+            },
+            // A local queue that runs out keeps going with random tracks from the local library.
+            fileQueueFiller = { exclude ->
+                get<com.music.vivi.database.LocalMusicRepository>().allTracks()
+                    .filter { "local:${it.id}" !in exclude }
+                    .shuffled()
+                    .take(25)
+                    .map { it.toQueueTrack() }
             },
             streamSettings = {
                 val prefs = get<DesktopPrefs>()
@@ -212,6 +227,12 @@ private fun runApp() {
                     onClose = closeApp,
                 )
             }
+            // Mini player popup (own window, same controller); closing the main window exits the app and takes it down.
+            com.music.vivi.compose.ui.popup.PopupPlayerHost(
+                controller = remember { getKoin().get<PlaybackController>() },
+                prefs = remember { getKoin().get<DesktopPrefs>() },
+                icon = windowIcon,
+            )
         }
     }
 }

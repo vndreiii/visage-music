@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.tags
 
+import com.music.vivi.compose.ui.expressive.VisageTextField
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -34,7 +36,6 @@ import androidx.compose.material.icons.outlined.RestartAlt
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -72,7 +73,8 @@ internal fun SidePanel(state: TagManagerState) {
                 Column(Modifier.weight(1f)) {
                     Text(
                         if (n == 1) state.selectedTracks.firstOrNull()?.let { it.tags.value(TagField.Title).ifBlank { it.stem } }.orEmpty() else "$n tracks selected",
-                        style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Clip,
+                        modifier = Modifier.visageMarquee(),
                     )
                     Text(
                         when {
@@ -86,7 +88,7 @@ internal fun SidePanel(state: TagManagerState) {
             }
             ConnectedButtonGroup(
                 options = PanelMode.entries.map { it to it.label }, selected = state.panel, onSelect = { state.panel = it },
-                size = ExpressiveSize.XSmall, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 4.dp),
+                size = ExpressiveSize.Small, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
             )
             AnimatedContent(
                 targetState = state.panel,
@@ -110,7 +112,7 @@ private fun EditorPanel(state: TagManagerState) {
     Column(Modifier.fillMaxSize()) {
         Column(
             Modifier.weight(1f).smoothWheelScroll(scroll).verticalScroll(scroll).padding(horizontal = 20.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             AnimatedVisibility(state.editorLoading, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
                 androidx.compose.material3.LinearProgressIndicator(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(2.dp)))
@@ -155,26 +157,21 @@ private fun EditorPanel(state: TagManagerState) {
 private fun Field(state: TagManagerState, f: TagField, modifier: Modifier = Modifier.fillMaxWidth(), minLines: Int = 1) {
     val edited = state.batch.isEdited(f)
     val mixed = state.batch.isMixed(f)
-    val bg by animateColorAsState(
-        if (edited) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f) else androidx.compose.ui.graphics.Color.Transparent,
-        VisageMotion.effectsDefault(), label = "fieldBg",
+    VisageTextField(
+        value = state.batch.displayValue(f),
+        onValueChange = { state.setField(f, it) },
+        label = { Text(f.label) },
+        placeholder = if (mixed) ({ Text("Mixed — unchanged") }) else null,
+        singleLine = !f.multiline,
+        minLines = minLines,
+        maxLines = if (f.multiline) 10 else 1,
+        highlighted = edited,
+        supportingText = if (edited) ({ Text("Changed — will be written on Apply") }) else null,
+        trailingIcon = if (edited) ({
+            IconButton(onClick = { state.resetField(f) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.RestartAlt, "Revert ${f.label}", Modifier.size(18.dp)) }
+        }) else null,
+        modifier = modifier,
     )
-    Box(modifier.clip(RoundedCornerShape(16.dp)).background(bg)) {
-        OutlinedTextField(
-            value = state.batch.displayValue(f),
-            onValueChange = { state.setField(f, it) },
-            label = { Text(f.label) },
-            placeholder = if (mixed) ({ Text("Mixed — unchanged") }) else null,
-            singleLine = !f.multiline,
-            minLines = minLines,
-            maxLines = if (f.multiline) 10 else 1,
-            shape = RoundedCornerShape(14.dp),
-            trailingIcon = if (edited) ({
-                IconButton(onClick = { state.resetField(f) }, Modifier.size(32.dp)) { Icon(Icons.Outlined.RestartAlt, "Revert ${f.label}", Modifier.size(18.dp)) }
-            }) else null,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
 }
 
 // ── cover ────────────────────────────────────────────────────────────────────────────────
@@ -233,7 +230,7 @@ private fun CoverEditor(state: TagManagerState) {
         }
         AnimatedVisibility(urlOpen, enter = fadeIn() + expandVertically(VisageMotion.spatialDefault()), exit = fadeOut() + shrinkVertically()) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(url, { url = it }, placeholder = { Text("https://… image link") }, singleLine = true, shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f))
+                VisageTextField(url, { url = it }, placeholder = { Text("https://… image link") }, singleLine = true, modifier = Modifier.weight(1f))
                 ExpressiveButton("Fetch", { state.chooseCoverUrl(url.trim()); urlOpen = false }, size = ExpressiveSize.XSmall, enabled = url.isNotBlank())
             }
         }
@@ -243,16 +240,7 @@ private fun CoverEditor(state: TagManagerState) {
     }
 }
 
-private suspend fun pickImage(): File? = withContext(Dispatchers.IO) {
-    runCatching {
-        val dlg = java.awt.FileDialog(null as java.awt.Frame?, "Choose cover image", java.awt.FileDialog.LOAD)
-        dlg.setFilenameFilter { _, name -> name.lowercase().let { it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".png") || it.endsWith(".gif") || it.endsWith(".bmp") } }
-        dlg.isVisible = true
-        val f = dlg.file
-        val d = dlg.directory
-        if (f != null && d != null) File(d, f) else null
-    }.getOrNull()
-}
+private suspend fun pickImage(): File? = com.music.vivi.compose.local.XdgPortalFolderPicker.pickImage("Choose cover image")
 
 // ── tools ────────────────────────────────────────────────────────────────────────────────
 
@@ -271,10 +259,10 @@ private fun ToolsPanel(state: TagManagerState) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 when (tool) {
                     ToolKind.FromFilename -> {
-                        OutlinedTextField(
+                        VisageTextField(
                             state.filenamePattern, { state.filenamePattern = it }, label = { Text("Pattern") },
                             supportingText = { Text("%artist% %title% %album% %albumartist% %year% %genre% %track% %disc% %composer%") },
-                            singleLine = true, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(),
+                            singleLine = true, modifier = Modifier.fillMaxWidth(),
                         )
                         PreviewList(state.filenamePreview(), "No file names match this pattern.")
                         ExpressiveButton("Apply", { state.applyFilenameTags() }, enabled = !state.busy && state.filenamePreview().isNotEmpty())
@@ -295,8 +283,8 @@ private fun ToolsPanel(state: TagManagerState) {
                         state.duplicateGroups.take(20).forEach { g ->
                             Surface(shape = RoundedCornerShape(14.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, onClick = { state.selectIds(g.map { it.id }) }, modifier = Modifier.fillMaxWidth()) {
                                 Column(Modifier.padding(12.dp)) {
-                                    Text("${g.first().tags.value(TagField.Artist)} — ${g.first().tags.value(TagField.Title)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                    g.forEach { Text(it.path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                                    Text("${g.first().tags.value(TagField.Artist)} — ${g.first().tags.value(TagField.Title)}", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
+                                    g.forEach { Text(it.path, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee()) }
                                 }
                             }
                         }
@@ -318,8 +306,8 @@ private fun PreviewList(items: List<Pair<TagTrack, Tags>>, empty: String) {
     items.take(6).forEach { (t, edits) ->
         Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.surfaceContainerHigh, modifier = Modifier.fillMaxWidth()) {
             Column(Modifier.padding(10.dp)) {
-                Text(t.fileName, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                edits.forEach { (f, v) -> Text("${f.label}: ${t.tags.value(f).ifBlank { "—" }} → $v", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                Text(t.fileName, style = MaterialTheme.typography.labelMedium, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
+                edits.forEach { (f, v) -> Text("${f.label}: ${t.tags.value(f).ifBlank { "—" }} → $v", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee()) }
             }
         }
     }

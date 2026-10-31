@@ -1,5 +1,12 @@
 package com.music.vivi.compose.ui.library.sidebar
 
+import androidx.compose.ui.unit.Dp
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.BoxWithConstraints
+import com.music.vivi.compose.ui.expressive.VisageTextField
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.animateColorAsState
@@ -24,6 +31,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.graphics.graphicsLayer
@@ -67,7 +75,6 @@ import androidx.compose.material.icons.outlined.UnfoldMore
 import androidx.compose.material.icons.outlined.WbSunny
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -106,6 +113,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import com.music.vivi.compose.ui.dnd.dropTarget
+import androidx.compose.ui.zIndex
 
 // ── Palette / icons ────────────────────────────────────────────────────────────────────────────
 
@@ -162,14 +171,7 @@ internal object FolderCovers {
         }.getOrNull()
     }
 
-    suspend fun pick(): File? = withContext(Dispatchers.IO) {
-        runCatching {
-            val dlg = java.awt.FileDialog(null as java.awt.Frame?, "Choose folder cover", java.awt.FileDialog.LOAD)
-            dlg.setFilenameFilter { _, n -> n.lowercase().let { it.endsWith(".jpg") || it.endsWith(".jpeg") || it.endsWith(".png") || it.endsWith(".gif") || it.endsWith(".bmp") || it.endsWith(".webp") } }
-            dlg.isVisible = true
-            if (dlg.file != null && dlg.directory != null) File(dlg.directory, dlg.file) else null
-        }.getOrNull()
-    }
+    suspend fun pick(): File? = com.music.vivi.compose.local.XdgPortalFolderPicker.pickImage("Choose folder cover")
 
     /** Deletes an app-owned copy that is no longer referenced. */
     fun discard(path: String?) {
@@ -245,12 +247,23 @@ internal fun FolderRowView(
     val accent = folderAccentColor(folder, MaterialTheme.colorScheme.primary)
     val bg by animateFloatAsState(if (hovered) 1f else if (row.open) 0.55f else 0f, VisageMotion.effectsDefault(), label = "folderBg")
     val rot by animateFloatAsState(if (row.open) 0f else -90f, VisageMotion.effectsDefault(), label = "folderChevron")
-    Box(modifier.padding(vertical = 1.dp)) {
+    // A library entry carried over this folder drops into it; the folder grows to say so.
+    val dropMod = Modifier.dropTarget<LibraryEntry>("folder:${folder.id}") { e -> actions.drop(folder, e) }
+    val dropHover by animateFloatAsState(
+        if (com.music.vivi.compose.ui.dnd.TrackDrag.hoverKey == "folder:${folder.id}") 1f else 0f,
+        androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 420f), label = "folderDrop",
+    )
+    Box(
+        modifier.then(dropMod).padding(vertical = 1.dp)
+            .zIndex(dropHover)
+            .graphicsLayer { val sc = 1f + 0.05f * dropHover; scaleX = sc; scaleY = sc },
+    ) {
         Row(
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(accent.copy(alpha = 0.10f * bg).compositeOver(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = bg)))
+                .background(accent.copy(alpha = 0.35f * dropHover.coerceIn(0f, 1f)))
                 .hoverable(interaction)
                 .onSecondary { menu = true }
                 .clickable { actions.toggle(folder) }
@@ -270,12 +283,14 @@ internal fun FolderRowView(
             Column(Modifier.weight(1f).padding(start = 12.dp).alpha(f)) {
                 Text(
                     folder.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    maxLines = 1, overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
                 Text(
                     "Folder · " + if (row.count == 1) "1 item" else "${row.count} items",
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    maxLines = 1, overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
             }
             Icon(
@@ -296,6 +311,8 @@ internal class FolderActions(
     val edit: (LibraryFolderModel) -> Unit,
     val delete: (LibraryFolderModel) -> Unit,
     val setSort: (LibraryFolderModel, FolderSort) -> Unit,
+    /** A library entry was dropped on the folder; returns the toast text. */
+    val drop: suspend (LibraryFolderModel, LibraryEntry) -> String?,
 )
 
 @Composable
@@ -328,7 +345,12 @@ private fun FolderMenu(expanded: Boolean, onDismiss: () -> Unit, folder: Library
 
 @Composable
 internal fun MenuItem(label: String, icon: ImageVector, run: () -> Unit) =
-    androidx.compose.material3.DropdownMenuItem(text = { Text(label) }, leadingIcon = { Icon(icon, null) }, onClick = run)
+    androidx.compose.material3.DropdownMenuItem(
+        text = { Text(label) },
+        // Every menu icon gets the same 20 dp glyph in the same 24 dp slot, so none looks bigger than its neighbours.
+        leadingIcon = { Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) { Icon(icon, null, Modifier.size(20.dp)) } },
+        onClick = run,
+    )
 
 // ── Source icon (replaces the text pills) ─────────────────────────────────────────────────────
 
@@ -412,123 +434,226 @@ internal fun FolderDialog(
     )
     fun dismiss() { owned.forEach { if (it != initial?.coverRef) FolderCovers.discard(it) }; onDismiss() }
 
-    Dialog(onDismissRequest = ::dismiss) {
-        Surface(
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            tonalElevation = 6.dp,
-            modifier = Modifier.widthIn(max = 440.dp).fillMaxWidth(),
-        ) {
-            val scroll = rememberScrollState()
-            Column(
-                Modifier.verticalScroll(scroll).padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Text(if (initial == null) "New folder" else "Edit folder", style = MaterialTheme.typography.headlineSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalAlignment = Alignment.CenterVertically) {
+    LibraryDialogShell(
+        title = if (initial == null) "New folder" else "Edit folder",
+        subtitle = "Group playlists and albums together.",
+        maxWidth = 760.dp,
+        onDismiss = ::dismiss,
+        actions = {
+            ExpressiveButton("Cancel", ::dismiss, style = ExpressiveStyle.Text)
+            ExpressiveButton(
+                if (initial == null) "Create folder" else "Save",
+                {
+                    owned.filter { it != ref }.forEach { FolderCovers.discard(it) }
+                    if (initial?.coverRef != null && initial.coverRef != ref) FolderCovers.discard(initial.coverRef)
+                    onSave(FolderDraft(title.trim().ifBlank { "New folder" }, icon, accent, kind, ref))
+                },
+                enabled = !busy,
+            )
+        },
+    ) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val wide = maxWidth >= 620.dp
+            @Composable
+            fun Preview(tile: Dp) {
+                Column(Modifier.width(tile), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     // Live preview; also a drop target for image files.
+                    val tileSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
+                    val tileHovered by tileSource.collectIsHoveredAsState()
                     Box(
-                        Modifier.size(104.dp)
-                            .border(if (dropHover) 3.dp else 0.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(20.dp))
-                            .imageDropTarget({ dropHover = it }, ::importFile),
-                    ) { FolderCover(draftFolder, thumbs, Modifier.fillMaxSize(), RoundedCornerShape(20.dp)) }
-                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        OutlinedTextField(
-                            title, { title = it }, singleLine = true, label = { Text("Title") },
-                            shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth(),
-                        )
-                        Text("Drop an image on the tile", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    }
-                }
-
-                SectionLabel("Cover")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    CoverKind.entries.forEach { k ->
-                        ExpressiveButton(
-                            when (k) { CoverKind.AUTO -> "Collage"; CoverKind.GENERATED -> "Generated"; CoverKind.ICON -> "Icon"; CoverKind.IMAGE -> "Image" },
-                            { kind = k; if (k != CoverKind.IMAGE && k != CoverKind.GENERATED) ref = null },
-                            size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal, selected = kind == k,
-                        )
-                    }
-                }
-                AnimatedVisibility(kind == CoverKind.GENERATED, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        GeneratedSeeds.forEach { seed ->
-                            val sel = ref == seed
-                            GeneratedCover(
-                                seed, Modifier.size(52.dp).clip(RoundedCornerShape(if (sel) 16.dp else 10.dp))
-                                    .border(if (sel) 2.dp else 0.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(if (sel) 16.dp else 10.dp))
-                                    .clickable { ref = seed },
-                                accent = Color(accent.toInt()),
-                            )
-                        }
-                    }
-                }
-                AnimatedVisibility(kind == CoverKind.IMAGE, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            ExpressiveButton(
-                                "Choose file…",
-                                { scope.launch { FolderCovers.pick()?.let(::importFile) } },
-                                size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal, leadingIcon = Icons.Outlined.Image,
-                            )
-                            Text(if (busy) "Working…" else "or paste a link", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            OutlinedTextField(
-                                url, { url = it }, placeholder = { Text("https://… image link") }, singleLine = true,
-                                shape = RoundedCornerShape(14.dp), modifier = Modifier.weight(1f),
-                            )
-                            ExpressiveButton(
-                                "Use", { busy = true; scope.launch { useImage(FolderCovers.importUrl(url.trim())) } },
-                                size = ExpressiveSize.XSmall, enabled = url.isNotBlank() && !busy,
-                            )
-                        }
-                        AnimatedVisibility(message != null) {
-                            Text(message.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-                        }
-                    }
-                }
-
-                SectionLabel("Colour")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    FolderAccents.forEach { c ->
-                        val sel = accent == c
-                        val size by animateFloatAsState(if (sel) 1f else 0.82f, VisageMotion.press(), label = "swatch")
+                        Modifier.size(tile)
+                            .clip(RoundedCornerShape(24.dp))
+                            .then(if (dropHover) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(24.dp)) else Modifier)
+                            .hoverable(tileSource)
+                            .imageDropTarget({ dropHover = it }, ::importFile)
+                            .clickable(interactionSource = tileSource, indication = null) {
+                                if (!busy) { busy = true; scope.launch { val f = FolderCovers.pick(); if (f != null) importFile(f) else busy = false } }
+                            },
+                    ) {
+                        FolderCover(draftFolder, thumbs, Modifier.fillMaxSize(), RoundedCornerShape(24.dp))
+                        val show by animateFloatAsState(if (tileHovered || busy) 1f else 0f, VisageMotion.effectsDefault(), label = "folderCoverHover")
                         Box(
-                            Modifier.size(36.dp).alpha(1f).clip(CircleShape).background(Color(c.toInt()))
-                                .border(if (sel) 3.dp else 0.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
-                                .clickable { accent = c }
-                                .graphicsLayer { scaleX = size; scaleY = size },
-                        )
+                            Modifier.fillMaxSize().graphicsLayer { alpha = show }.background(Color.Black.copy(alpha = 0.55f)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Icon(Icons.Outlined.Image, null, tint = Color.White, modifier = Modifier.size(36.dp))
+                                Text(
+                                    if (busy) "Working…" else "Choose photo",
+                                    color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
+                                )
+                            }
+                        }
                     }
-                }
-
-                SectionLabel("Icon")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FolderIcons.forEach { (name, vec) ->
-                        val sel = icon == name
-                        Surface(
-                            onClick = { icon = name; if (kind == CoverKind.AUTO && thumbs.isEmpty()) kind = CoverKind.ICON },
-                            shape = RoundedCornerShape(if (sel) 16.dp else 10.dp),
-                            color = if (sel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
-                            modifier = Modifier.size(42.dp),
-                        ) { Box(contentAlignment = Alignment.Center) { Icon(vec, name, Modifier.size(22.dp)) } }
-                    }
-                }
-
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                    ExpressiveButton("Cancel", ::dismiss, style = ExpressiveStyle.Text)
-                    ExpressiveButton(
-                        if (initial == null) "Create" else "Save",
-                        {
-                            owned.filter { it != ref }.forEach { FolderCovers.discard(it) }
-                            if (initial?.coverRef != null && initial.coverRef != ref) FolderCovers.discard(initial.coverRef)
-                            onSave(FolderDraft(title.trim().ifBlank { "New folder" }, icon, accent, kind, ref))
-                        },
-                        enabled = !busy,
+                    VisageTextField(
+                        title, { title = it }, singleLine = true, label = { Text("Title") },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        "Click the tile or drop an image on it to use it as the cover.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+            }
+
+            @Composable
+            fun Controls() {
+                Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(22.dp)) {
+                    DialogSection("Cover") {
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            CoverKind.entries.forEach { k ->
+                                ExpressiveButton(
+                                    when (k) { CoverKind.AUTO -> "Collage"; CoverKind.GENERATED -> "Generated"; CoverKind.ICON -> "Icon"; CoverKind.IMAGE -> "Image" },
+                                    { kind = k; if (k != CoverKind.IMAGE && k != CoverKind.GENERATED) ref = null },
+                                    modifier = Modifier.weight(1f),
+                                    size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal, selected = kind == k,
+                                )
+                            }
+                        }
+                        AnimatedVisibility(kind == CoverKind.GENERATED, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+                            Row(Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+                                GeneratedSeeds.forEach { seed ->
+                                    val sel = ref == seed
+                                    GeneratedCover(
+                                        seed, Modifier.size(44.dp).clip(RoundedCornerShape(if (sel) 14.dp else 10.dp))
+                                            .border(if (sel) 2.dp else 0.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(if (sel) 14.dp else 10.dp))
+                                            .clickable { ref = seed },
+                                        accent = Color(accent.toInt()),
+                                    )
+                                }
+                            }
+                        }
+                        AnimatedVisibility(kind == CoverKind.IMAGE, enter = fadeIn() + expandVertically(), exit = fadeOut() + shrinkVertically()) {
+                            Column(Modifier.padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    ExpressiveButton(
+                                        "Choose file…",
+                                        { scope.launch { FolderCovers.pick()?.let(::importFile) } },
+                                        size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal, leadingIcon = Icons.Outlined.Image,
+                                    )
+                                    Text(if (busy) "Working…" else "or paste a link", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    VisageTextField(
+                                        url, { url = it }, placeholder = { Text("https://… image link") }, singleLine = true,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    ExpressiveButton(
+                                        "Use", { busy = true; scope.launch { useImage(FolderCovers.importUrl(url.trim())) } },
+                                        size = ExpressiveSize.XSmall, enabled = url.isNotBlank() && !busy,
+                                    )
+                                }
+                                AnimatedVisibility(message != null) {
+                                    Text(message.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                }
+                            }
+                        }
+                    }
+
+                    DialogSection("Colour") {
+                        // One evenly spaced row, so no swatch ends up alone on a second line.
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            FolderAccents.forEach { c ->
+                                val sel = accent == c
+                                val grow by animateFloatAsState(if (sel) 1f else 0.84f, VisageMotion.press(), label = "swatch")
+                                Box(
+                                    Modifier.size(32.dp).clip(CircleShape).background(Color(c.toInt()))
+                                        .border(if (sel) 3.dp else 0.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                                        .clickable { accent = c }
+                                        .graphicsLayer { scaleX = grow; scaleY = grow },
+                                )
+                            }
+                        }
+                    }
+
+                    DialogSection("Icon") {
+                        FlowRow(
+                            Modifier.fillMaxWidth(),
+                            maxItemsInEachRow = 8,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            FolderIcons.forEach { (name, vec) ->
+                                val sel = icon == name
+                                Surface(
+                                    onClick = { icon = name; if (kind == CoverKind.AUTO && thumbs.isEmpty()) kind = CoverKind.ICON },
+                                    shape = RoundedCornerShape(if (sel) 16.dp else 12.dp),
+                                    color = if (sel) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                    modifier = Modifier.weight(1f).aspectRatio(1f),
+                                ) { Box(contentAlignment = Alignment.Center) { Icon(vec, name, Modifier.size(22.dp)) } }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (wide) {
+                Row(horizontalArrangement = Arrangement.spacedBy(32.dp)) {
+                    Preview(220.dp)
+                    Box(Modifier.weight(1f)) { Controls() }
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(22.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Preview(180.dp)
+                    Controls()
+                }
+            }
+        }
+    }
+}
+
+/** A labelled group inside a library dialog. */
+@Composable
+internal fun DialogSection(label: String, content: @Composable () -> Unit) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        SectionLabel(label)
+        content()
+    }
+}
+
+/**
+ * Shared card for the library's create/edit dialogs: title block on top, scrolling body, and a pinned action bar
+ * under a hairline, so the buttons never scroll out of view and every dialog has the same shape.
+ */
+@Composable
+internal fun LibraryDialogShell(
+    title: String,
+    subtitle: String?,
+    maxWidth: Dp,
+    onDismiss: () -> Unit,
+    actions: @Composable androidx.compose.foundation.layout.RowScope.() -> Unit,
+    content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = androidx.compose.ui.window.DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            shape = RoundedCornerShape(32.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            modifier = Modifier.padding(24.dp).widthIn(max = maxWidth).heightIn(max = 760.dp).fillMaxWidth(),
+        ) {
+            Column {
+                Column(Modifier.padding(start = 32.dp, end = 32.dp, top = 28.dp, bottom = 8.dp)) {
+                    Text(title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+                    if (subtitle != null) {
+                        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+                Column(
+                    Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())
+                        .padding(horizontal = 32.dp, vertical = 16.dp),
+                    content = content,
+                )
+                Box(Modifier.fillMaxWidth().height(1.dp).background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)))
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = actions,
+                )
             }
         }
     }
@@ -560,4 +685,143 @@ private fun Modifier.imageDropTarget(onHover: (Boolean) -> Unit, onFile: (File) 
         }
     }
     return dragAndDropTarget(shouldStartDragAndDrop = { true }, target = target)
+}
+
+
+/**
+ * New playlist: a large cover tile (hover it to choose a photo, or drop an image on it), the name, and an optional
+ * description. Without a photo the cover is the generated one and later becomes the first songs' art.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+internal fun PlaylistDialog(
+    initialName: String = "",
+    initialDescription: String = "",
+    initialCover: String? = null,
+    title: String = "New playlist",
+    confirm: String = "Create",
+    onDismiss: () -> Unit,
+    onConfirm: (name: String, description: String, coverPath: String?) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    var name by remember { mutableStateOf(initialName) }
+    var description by remember { mutableStateOf(initialDescription) }
+    var cover by remember { mutableStateOf(initialCover) }
+    var busy by remember { mutableStateOf(false) }
+    var dropHover by remember { mutableStateOf(false) }
+    val owned = remember { mutableListOf<String>() }
+    val source = remember { MutableInteractionSource() }
+    val hovered by source.collectIsHoveredAsState()
+
+    fun use(path: String?) { busy = false; if (path != null) { owned += path; cover = path } }
+    fun importFile(file: File) { busy = true; scope.launch { use(FolderCovers.importFile(file)) } }
+    fun dismiss() { owned.forEach { if (it != initialCover) FolderCovers.discard(it) }; onDismiss() }
+
+    LibraryDialogShell(
+        title = title,
+        subtitle = "Give it a name, a photo and a description. Everything is optional.",
+        maxWidth = 680.dp,
+        onDismiss = ::dismiss,
+        actions = {
+            ExpressiveButton("Cancel", ::dismiss, style = ExpressiveStyle.Text)
+            ExpressiveButton(
+                confirm,
+                {
+                    owned.filter { it != cover }.forEach { FolderCovers.discard(it) }
+                    onConfirm(name.trim().ifBlank { "New playlist" }, description.trim(), cover)
+                },
+                enabled = !busy,
+            )
+        },
+    ) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val wide = maxWidth >= 520.dp
+            val tile = if (wide) 210.dp else 170.dp
+
+            @Composable
+            fun CoverTile() {
+                Box(
+                    Modifier.size(tile)
+                        .clip(RoundedCornerShape(24.dp))
+                        .then(if (dropHover) Modifier.border(3.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(24.dp)) else Modifier)
+                        .hoverable(source)
+                        .imageDropTarget({ dropHover = it }, ::importFile)
+                        .clickable(interactionSource = source, indication = null) {
+                            scope.launch { FolderCovers.pick()?.let(::importFile) }
+                        },
+                ) {
+                    if (cover != null) {
+                        coil3.compose.AsyncImage(
+                            model = File(cover!!), contentDescription = "Playlist cover",
+                            contentScale = androidx.compose.ui.layout.ContentScale.Crop, modifier = Modifier.fillMaxSize(),
+                        )
+                    } else {
+                        com.music.vivi.compose.ui.component.GeneratedCover(name.ifBlank { "playlist" }, Modifier.fillMaxSize())
+                    }
+                    if (cover != null) {
+                        Surface(
+                            onClick = { cover = null },
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.6f),
+                            modifier = Modifier.align(Alignment.TopEnd).padding(10.dp).size(30.dp).zIndex(1f),
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(androidx.compose.material.icons.Icons.Outlined.Delete, "Remove photo", tint = Color.White, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                    // Hover (or an empty cover) offers the photo picker.
+                    val show by animateFloatAsState(if (hovered || busy) 1f else 0f, VisageMotion.effectsDefault(), label = "coverHover")
+                    Box(
+                        Modifier.fillMaxSize().graphicsLayer { alpha = show }.background(Color.Black.copy(alpha = 0.55f)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Icon(Icons.Outlined.Image, null, tint = Color.White, modifier = Modifier.size(36.dp))
+                            Text(
+                                if (busy) "Working…" else if (cover == null) "Choose photo" else "Change photo",
+                                color = Color.White, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+            }
+
+            @Composable
+            fun Fields(modifier: Modifier) {
+                // Exactly the tile's height, so the description's bottom edge is flush with the cover's bottom edge.
+                Column(modifier.height(tile), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    VisageTextField(
+                        value = name, onValueChange = { name = it }, singleLine = true,
+                        label = { Text("Name") }, modifier = Modifier.fillMaxWidth(),
+                    )
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
+                        VisageTextField(
+                            value = description, onValueChange = { if (it.length <= 300) description = it },
+                            label = { Text("Description") }, placeholder = { Text("Add an optional description") },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                        Text(
+                            "${description.length}/300",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 12.dp, bottom = 8.dp),
+                        )
+                    }
+                }
+            }
+
+            if (wide) {
+                Row(horizontalArrangement = Arrangement.spacedBy(28.dp)) {
+                    CoverTile()
+                    Fields(Modifier.weight(1f))
+                }
+            } else {
+                Column(verticalArrangement = Arrangement.spacedBy(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    CoverTile()
+                    Fields(Modifier.fillMaxWidth())
+                }
+            }
+        }
+    }
 }

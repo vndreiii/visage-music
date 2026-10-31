@@ -1,5 +1,11 @@
 package com.music.vivi.compose.ui.charts
 
+import com.music.vivi.compose.ui.component.edgeProgress
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.PageHeaderTopPadding
+import com.music.vivi.compose.ui.component.PageInset
+import com.music.vivi.compose.ui.component.PageHeaderBottomPadding
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
@@ -50,6 +56,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.runtime.collectAsState
+import kotlinx.coroutines.flow.first
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -160,13 +171,30 @@ fun ChartsScreen(navController: NavHostController) {
     var chartsPage by remember { mutableStateOf<ChartsPage?>(null) }
     var loading by remember { mutableStateOf(true) }
     var error by remember { mutableStateOf<String?>(null) }
+    val prefs = org.koin.compose.koinInject<com.music.vivi.compose.prefs.DesktopPrefs>()
+    // "" = this device's own region; "ZZ" = worldwide; otherwise a two-letter country code.
+    var country by remember { mutableStateOf(prefs.getString("chartsCountry", "")) }
 
-    fun load() {
+    val worldProgress by WorldChart.progress.collectAsState()
+
+    fun load(force: Boolean = false) {
         scope.launch {
             loading = true
             error = null
             try {
-                chartsPage = withContext(Dispatchers.IO) { YouTube.getChartsPage().getOrThrow() }
+                chartsPage = if (country == "WORLD") {
+                    WorldChart.ensureFresh(6 * 3_600_000L, force)
+                    // Wait for the slow build (or take the cached one).
+                    WorldChart.progress.first { it == null }
+                    val snap = WorldChart.cached() ?: error("The world chart couldn't be built right now")
+                    ChartsPage(
+                        sections = listOf(
+                            ChartsPage.ChartSection("Whole world", snap.ranked, ChartsPage.ChartType.TOP),
+                            ChartsPage.ChartSection("Breaking out", snap.breaking, ChartsPage.ChartType.TOP),
+                        ).filter { it.items.isNotEmpty() },
+                        continuation = null,
+                    )
+                } else withContext(Dispatchers.IO) { YouTube.getChartsPage(country = country.ifBlank { null }).getOrThrow() }
             } catch (e: Exception) {
                 error = e.message ?: "Failed to load charts"
             } finally {
@@ -174,7 +202,7 @@ fun ChartsScreen(navController: NavHostController) {
             }
         }
     }
-    LaunchedEffect(Unit) { load() }
+    LaunchedEffect(country) { load() }
 
     val page = chartsPage
     val tabs = remember(page) { page?.let { buildChartTabs(it.sections) }.orEmpty() }
@@ -190,13 +218,16 @@ fun ChartsScreen(navController: NavHostController) {
         label = "chartsState",
     ) { state ->
         when (state) {
-            1 -> PageLoadingState("Loading charts", detail = true)
+            1 -> PageLoadingState(
+                worldProgress?.let { "Building the world chart: ${it.done} of ${it.total} countries" } ?: "Loading charts",
+                detail = true,
+            )
             2 -> Column(Modifier.fillMaxSize()) {
-                VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = 16.dp, top = 8.dp))
+                VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = PageInset, top = PageHeaderTopPadding, bottom = PageHeaderBottomPadding))
                 PageErrorState("No charts available for your region right now", onRetry = { load() })
             }
             3 -> Column(Modifier.fillMaxSize()) {
-                VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = 16.dp, top = 8.dp))
+                VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = PageInset, top = PageHeaderTopPadding, bottom = PageHeaderBottomPadding))
                 Column(
                     Modifier.fillMaxSize().padding(32.dp),
                     verticalArrangement = Arrangement.Center,
@@ -207,7 +238,15 @@ fun ChartsScreen(navController: NavHostController) {
                     Button(onClick = { load() }, modifier = Modifier.padding(top = 16.dp)) { Text("Retry") }
                 }
             }
-            else -> ChartsContent(navController, tabs)
+            else -> androidx.compose.runtime.key(page) {
+                ChartsContent(
+                    navController, tabs,
+                    country = country,
+                    onCountry = { country = it; prefs.setString("chartsCountry", it) },
+                    refreshing = loading,
+                    onRefresh = { load(force = true) },
+                )
+            }
         }
     }
 }
@@ -226,7 +265,14 @@ private data class ChartEntry(
 )
 
 @Composable
-private fun ChartsContent(navController: NavHostController, tabs: List<ChartTab>) {
+private fun ChartsContent(
+    navController: NavHostController,
+    tabs: List<ChartTab>,
+    country: String,
+    onCountry: (String) -> Unit,
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+) {
     val controller = LocalPlaybackController.current
     val scope = rememberCoroutineScope()
     val (playingId, isPlaying) = rememberNowPlayingIds()
@@ -260,7 +306,19 @@ private fun ChartsContent(navController: NavHostController, tabs: List<ChartTab>
     }
 
     Column(Modifier.fillMaxSize()) {
-        VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = 16.dp, top = 8.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(start = PageInset, end = PageInset, top = PageHeaderTopPadding, bottom = PageHeaderBottomPadding),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            VisageBackButton(onClick = { navController.navigateUp() })
+            Spacer(Modifier.weight(1f))
+            ChartCountryPicker(country, onCountry)
+            Spacer(Modifier.width(8.dp))
+            ExpressiveButton(
+                "Refresh", onClick = onRefresh, enabled = !refreshing, size = ExpressiveSize.Small, style = ExpressiveStyle.Tonal,
+                leadingIcon = Icons.Outlined.Refresh,
+            )
+        }
         TabStrip(
             labels = tabs.map { it.label },
             selected = selected,
@@ -387,7 +445,7 @@ private fun ChartList(
             state = state,
             contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 140.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
-            modifier = Modifier.fillMaxSize().smoothWheelScroll(state),
+            modifier = Modifier.fillMaxSize().pageScrollEdge { state.edgeProgress() }.smoothWheelScroll(state),
         ) {
             item(key = "header") {
                 ChartHeader(tab, entries.size, onPlayAll, onShuffle, showButtons = tab !is ChartTab.Artists)
@@ -513,6 +571,8 @@ private fun PodiumCard(
                 fontSize = if (e.rank == 1) 72.sp else 56.sp,
                 fontWeight = FontWeight.Black,
                 color = accent,
+                // The glyph sits low in its line box; lift it so the digit's top meets the card's corner padding.
+                modifier = Modifier.offset(y = if (e.rank == 1) (-20).dp else (-16).dp),
             )
             Spacer(Modifier.weight(1f))
             MoveBadge(e.move)
@@ -537,11 +597,11 @@ private fun PodiumCard(
             style = MaterialTheme.typography.titleLarge,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 14.dp),
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.padding(top = 14.dp).visageMarquee(),
         )
         if (e.credits.isNotBlank()) {
-            Text(e.credits, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(e.credits, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
         }
     }
 }
@@ -636,8 +696,9 @@ private fun RankRow(
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
                 color = if (active) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.visageMarquee(),
             )
             if (e.credits.isNotBlank()) {
                 if (e.song != null) {
@@ -664,6 +725,53 @@ private fun RankRow(
                 )
             }
             Text(e.duration, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(48.dp))
+        }
+    }
+}
+
+
+internal val ChartCountries = listOf(
+    "AR", "AU", "AT", "BE", "BO", "BR", "CA", "CL", "CO", "CR", "CZ", "DK", "DO", "EC", "EG", "SV", "EE", "FI", "FR", "DE",
+    "GT", "HN", "HU", "IS", "IN", "ID", "IE", "IL", "IT", "JP", "KE", "LU", "MX", "NL", "NZ", "NI", "NG", "NO", "PA", "PY",
+    "PE", "PL", "PT", "RO", "RU", "SA", "RS", "ZA", "KR", "ES", "SE", "CH", "TZ", "TR", "UG", "UA", "AE", "GB", "US", "UY", "ZW",
+)
+
+private fun chartCountryName(code: String): String = when (code) {
+    "" -> "My region"
+    "ZZ" -> "Global (YouTube's chart)"
+    "WORLD" -> "Whole world (equal)"
+    else -> java.util.Locale.of("", code).getDisplayCountry(java.util.Locale.ENGLISH).ifBlank { code }
+}
+
+/** Worldwide / my region / a country: which charts YouTube Music shows. */
+@Composable
+private fun ChartCountryPicker(country: String, onSelect: (String) -> Unit) {
+    var open by remember { mutableStateOf(false) }
+    val names = remember { ChartCountries.map { it to chartCountryName(it) }.sortedBy { it.second } }
+    Box {
+        ExpressiveButton(
+            chartCountryName(country), onClick = { open = true }, size = ExpressiveSize.Small, style = ExpressiveStyle.Tonal,
+            leadingIcon = Icons.Outlined.Public,
+        )
+        androidx.compose.material3.DropdownMenu(
+            expanded = open, onDismissRequest = { open = false },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            modifier = Modifier.heightIn(max = 420.dp),
+        ) {
+            listOf("WORLD" to "Whole world (every country equal)", "ZZ" to "Global (YouTube's chart)", "" to "My region").forEach { (code, name) ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(name, fontWeight = if (code == country) FontWeight.Bold else FontWeight.Normal) },
+                    onClick = { open = false; onSelect(code) },
+                )
+            }
+            androidx.compose.material3.HorizontalDivider()
+            names.forEach { (code, name) ->
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text(name, fontWeight = if (code == country) FontWeight.Bold else FontWeight.Normal) },
+                    onClick = { open = false; onSelect(code) },
+                )
+            }
         }
     }
 }

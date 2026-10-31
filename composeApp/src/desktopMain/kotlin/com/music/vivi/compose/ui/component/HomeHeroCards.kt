@@ -114,12 +114,13 @@ fun YouTubeHeroCard(
                 )
                 if (subtitle.isNotBlank()) {
                     Spacer(Modifier.height(2.dp))
-                    Text(
-                        subtitle,
+                    SubtitleLine(
+                        parts = subtitlePartsOf(item),
                         style = MaterialTheme.typography.bodyMedium,
                         color = Color.White.copy(alpha = 0.78f),
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.visageMarquee(),
                     )
                 }
                 if (!bottomCaption.isNullOrBlank() && bottomCaption != subtitle) {
@@ -129,7 +130,8 @@ fun YouTubeHeroCard(
                         style = MaterialTheme.typography.labelMedium,
                         color = Color.White.copy(alpha = 0.55f),
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.visageMarquee(),
                     )
                 }
             }
@@ -194,8 +196,8 @@ fun PlaylistShelfCard(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.padding(top = 2.dp),
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.padding(top = 2.dp).visageMarquee(),
                 )
             }
         }

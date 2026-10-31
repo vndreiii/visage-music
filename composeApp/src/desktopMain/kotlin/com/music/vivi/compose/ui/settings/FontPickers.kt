@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.settings
 
+import com.music.vivi.compose.ui.expressive.VisageTextField
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -99,8 +101,8 @@ private fun FontValue(key: String) {
             fontFamily = fontFamilyFor(key),
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.widthIn(max = 180.dp).padding(horizontal = 14.dp, vertical = 8.dp),
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.widthIn(max = 180.dp).padding(horizontal = 14.dp, vertical = 8.dp).visageMarquee(),
         )
     }
 }
@@ -126,18 +128,11 @@ private fun FontPickerDialog(title: String, current: String, onPick: (String) ->
             Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 22.dp, bottom = 12.dp)) {
                 Text(title, style = MaterialTheme.typography.titleLarge)
                 Spacer(Modifier.height(12.dp))
-                TextField(
+                VisageTextField(
                     value = query,
                     onValueChange = { query = it },
                     singleLine = true,
-                    placeholder = { Text("Search fonts") },
-                    shape = RoundedCornerShape(16.dp),
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceContainerHighest,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                    ),
+                    label = { Text("Search fonts") },
                     modifier = Modifier.fillMaxWidth(),
                 )
                 Spacer(Modifier.height(8.dp))
@@ -189,8 +184,8 @@ private fun FontRow(choice: FontChoice, selected: Boolean, onClick: () -> Unit) 
             style = MaterialTheme.typography.bodyLarge,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1f),
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.weight(1f).visageMarquee(),
         )
         if (selected) Icon(Icons.Filled.Check, contentDescription = "Selected", modifier = Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
     }

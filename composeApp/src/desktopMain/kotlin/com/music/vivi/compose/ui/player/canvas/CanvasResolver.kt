@@ -13,7 +13,12 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChangedBy
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
 import com.music.vivi.compose.ui.player.background.CanvasVideo
@@ -31,9 +36,10 @@ enum class CanvasSource {
  * Resolve Apple/Tidal/Visage canvas animation URLs (cover slot, lyrics pane and the Apple Music background).
  */
 object CanvasResolver {
-    private val cache = ConcurrentHashMap<String, CanvasArtwork>()
-    private val misses = ConcurrentHashMap.newKeySet<String>()
     private val assetIdentities = ConcurrentHashMap<String, String>()
+
+    /** Shared lookup layer: single-flight, TTL cache, retries and the UI-facing state machine. */
+    val repository: CanvasRepository by lazy { CanvasRepository(ProviderCanvasFetcher) }
 
     fun playbackCacheKey(url: String): String = assetIdentities[url] ?: url
 
@@ -45,62 +51,13 @@ object CanvasResolver {
         }
     }
 
+    /** Same contract as before (null = nothing to show), now backed by [repository]. */
     suspend fun resolve(
         title: String,
         artist: String,
         album: String? = null,
         source: CanvasSource = CanvasSource.AUTO,
-    ): CanvasArtwork? = runCatching {
-        val key = "${source.name}|$title|$artist|${album.orEmpty()}"
-        cache[key]?.let { return@runCatching it }
-        if (key in misses) return@runCatching null
-        val storefront = Locale.getDefault().country.lowercase(Locale.ROOT)
-            .takeIf { it.length == 2 } ?: "us"
-        if (NativeCanvas.available) {
-            // Rust path: sources run concurrently, results cached on disk across sessions.
-            val native = NativeCanvas.resolve(
-                title = title,
-                artist = artist,
-                album = album,
-                source = when (source) {
-                    CanvasSource.AUTO -> "auto"
-                    CanvasSource.APPLE_MUSIC -> "apple"
-                    CanvasSource.VIVIMUSIC -> "vivi"
-                    CanvasSource.TIDAL -> "tidal"
-                },
-                storefront = storefront,
-            )
-            // Misses are cached by the helper (clean misses only), so network failures get retried.
-            if (native != null) cache[key] = native
-            return@runCatching native
-        }
-        val albumTitle = album.orEmpty()
-        val cleanTitle = title.replace(Regex("(?i)\\s*[\\[\\(].*?[\\]\\)]"), "").split(" - ").first().trim()
-        val fetched = when (source) {
-            CanvasSource.AUTO -> {
-                AppleMusicCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle, storefront)
-                    ?.takeIf { !videoUrl(it).isNullOrBlank() }
-                    ?: TidalCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle)
-                        ?.takeIf { !videoUrl(it).isNullOrBlank() }
-                    ?: ViviMusicCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle)
-                        ?.takeIf { !videoUrl(it).isNullOrBlank() }
-            }
-            CanvasSource.APPLE_MUSIC ->
-                AppleMusicCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle, storefront)
-                    ?.takeIf { !videoUrl(it).isNullOrBlank() }
-            CanvasSource.VIVIMUSIC ->
-                ViviMusicCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle)
-                    ?.takeIf { !videoUrl(it).isNullOrBlank() }
-            CanvasSource.TIDAL ->
-                TidalCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle)
-                    ?.takeIf { !videoUrl(it).isNullOrBlank() }
-        }
-        if (fetched != null) cache[key] = fetched else misses.add(key)
-        fetched
-    }.onFailure { e ->
-        System.err.println("CanvasResolver: ${e.message}")
-    }.getOrNull()
-
+    ): CanvasArtwork? = repository.artwork(CanvasQuery(title, artist, album, source))
 
     /** Square motion artwork — fits the cover slot. */
     fun squareUrl(art: CanvasArtwork?): String? =
@@ -119,36 +76,101 @@ object CanvasResolver {
             ?: art?.preferredAnimationUrl
 }
 
+/** The real lookup: the Rust helper when present, else the Kotlin providers. Failures surface as retryable. */
+internal object ProviderCanvasFetcher : CanvasFetcher {
+    private val io = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    override suspend fun fetch(query: CanvasQuery): CanvasFetch {
+        val storefront = Locale.getDefault().country.lowercase(Locale.ROOT)
+            .takeIf { it.length == 2 } ?: "us"
+        val art = try {
+            if (NativeCanvas.available) nativeLookup(query, storefront) else kotlinLookup(query, storefront)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            System.err.println("CanvasResolver: ${e.javaClass.simpleName}: ${e.message}")
+            return CanvasFetch.Transient(e)
+        }
+        return if (art != null) CanvasFetch.Found(art) else CanvasFetch.NotFound
+    }
+
+    private suspend fun nativeLookup(q: CanvasQuery, storefront: String): CanvasArtwork? {
+        // The helper cannot say "failed" apart from "nothing found", but it only caches clean misses on
+        // disk, so asking again is free for a real miss and a genuine retry after a network failure.
+        // Run on a detached scope: the blocking call cannot be interrupted, only abandoned on timeout.
+        repeat(2) { n ->
+            val found = io.async { callNative(q, storefront) }.await()
+            if (found != null) return found
+            if (n == 0) delay(700)
+        }
+        return null
+    }
+
+    private fun callNative(q: CanvasQuery, storefront: String): CanvasArtwork? = NativeCanvas.resolve(
+        title = q.title,
+        artist = q.artist,
+        album = q.album,
+        source = nativeSource(q.source),
+        storefront = storefront,
+    )
+
+    private suspend fun kotlinLookup(q: CanvasQuery, storefront: String): CanvasArtwork? {
+        val albumTitle = q.album.orEmpty()
+        val cleanTitle = q.title.replace(Regex("(?i)\\s*[\\[\\(].*?[\\]\\)]"), "").split(" - ").first().trim()
+        val artist = q.artist
+        fun CanvasArtwork?.usable() = this?.takeIf { !CanvasResolver.videoUrl(it).isNullOrBlank() }
+        return when (q.source) {
+            CanvasSource.AUTO ->
+                AppleMusicCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle, storefront).usable()
+                    ?: TidalCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle).usable()
+                    ?: ViviMusicCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle).usable()
+            CanvasSource.APPLE_MUSIC ->
+                AppleMusicCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle, storefront).usable()
+            CanvasSource.VIVIMUSIC -> ViviMusicCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle).usable()
+            CanvasSource.TIDAL -> TidalCanvasProvider.getBySongArtist(cleanTitle, artist, albumTitle).usable()
+        }
+    }
+}
+
+internal fun nativeSource(source: CanvasSource): String = when (source) {
+    CanvasSource.AUTO -> "auto"
+    CanvasSource.APPLE_MUSIC -> "apple"
+    CanvasSource.VIVIMUSIC -> "vivi"
+    CanvasSource.TIDAL -> "tidal"
+}
+
 /**
- * Resolves canvases ahead of time, independent of which screen is showing: the current track as
- * soon as it starts and, a moment later, the next one in the queue. The Now Playing screen then
- * finds the result already cached (memory + the helper's disk cache) instead of fetching on open.
+ * Resolves canvases ahead of time, independent of which screen is showing: the current track at once and
+ * the next [LOOKAHEAD] queue tracks right behind it (at most [PREFETCH_CONCURRENCY] lookups/decoders
+ * at a time). Each result is handed to the frame-cache warmer as soon as it exists.
  */
 object CanvasPrefetcher {
+    const val LOOKAHEAD = 2
+    const val PREFETCH_CONCURRENCY = 2
+
     suspend fun run(controller: PlaybackController, prefs: DesktopPrefs) {
         combine(controller.nowPlaying, controller.queueTracks, controller.queueIndex) { np, queue, index ->
-            np to queue.getOrNull(index + 1)
+            listOfNotNull(np?.let { Triple(it.videoId, it.title to it.artist, it.album) }) +
+                queue.drop(index + 1).take(LOOKAHEAD).map { Triple(it.videoId, it.title to it.artist, it.album) }
         }
-            .distinctUntilChangedBy { (np, next) -> np?.videoId to next?.videoId }
-            .collectLatest { (np, next) ->
+            .distinctUntilChangedBy { list -> list.map { it.first } }
+            .collectLatest { tracks ->
                 if (!prefs.getBoolean(PrefKeys.EnableCanvas, true)) return@collectLatest
                 val source = runCatching {
                     CanvasSource.valueOf(prefs.getString(PrefKeys.CanvasSource, CanvasSource.AUTO.name))
                 }.getOrDefault(CanvasSource.AUTO)
+                val useGpu = prefs.getBoolean(PrefKeys.CanvasUseGpu, false)
+                val pingPong = prefs.getBoolean(PrefKeys.CanvasPingPong, false)
+                val gate = Semaphore(PREFETCH_CONCURRENCY)
                 coroutineScope {
-                    val useGpu = prefs.getBoolean(PrefKeys.CanvasUseGpu, false)
-                    val pingPong = prefs.getBoolean(PrefKeys.CanvasPingPong, false)
-                    fun warm(art: CanvasArtwork?) {
-                        listOfNotNull(CanvasResolver.squareUrl(art), CanvasResolver.tallUrl(art)).distinct().forEach { url ->
-                            launch { CanvasVideo.warm(url, useGpu, pingPong) }
+                    tracks.filter { it.second.first.isNotBlank() && it.second.second.isNotBlank() }.forEach { t ->
+                        launch {
+                            val art = gate.withPermit { CanvasResolver.resolve(t.second.first, t.second.second, t.third, source) }
+                                ?: return@launch
+                            listOfNotNull(CanvasResolver.squareUrl(art), CanvasResolver.tallUrl(art)).distinct().forEach { url ->
+                                launch { gate.withPermit { CanvasVideo.warm(url, useGpu, pingPong) } }
+                            }
                         }
-                    }
-                    if (np != null && np.title.isNotBlank()) {
-                        warm(withContext(Dispatchers.IO) { CanvasResolver.resolve(np.title, np.artist, np.album, source) })
-                    }
-                    delay(1_500) // the playing track first, then warm the next one quietly
-                    if (next != null && next.title.isNotBlank() && next.artist.isNotBlank()) {
-                        warm(withContext(Dispatchers.IO) { CanvasResolver.resolve(next.title, next.artist, next.album, source) })
                     }
                 }
             }

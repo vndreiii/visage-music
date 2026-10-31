@@ -220,7 +220,7 @@ fun <T> ConnectedButtonGroup(
             ) {
                 Box(Modifier.padding(horizontal = size.horizontal), contentAlignment = Alignment.Center) {
                     Text(
-                        label,
+                        com.music.vivi.compose.ui.settings.highlighted(label),
                         style = size.textStyle(),
                         maxLines = 1,
                         textAlign = TextAlign.Center,

@@ -1,5 +1,8 @@
 package com.music.vivi.compose.ui
 
+import com.music.vivi.compose.ui.onboarding.tourAnchor
+import com.music.vivi.compose.ui.component.VisageToast
+import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.CoverImage
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
@@ -40,6 +43,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import com.music.vivi.compose.theme.LocalPlayerInk
+import com.music.vivi.compose.theme.ProvidePlayerInk
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -70,6 +75,7 @@ import com.music.vivi.compose.prefs.DesktopPrefs
 import com.music.vivi.compose.prefs.MiniPlayerStyle
 import com.music.vivi.compose.prefs.PlayerBackgroundStyle
 import com.music.vivi.compose.prefs.PrefKeys
+import com.music.vivi.compose.ui.settings.rememberPrefsVersion
 import com.music.vivi.compose.ui.component.PlayPauseIcon
 import com.music.vivi.compose.ui.component.VisageLoadingIndicator
 import com.music.vivi.compose.ui.player.AudioOutputSheet
@@ -104,7 +110,6 @@ fun resolveMiniPlayerStyle(prefs: DesktopPrefs): MiniPlayerStyle {
  * @param backgroundStyleOverride force background (settings live preview)
  * @param interactive when false, expand / transport clicks are no-ops (preview)
  */
-@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun MiniPlayerBar(
     onExpand: (() -> Unit)? = null,
@@ -115,6 +120,32 @@ fun MiniPlayerBar(
     backgroundStyleOverride: PlayerBackgroundStyle? = null,
     interactive: Boolean = true,
 ) {
+    val prefs = koinInject<DesktopPrefs>()
+    @Suppress("UNUSED_VARIABLE")
+    val observeInk = rememberPrefsVersion(prefs)
+    val bgStyle = backgroundStyleOverride ?: runCatching {
+        PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.MiniPlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name))
+    }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
+    ProvidePlayerInk(
+        solid = bgStyle == PlayerBackgroundStyle.DEFAULT,
+        backdrop = MaterialTheme.colorScheme.surfaceContainerHigh,
+        darkness = prefs.getInt(PrefKeys.MiniPlayerBackgroundDarkness, 0).coerceIn(0, 100) / 100f,
+    ) {
+        MiniPlayerBarContent(onExpand, onOpenArtist, if (interactive) modifier.tourAnchor("miniplayer") else modifier, styleOverride, backgroundStyleOverride, interactive)
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
+@Composable
+private fun MiniPlayerBarContent(
+    onExpand: (() -> Unit)?,
+    onOpenArtist: ((String) -> Unit)?,
+    modifier: Modifier,
+    styleOverride: MiniPlayerStyle?,
+    backgroundStyleOverride: PlayerBackgroundStyle?,
+    interactive: Boolean,
+) {
+    val ink = LocalPlayerInk.current
     val controller = LocalPlaybackController.current
     val prefs = koinInject<DesktopPrefs>()
     var prefsTick by remember { mutableStateOf(0) }
@@ -127,6 +158,7 @@ fun MiniPlayerBar(
     val nowPlaying by controller.nowPlaying.collectAsState()
     val state by controller.state.collectAsState()
     val lastError by controller.lastError.collectAsState()
+    val notice by controller.notice.collectAsState()
     val isFavorite by controller.isFavorite.collectAsState()
     val queue by controller.queueIds.collectAsState()
     val queueIndex by controller.queueIndex.collectAsState()
@@ -176,11 +208,11 @@ fun MiniPlayerBar(
         if (d > 0L) (positionState.value.toFloat() / d.toFloat()).coerceIn(0f, 1f) else 0f
     }
 
+    // Always observe prefs: callers that pass an override skip the read below, and the background style (read straight
+    // from prefs) would then stay stale until this composable was rebuilt, e.g. by leaving Settings.
     @Suppress("UNUSED_EXPRESSION")
-    val miniStyle = styleOverride ?: run {
-        prefsTick // recompose when Appearance prefs change
-        resolveMiniPlayerStyle(prefs)
-    }
+    prefsTick
+    val miniStyle = styleOverride ?: resolveMiniPlayerStyle(prefs)
     val miniBg = backgroundStyleOverride ?: runCatching {
         PlayerBackgroundStyle.valueOf(
             prefs.getString(PrefKeys.MiniPlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name),
@@ -274,7 +306,7 @@ fun MiniPlayerBar(
                         // Surface(shape) bounds hover/ripple to the circle — avoids hard-square bleed.
                         Surface(
                             shape = CircleShape,
-                            color = Color.White.copy(alpha = 0.08f),
+                            color = ink.text(0.08f),
                             onClick = { expand() },
                             modifier = Modifier.size(44.dp),
                         ) {
@@ -284,7 +316,7 @@ fun MiniPlayerBar(
                                     VisageLoadingIndicator(
                                         modifier = Modifier.size(22.dp),
                                         size = 22.dp,
-                                        color = Color.White,
+                                        color = ink.text(),
                                     )
                                 }
                             }
@@ -309,17 +341,18 @@ fun MiniPlayerBar(
                                 },
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color.White,
+                                color = ink.text(),
                                 maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                                overflow = TextOverflow.Clip,
+                                modifier = Modifier.visageMarquee(),
                             )
                             val credits = track?.artist.orEmpty()
                             if (onOpenArtist != null && credits.isNotBlank() && state != PlaybackState.Error && !idleEmpty) {
                                 com.music.vivi.compose.ui.artist.ArtistLinks(
                                     credits = credits,
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.75f),
-                                    hoverColor = Color.White,
+                                    color = ink.text(0.75f),
+                                    hoverColor = ink.text(),
                                     onOpen = onOpenArtist,
                                 )
                             } else {
@@ -332,9 +365,10 @@ fun MiniPlayerBar(
                                         else -> track?.artist?.takeIf { it.isNotBlank() } ?: ""
                                     },
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = Color.White.copy(alpha = 0.75f),
+                                    color = ink.text(0.75f),
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    overflow = TextOverflow.Clip,
+                                    modifier = Modifier.visageMarquee(),
                                 )
                             }
                         }
@@ -344,7 +378,7 @@ fun MiniPlayerBar(
                                 onClick = { if (interactive) controller.previous() },
                                 enabled = interactive && (canPrev || track != null),
                             ) {
-                                Icon(Icons.Filled.SkipPrevious, "Previous", tint = Color.White)
+                                Icon(Icons.Filled.SkipPrevious, "Previous", tint = ink.text())
                             }
                         }
                         IconButton(
@@ -360,7 +394,7 @@ fun MiniPlayerBar(
                         ) {
                             PlayPauseIcon(
                                 playing = playing,
-                                tint = Color.White,
+                                tint = ink.text(),
                                 iconSize = if (miniStyle == MiniPlayerStyle.COMPACT_EDGE) 26.dp else 30.dp,
                             )
                         }
@@ -368,7 +402,7 @@ fun MiniPlayerBar(
                             onClick = { if (interactive) controller.next() },
                             enabled = interactive && canNext,
                         ) {
-                            Icon(Icons.Filled.SkipNext, "Next", tint = Color.White)
+                            Icon(Icons.Filled.SkipNext, "Next", tint = ink.text())
                         }
                         if (miniStyle != MiniPlayerStyle.COMPACT_EDGE) {
                             Box {
@@ -376,7 +410,7 @@ fun MiniPlayerBar(
                                     Icon(
                                         Icons.Outlined.Speaker,
                                         contentDescription = "Audio output",
-                                        tint = Color.White.copy(alpha = 0.9f),
+                                        tint = ink.text(0.9f),
                                     )
                                 }
                                 if (showAudioOutput && interactive) {
@@ -396,7 +430,7 @@ fun MiniPlayerBar(
                                     imageVector = if (isFavorite) Icons.Filled.Favorite else Icons.Outlined.FavoriteBorder,
                                     contentDescription = "Favorite",
                                     tint = if (isFavorite) MaterialTheme.colorScheme.primary
-                                    else Color.White.copy(alpha = 0.9f),
+                                    else ink.fill(0.9f),
                                 )
                             }
                         }
@@ -417,6 +451,8 @@ fun MiniPlayerBar(
                     volume = volume,
                     shape = surfaceShape,
                 )
+
+                VisageToast(notice, onDismiss = { controller.clearNotice() })
             }
         }
     }
@@ -428,6 +464,7 @@ private fun BoxScope.VolumeOverlay(
     volume: Float,
     shape: RoundedCornerShape,
 ) {
+    val ink = LocalPlayerInk.current
     AnimatedVisibility(
         visible = visible,
         enter = fadeIn(),
@@ -442,7 +479,7 @@ private fun BoxScope.VolumeOverlay(
         ) {
             Text(
                 "Volume ${(volume * 100).toInt()}%",
-                color = Color.White,
+                color = ink.text(),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
             )
@@ -463,6 +500,7 @@ private fun MiniSeekLine(
     isPlaying: Boolean,
     onSeekFraction: (Float) -> Unit,
 ) {
+    val ink = LocalPlayerInk.current
     val interaction = androidx.compose.runtime.remember { androidx.compose.foundation.interaction.MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
     var drag by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf<Float?>(null) }
@@ -510,18 +548,18 @@ private fun MiniSeekLine(
                 // Unplayed part (right of the handle)
                 val rightStart = (hx + gap).coerceAtMost(x1)
                 if (x1 - rightStart > 0.5f) {
-                    drawRoundRect(Color.White.copy(alpha = 0.30f), androidx.compose.ui.geometry.Offset(rightStart, cy - th / 2f), androidx.compose.ui.geometry.Size(x1 - rightStart, th), r)
+                    drawRoundRect(ink.fill(0.30f), androidx.compose.ui.geometry.Offset(rightStart, cy - th / 2f), androidx.compose.ui.geometry.Size(x1 - rightStart, th), r)
                 }
                 // Played part (left of the handle)
                 val leftEnd = (hx - gap).coerceAtLeast(x0)
                 if (leftEnd - x0 > 0.5f) {
-                    drawRoundRect(Color.White, androidx.compose.ui.geometry.Offset(x0, cy - th / 2f), androidx.compose.ui.geometry.Size(leftEnd - x0, th), r)
+                    drawRoundRect(ink.primary, androidx.compose.ui.geometry.Offset(x0, cy - th / 2f), androidx.compose.ui.geometry.Size(leftEnd - x0, th), r)
                 }
                 // Pill handle
                 val hw = handleW.dp.toPx()
                 val hh = handleH.dp.toPx()
                 drawRoundRect(
-                    Color.White,
+                    ink.primary,
                     androidx.compose.ui.geometry.Offset(hx - hw / 2f, cy - hh / 2f),
                     androidx.compose.ui.geometry.Size(hw, hh),
                     androidx.compose.ui.geometry.CornerRadius(hw / 2f, hw / 2f),

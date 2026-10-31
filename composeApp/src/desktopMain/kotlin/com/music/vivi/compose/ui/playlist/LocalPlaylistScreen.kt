@@ -1,5 +1,11 @@
 package com.music.vivi.compose.ui.playlist
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.PageHeaderTopPadding
+import com.music.vivi.compose.ui.component.PageInset
+import com.music.vivi.compose.ui.component.PageHeaderBottomPadding
+import com.music.vivi.compose.ui.expressive.VisageTextField
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -32,7 +38,6 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -55,6 +60,8 @@ import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.VisageBackButton
 import com.music.vivi.compose.ui.component.rememberNowPlayingIds
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 import com.music.vivi.compose.ui.library.sidebar.toQueueTrack
 import com.music.vivi.database.LibraryRepository
 import com.music.vivi.database.Playlist
@@ -103,11 +110,11 @@ fun LocalPlaylistScreen(playlistId: String, navController: NavController) {
 
     LazyColumn(
         state = listState,
-        modifier = Modifier.fillMaxSize().smoothWheelScroll(listState),
-        contentPadding = PaddingValues(bottom = 120.dp),
+        modifier = Modifier.fillMaxSize().pageScrollEdge { listState.edgeProgress() }.smoothWheelScroll(listState),
+        contentPadding = PaddingValues(bottom = MiniPlayerClearance),
     ) {
         item(key = "back") {
-            Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp)) {
+            Row(Modifier.fillMaxWidth().padding(start = PageInset, end = PageInset, top = PageHeaderTopPadding, bottom = PageHeaderBottomPadding)) {
                 VisageBackButton(onClick = { navController.navigateUp() })
             }
         }
@@ -132,8 +139,16 @@ fun LocalPlaylistScreen(playlistId: String, navController: NavController) {
                             if (total > 0) append(" · ${total / 3600}h ${(total % 3600) / 60}m".replace("0h ", ""))
                         },
                         style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp, bottom = 14.dp),
+                        modifier = Modifier.padding(top = 4.dp, bottom = if (playlist?.description.isNullOrBlank()) 14.dp else 6.dp),
                     )
+                    playlist?.description?.takeIf { it.isNotBlank() }?.let { desc ->
+                        Text(
+                            desc, style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 3, overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.padding(bottom = 14.dp),
+                        )
+                    }
                     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Button(onClick = { play(songs, 0) }, enabled = songs.isNotEmpty()) {
                             Icon(Icons.Filled.PlayArrow, null, Modifier.size(20.dp)); Spacer(Modifier.width(6.dp)); Text("Play")
@@ -141,7 +156,7 @@ fun LocalPlaylistScreen(playlistId: String, navController: NavController) {
                         FilledTonalButton(onClick = { play(songs, 0, shuffled = true) }, enabled = songs.isNotEmpty()) {
                             Icon(Icons.Outlined.Shuffle, null, Modifier.size(20.dp)); Spacer(Modifier.width(6.dp)); Text("Shuffle")
                         }
-                        IconButton(onClick = { renaming = true }) { Icon(Icons.Outlined.Edit, "Rename") }
+                        IconButton(onClick = { renaming = true }) { Icon(Icons.Outlined.Edit, "Edit details") }
                         IconButton(onClick = { deleting = true }) { Icon(Icons.Outlined.Delete, "Delete playlist") }
                     }
                 }
@@ -172,12 +187,14 @@ fun LocalPlaylistScreen(playlistId: String, navController: NavController) {
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
                     Text(
                         song.title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold, maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Clip,
                         color = if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.visageMarquee(),
                     )
                     Text(
                         song.artists, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
+                        maxLines = 1, overflow = TextOverflow.Clip,
+                        modifier = Modifier.visageMarquee(),
                     )
                 }
                 IconButton(onClick = { scope.launch(Dispatchers.IO) { repo.moveInLocalPlaylist(playlistId, index, index - 1) } }, enabled = index > 0) {
@@ -194,18 +211,22 @@ fun LocalPlaylistScreen(playlistId: String, navController: NavController) {
     }
 
     if (renaming && playlist != null) {
-        var text by remember { mutableStateOf(playlist.title) }
-        AlertDialog(
-            onDismissRequest = { renaming = false },
-            title = { Text("Rename playlist") },
-            text = { OutlinedTextField(text, { text = it }, singleLine = true, label = { Text("Name") }, shape = RoundedCornerShape(14.dp)) },
-            confirmButton = {
-                TextButton(onClick = {
-                    renaming = false
-                    scope.launch(Dispatchers.IO) { repo.renameLocalPlaylist(playlistId, text) }
-                }) { Text("Rename") }
+        // Same card as New playlist, filled in: change the name, description and photo.
+        com.music.vivi.compose.ui.library.sidebar.PlaylistDialog(
+            title = "Edit playlist",
+            confirm = "Save",
+            initialName = playlist.title,
+            initialDescription = playlist.description.orEmpty(),
+            initialCover = playlist.thumbnail?.takeIf { it.startsWith("/") },
+            onDismiss = { renaming = false },
+            onConfirm = { name, description, cover ->
+                renaming = false
+                scope.launch(Dispatchers.IO) {
+                    // Keep the automatic cover when the user hasn't chosen a photo.
+                    val thumb = cover ?: playlist.thumbnail?.takeIf { !it.startsWith("/") }
+                    repo.updateLocalPlaylistDetails(playlistId, name, description, thumb)
+                }
             },
-            dismissButton = { TextButton(onClick = { renaming = false }) { Text("Cancel") } },
         )
     }
     if (deleting && playlist != null) {

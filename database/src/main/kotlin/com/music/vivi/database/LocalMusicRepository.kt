@@ -36,6 +36,26 @@ class LocalMusicRepository(
         }
     }
 
+    /** Every track credited to exactly its own artist row; artist rows nothing refers to any more are removed. Idempotent. */
+    fun resetArtistCredits() {
+        val d = driver ?: return
+        d.execute(null, "DELETE FROM local_track_artist", 0)
+        d.execute(
+            null,
+            "INSERT INTO local_track_artist(track_id, artist_id, position) SELECT id, artist_id, 0 FROM local_track WHERE artist_id IS NOT NULL",
+            0,
+        )
+        d.execute(
+            null,
+            """
+            DELETE FROM local_artist
+            WHERE id NOT IN (SELECT artist_id FROM local_track WHERE artist_id IS NOT NULL)
+              AND id NOT IN (SELECT artist_id FROM local_album WHERE artist_id IS NOT NULL)
+            """.trimIndent(),
+            0,
+        )
+    }
+
     fun artistsForTrack(trackId: String) = db.localTrackArtistQueries.selectArtistsForTrack(trackId).executeAsList()
     fun tracksCreditedTo(artistId: String) = db.localTrackArtistQueries.selectTracksForArtist(artistId).executeAsList()
 

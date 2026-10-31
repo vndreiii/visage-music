@@ -1,5 +1,10 @@
 package com.music.vivi.compose.ui.newrelease
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.edgeProgress
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.PageInset
+import com.music.vivi.compose.ui.component.DetailPageHeader
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 
 import androidx.compose.foundation.layout.Arrangement
@@ -87,18 +92,17 @@ fun NewReleaseScreen(
         }
         else -> {
             Column(modifier = Modifier.fillMaxSize()) {
-                com.music.vivi.compose.ui.component.VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = 16.dp, top = 8.dp))
-                
-                NavigationTitle(title = "New Releases", modifier = Modifier.padding(bottom = 8.dp))
+                DetailPageHeader(title = "New Releases", onBack = { navController.navigateUp() })
 
                 val smoothScroll1 = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
                 LazyVerticalGrid(
                     state = smoothScroll1,
                     columns = GridCells.Adaptive(minSize = 180.dp),
-                    contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 120.dp),
+                    contentPadding = PaddingValues(start = PageInset, end = PageInset, bottom = MiniPlayerClearance),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier.fillMaxWidth().weight(1f)
+                        .pageScrollEdge { smoothScroll1.edgeProgress() }
                         .smoothWheelScroll(smoothScroll1)
                 ) {
                     albums.orEmpty().let { itemList ->

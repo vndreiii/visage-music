@@ -14,9 +14,24 @@ class DesktopPrefs(
     private val props = Properties()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
 
+    /** Keys changed in memory but not yet on disk; a null value is a removal. */
+    private val dirty = HashMap<String, String?>()
+    private var flushPending = false
+    private val writer = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+        Thread(r, "prefs-writer").apply { isDaemon = true }
+    }
+
     init {
         if (file.exists()) {
             file.inputStream().use { props.load(it) }
+            LookMigration.run(this)
+        } else {
+            props.setProperty(LookMigration.Done, "1")
+            // No settings file yet: a fresh install. First-run onboarding shows only for these (existing users
+            // have a file, so their onboarding.done stays absent and the flow never opens for them).
+            props.setProperty(PrefKeys.OnboardingDone, "false")
+            // Nothing is "new" to someone who never saw the earlier settings.
+            props.setProperty("settingsNewBaseline", com.music.vivi.compose.ui.settings.SettingsNew.latestRev.toString())
         }
     }
 
@@ -31,12 +46,56 @@ class DesktopPrefs(
     fun getString(key: String, default: String): String =
         props.getProperty(key) ?: default
 
-    @Synchronized
+    init {
+        Runtime.getRuntime().addShutdownHook(Thread { flush() })
+    }
+
     fun setString(key: String, value: String) {
-        if (props.getProperty(key) == value) return
-        props.setProperty(key, value)
-        persist()
+        synchronized(this) {
+            if (props.getProperty(key) == value) return
+            props.setProperty(key, value)
+            dirty[key] = value
+            // Writes are coalesced: a slider drag or wheel burst would otherwise rewrite the file per event.
+            if (!flushPending) {
+                flushPending = true
+                writer.schedule({ flush() }, 250, java.util.concurrent.TimeUnit.MILLISECONDS)
+            }
+        }
         listeners.forEach { it() }
+    }
+
+    /** Deletes [key] (and from the file at the next flush). Used for values that moved elsewhere, such as API keys. */
+    fun remove(key: String) {
+        synchronized(this) {
+            if (!props.containsKey(key)) return
+            props.remove(key)
+            dirty[key] = null
+            if (!flushPending) {
+                flushPending = true
+                writer.schedule({ flush() }, 250, java.util.concurrent.TimeUnit.MILLISECONDS)
+            }
+        }
+        listeners.forEach { it() }
+    }
+
+    /** Stored keys that start with [prefix]. */
+    @Synchronized
+    fun keysWithPrefix(prefix: String): List<String> =
+        props.stringPropertyNames().filter { it.startsWith(prefix) }.sorted()
+
+    /** Tells listeners that something outside the prefs (the secret store) changed. */
+    fun notifyChanged() = listeners.forEach { it() }
+
+    @Synchronized
+    fun flush() {
+        flushPending = false
+        if (dirty.isEmpty()) return
+        // Another running copy of the app may have saved since we loaded; merge its changes instead of
+        // overwriting the whole file with our older snapshot (that is how a folder list could vanish).
+        reloadFromDisk()
+        dirty.forEach { (k, v) -> if (v == null) props.remove(k) else props.setProperty(k, v) }
+        dirty.clear()
+        runCatching { persist() }
     }
 
     fun getBoolean(key: String, default: Boolean): Boolean =
@@ -58,6 +117,12 @@ class DesktopPrefs(
 
     fun setFloat(key: String, value: Float) {
         setString(key, value.toString())
+    }
+
+    private fun reloadFromDisk() {
+        runCatching {
+            if (file.exists()) file.inputStream().use { props.load(it) }
+        }
     }
 
     private fun persist() {
@@ -83,11 +148,28 @@ class DesktopPrefs(
 
 /** Key names mirrored from upstream PreferenceKeys. */
 object PrefKeys {
+    /** Ring background: where the rings spread from, as fractions of the width / height (default left of centre). */
+    const val RingsOriginX = "ringsOriginX"
+    const val RingsOriginY = "ringsOriginY"
+    /** Ring background: ring spacing, 1 = default, larger = bigger rings. */
+    const val RingsScale = "ringsScale"
+    /** Ring background: how strong the rings are drawn, 0.1..1. */
+    const val RingsOpacity = "ringsOpacity"
+    /** Ring background: how strongly the rings react to the music (1 = as measured). */
+    const val RingsReaction = "ringsReaction"
+    /** Ring background: 0 = rings snap with the music, 1 = every hit grows and settles slowly. */
+    const val RingsSmoothing = "ringsSmoothing"
+    /** Hours between automatic Quick picks refreshes (default 24, bounded by [QuickPicksSchedule]). */
+    const val QuickPicksIntervalHours = "quickPicksIntervalHours"
+    /** Automatic daily Quick picks refresh on/off (default on). */
+    const val QuickPicksAutoRefresh = "quickPicksAutoRefresh"
+    /** Show the manual refresh button on the Quick picks shelf (default on). */
+    const val QuickPicksManualRefresh = "quickPicksManualRefresh"
     /** Tag Manager: copy originals to a backup folder before rewriting tags (default on). */
     const val TagBackupEnabled = "tagBackupEnabled"
     /** Tag Manager: write ID3v2.3 instead of 2.4 in MP3/WAV (default off). */
     const val TagId3v23 = "tagId3v23"
-    /** Optional AcoustID application key; fingerprint lookup runs only with this and `fpcalc`. */
+    /** Legacy plain-text AcoustID key; now kept in the system keyring (see [Secrets.AcoustidKey]). */
     const val TagAcoustidKey = "tagAcoustidKey"
     const val DarkMode = "darkMode"
     const val PureBlack = "pureBlack"
@@ -146,7 +228,12 @@ object PrefKeys {
     const val DiscordRpcVisageButton = "discordRpcVisageButton"
     const val HidePlayerThumbnail = "hidePlayerThumbnail"
     const val AudioQuality = "audioQuality"
+    const val AudioOutputDevice = "audioOutputDevice"
     const val PersistentQueue = "persistentQueue"
+    /** First-run onboarding: "false" on a fresh install (show it), "true" once finished or skipped; absent for existing users. */
+    const val OnboardingDone = "onboarding.done"
+    /** Set by Settings → Replay tour; the onboarding host shows the tour and clears it. */
+    const val OnboardingReplay = "onboarding.replay"
     const val SaavnEnabled = "saavnEnabled"
     const val PlaybackVolume = "playbackVolume"
     const val LyricsTextAlign = "lyricsTextAlign"
@@ -171,6 +258,13 @@ object PrefKeys {
     const val LyricsAnimStrength = "lyricsAnimStrength"
     const val LyricsAccent = "lyricsAccent"
     const val LyricsShowTranslation = "lyricsShowTranslation"
+    const val LyricsRomanize = "lyricsRomanize"
+    const val LyricsAutoTranslate = "lyricsAutoTranslate"
+    const val LyricsTranslateLang = "lyricsTranslateLang"
+    const val LyricsTranslateProvider = "lyricsTranslateProvider"
+    /** Legacy plain-text Gemini key; moved into the system keyring by [com.music.vivi.compose.prefs.SecretMigration]. */
+    const val LyricsGeminiKey = "lyricsGeminiKey"
+    const val LyricsGeminiModel = "lyricsGeminiModel"
     const val LyricsShowBackgroundVocals = "lyricsShowBackgroundVocals"
     const val LyricsTapToSeek = "lyricsTapToSeek"
     const val LyricsAutoResume = "lyricsAutoResume"
@@ -178,6 +272,13 @@ object PrefKeys {
     const val LyricsGapStyle = "lyricsGapStyle"
     const val LyricsBackground = "lyricsBackground"
     const val LyricsBackgroundIntensity = "lyricsBackgroundIntensity"
+    const val LyricsScene = "lyricsScene"
+    const val LyricsSceneDissolve = "lyricsSceneDissolve"
+    const val LyricsSceneLinger = "lyricsSceneLinger"
+    const val LyricsCutsSlice = "lyricsCutsSlice"
+    const val LyricsBounceAmp = "lyricsBounceAmp"
+    const val LyricsBounceFreq = "lyricsBounceFreq"
+    const val LyricsBounceDecay = "lyricsBounceDecay"
     const val DownloadPath = "downloadPath"
     const val DownloadFormat = "downloadFormat"
     const val DownloadQuality = "downloadQuality"
@@ -232,6 +333,7 @@ enum class PlayerBackgroundStyle {
     WAVE,
     XMB,
     DISTORT,
+    RINGS,
 }
 
 /** Mini-player chrome architecture (Appearance → Mini-player / Apple mini). */
@@ -244,7 +346,7 @@ enum class MiniPlayerStyle {
     COMPACT_EDGE,
 }
 
-/** Queue UI: fullscreen sheet (default), right rail, or up-next under the NP transport. */
+/** Queue UI: fullscreen sheet, pinned sidebar (default), or up-next under the NP transport. */
 enum class QueuePanelMode {
     FULLSCREEN,
     PINNED_RIGHT,
@@ -313,3 +415,63 @@ enum class DownloadAudioQuality {
 
 /** Default seed — soft blue-gray (idle / no artwork), not coral. */
 const val DefaultThemeColorArgb: Int = 0xFF8BA3B8.toInt()
+
+
+/** The look the app starts with. Anything the user has set themselves wins over these. */
+object LookDefaults {
+    const val GlassBlur = true
+    val PlayerStyle = PlayerBackgroundStyle.DISTORT
+    const val PlayerDarkness = 85
+    val PageStyle = PlayerBackgroundStyle.DISTORT
+    const val PageDarkness = 85
+
+    // What the same settings defaulted to before the look changed, so "keep my previous look" can restore it.
+    const val OldGlassBlur = false
+    val OldPlayerStyle = PlayerBackgroundStyle.GRADIENT
+    const val OldPlayerDarkness = 0
+    val OldPageStyle = PlayerBackgroundStyle.BLUR
+    const val OldPageDarkness = 50
+}
+
+/**
+ * When the default look changed, an existing user who never set these options sees the new look without having
+ * chosen it. On first start after the update this records what they had (their own value, or the old default),
+ * and What's New offers to put it back.
+ */
+object LookMigration {
+    const val Done = "look.v2"
+    const val Pending = "look.changed"
+    private const val Prev = "look.prev."
+
+    private data class Entry(val key: String, val old: String)
+    private val entries = listOf(
+        Entry(PrefKeys.GlassBlur, LookDefaults.OldGlassBlur.toString()),
+        Entry(PrefKeys.PlayerBackgroundStyle, LookDefaults.OldPlayerStyle.name),
+        Entry(PrefKeys.PlayerBackgroundDarkness, LookDefaults.OldPlayerDarkness.toString()),
+        Entry(PrefKeys.PageBackgroundStyle, LookDefaults.OldPageStyle.name),
+        Entry(PrefKeys.PageBackgroundDarkness, LookDefaults.OldPageDarkness.toString()),
+    )
+
+    fun run(prefs: DesktopPrefs) {
+        if (prefs.getString(Done, "") == "1") return
+        // Only options the user never set change their look; explicit choices stay exactly as they were.
+        val untouched = entries.filter { prefs.getString(it.key, "").isEmpty() }
+        untouched.forEach { prefs.setString(Prev + it.key, it.old) }
+        if (untouched.isNotEmpty()) prefs.setString(Pending, "true")
+        prefs.setString(Done, "1")
+    }
+
+    fun pending(prefs: DesktopPrefs): Boolean = prefs.getBoolean(Pending, false)
+
+    /** Writes the previous values back as the user's own choices. */
+    fun restorePrevious(prefs: DesktopPrefs) {
+        entries.forEach { e ->
+            val prev = prefs.getString(Prev + e.key, "")
+            if (prev.isNotEmpty()) prefs.setString(e.key, prev)
+        }
+        prefs.setString(Pending, "false")
+    }
+
+    /** Keeps the new look; the notice goes away. */
+    fun acknowledge(prefs: DesktopPrefs) = prefs.setString(Pending, "false")
+}

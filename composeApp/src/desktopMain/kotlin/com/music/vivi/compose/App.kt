@@ -7,6 +7,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -85,11 +88,26 @@ fun FrameWindowScope.App(
         LaunchedEffect(Unit) {
             controller.setVolume(prefs.getFloat(PrefKeys.PlaybackVolume, 1f).coerceIn(0f, 1f))
         }
+        // Windows: leaving OS fullscreen re-creates the peer and drops the transparent background
+        // (white corners). Re-apply it on every exit from fullscreen, again once the peer has settled.
+        var wasOsFullscreen by remember { mutableStateOf(false) }
+        LaunchedEffect(windowState.placement) {
+            val isFullscreen = windowState.placement == WindowPlacement.Fullscreen
+            if (wasOsFullscreen && !isFullscreen) {
+                WindowTransparency.reapply(window)
+                kotlinx.coroutines.delay(250)
+                WindowTransparency.reapply(window)
+            }
+            wasOsFullscreen = isFullscreen
+        }
         VisageTheme(prefs = prefs, artworkPalette = artworkPalette) {
             // Clip to rounded bounds so glow/blur backgrounds can't bleed past the
             // compositor's window corner (the bottom-left "overflow" spit).
             // Skip rounding while OS-fullscreen so edges aren't inset.
-            @Suppress("UNUSED_VARIABLE") val geometry = windowState.size to windowState.position
+            // Windows only (see WindowMaximize.isMaximized); elsewhere it recomposed the whole app on every drag step.
+            if (com.music.vivi.nativelib.HostOs.isWindows) {
+                @Suppress("UNUSED_VARIABLE") val geometry = windowState.size to windowState.position
+            }
             val osFullscreen = windowState.placement == WindowPlacement.Fullscreen ||
                 (com.music.vivi.nativelib.HostOs.isWindows && WindowMaximize.isMaximized(window))
             val windowShape = RoundedCornerShape(16.dp)
@@ -110,6 +128,8 @@ fun FrameWindowScope.App(
                 }
                 com.music.vivi.compose.crash.CrashDialogHost(onQuit = onClose)
                 com.music.vivi.compose.update.UpdatePrompt()
+                com.music.vivi.compose.whatsnew.WhatsNewHost()
+                com.music.vivi.compose.ui.onboarding.OnboardingHost()
                 com.music.vivi.compose.keys.ShortcutOverlays()
             }
         }

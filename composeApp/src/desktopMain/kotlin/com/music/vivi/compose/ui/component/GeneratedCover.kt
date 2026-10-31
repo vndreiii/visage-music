@@ -231,9 +231,11 @@ fun CoverImage(
     label: String? = null,
     animated: Boolean = false,
 ) {
-    val usable = model != null && (model as? String)?.isBlank() != true
-    var failed by remember(model) { mutableStateOf(false) }
-    var loaded by remember(model) { mutableStateOf(false) }
+    // A cover the user picked is stored as a plain file path; hand the image loader a File so it never guesses a scheme.
+    val src: Any? = if (model is String && model.startsWith("/")) java.io.File(model) else model
+    val usable = src != null && (src as? String)?.isBlank() != true
+    var failed by remember(src) { mutableStateOf(false) }
+    var loaded by remember(src) { mutableStateOf(false) }
     val imgAlpha by animateFloatAsState(if (loaded) 1f else 0f, tween(350), label = "coverImgFade")
     val artAlpha by animateFloatAsState(if (!usable || failed) 1f else 0f, tween(350), label = "coverArtFade")
     Box(modifier) {
@@ -242,7 +244,7 @@ fun CoverImage(
         }
         if (usable && !failed) {
             AsyncImage(
-                model = model,
+                model = src,
                 contentDescription = null,
                 contentScale = contentScale,
                 onSuccess = { loaded = true },

@@ -1,5 +1,6 @@
 package com.music.vivi.compose.ui.tags
 
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -27,6 +28,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.ArrowForward
 import androidx.compose.material3.Checkbox
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.LaunchedEffect
+import com.music.vivi.compose.ui.expressive.VisageTextField
+import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.outlined.RestartAlt
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -96,17 +108,26 @@ private fun ProposalCard(p: TrackProposal, track: TagTrack?, modifier: Modifier,
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 Column(Modifier.weight(1f)) {
-                    Text(track?.let { it.tags.value(TagField.Title).ifBlank { it.stem } }.orEmpty(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(track?.path.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(track?.let { it.tags.value(TagField.Title).ifBlank { it.stem } }.orEmpty(), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
+                    Text(track?.path.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
                 }
                 ExpressiveButton(if (p.skipped) "Skipped" else "Skip", { update { it.copy(skipped = !it.skipped) } }, size = ExpressiveSize.XSmall, style = if (p.skipped) ExpressiveStyle.Filled else ExpressiveStyle.Text, selected = if (p.skipped) true else null)
-                ExpressiveButton("Accept all", { update { it.copy(skipped = false, overrides = it.changes.associate { c -> c.field to true }, coverChoice = it.best?.candidate?.coverUrl != null) } }, size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal)
+                val allOn = !p.skipped && p.changes.isNotEmpty() && p.changes.all { p.accepted(it) } &&
+                    (p.best?.candidate?.coverUrl == null || p.acceptsCover())
+                ExpressiveButton(
+                    if (allOn) "Clear all" else "Accept all",
+                    {
+                        val on = !allOn
+                        update { it.copy(skipped = false, overrides = it.changes.associate { c -> c.field to on }, coverChoice = on && it.best?.candidate?.coverUrl != null) }
+                    },
+                    size = ExpressiveSize.XSmall, style = ExpressiveStyle.Tonal,
+                )
             }
             Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 p.options.forEachIndexed { i, o ->
                     ExpressiveButton(
                         "${sourceLabel(o.candidate.source)}  ${(o.score * 100).toInt()}%",
-                        { update { it.copy(chosen = i, overrides = emptyMap(), coverChoice = null) } },
+                        { update { it.copy(chosen = i, overrides = emptyMap(), coverChoice = null, valueEdits = emptyMap()) } },
                         size = ExpressiveSize.XSmall, selected = i == p.chosen,
                     )
                 }
@@ -116,7 +137,15 @@ private fun ProposalCard(p: TrackProposal, track: TagTrack?, modifier: Modifier,
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     val changes = p.changes
                     if (changes.isEmpty()) Text("Nothing to change — tags already match.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    changes.forEach { c -> ChangeRow(c, p.accepted(c) && !p.skipped) { on -> update { it.copy(overrides = it.overrides + (c.field to on)) } } }
+                    changes.forEach { c ->
+                        ChangeRow(
+                            c = c, on = p.accepted(c) && !p.skipped,
+                            value = p.valueOf(c), edited = p.isEdited(c),
+                            onValue = { v -> update { it.copy(valueEdits = it.valueEdits + (c.field to v), overrides = it.overrides + (c.field to true)) } },
+                            onReset = { update { it.copy(valueEdits = it.valueEdits - c.field) } },
+                            onToggle = { on -> update { it.copy(overrides = it.overrides + (c.field to on)) } },
+                        )
+                    }
                 }
             }
         }
@@ -129,17 +158,51 @@ private fun sourceLabel(s: String) = when (s) {
 }
 
 @Composable
-private fun ChangeRow(c: FieldChange, on: Boolean, onToggle: (Boolean) -> Unit) {
+private fun ChangeRow(
+    c: FieldChange,
+    on: Boolean,
+    value: String,
+    edited: Boolean,
+    onValue: (String) -> Unit,
+    onReset: () -> Unit,
+    onToggle: (Boolean) -> Unit,
+) {
     val bg by animateColorAsState(if (on) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.3f) else androidx.compose.ui.graphics.Color.Transparent, VisageMotion.effectsDefault(), label = "changeBg")
-    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bg).padding(end = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+    var editing by remember { mutableStateOf(false) }
+    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(bg).padding(end = 10.dp, top = 2.dp, bottom = 2.dp), verticalAlignment = Alignment.CenterVertically) {
         Checkbox(on, onToggle, Modifier.size(40.dp))
         Text(c.field.label, Modifier.width(92.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
-            c.old.ifBlank { "—" }, Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Ellipsis,
+            c.old.ifBlank { "—" }, Modifier.weight(1f).visageMarquee(), style = MaterialTheme.typography.bodyMedium, maxLines = 1, overflow = TextOverflow.Clip,
             color = MaterialTheme.colorScheme.onSurfaceVariant, textDecoration = if (c.old.isBlank()) null else TextDecoration.LineThrough,
         )
         Icon(Icons.AutoMirrored.Outlined.ArrowForward, null, Modifier.padding(horizontal = 8.dp).size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(c.new, Modifier.weight(1.2f), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis, color = MaterialTheme.colorScheme.primary)
+        if (editing) {
+            // Click away to finish; every keystroke is already kept, and typing ticks the box.
+            val focus = remember { FocusRequester() }
+            var seenFocus by remember { mutableStateOf(false) }
+            LaunchedEffect(Unit) { focus.requestFocus() }
+            VisageTextField(
+                value = value, onValueChange = onValue, singleLine = true,
+                label = { Text(c.field.label) }, highlighted = edited,
+                trailingIcon = if (edited) ({
+                    IconButton(onClick = { onReset(); editing = false }, Modifier.size(32.dp)) { Icon(Icons.Outlined.RestartAlt, "Use the suggested ${c.field.label}", Modifier.size(18.dp)) }
+                }) else null,
+                modifier = Modifier.weight(1.2f).focusRequester(focus).onFocusChanged {
+                    if (it.isFocused) seenFocus = true else if (seenFocus) editing = false
+                },
+            )
+        } else {
+            Surface(onClick = { editing = true }, shape = RoundedCornerShape(10.dp), color = androidx.compose.ui.graphics.Color.Transparent, modifier = Modifier.weight(1.2f)) {
+                Row(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        value, Modifier.weight(1f).visageMarquee(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Clip,
+                        color = if (edited) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.primary,
+                    )
+                    Icon(Icons.Outlined.Edit, "Edit ${c.field.label}", Modifier.size(16.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
     }
 }
 

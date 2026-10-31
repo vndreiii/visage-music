@@ -1,5 +1,7 @@
 package com.music.vivi.compose.ui.player.queue
 
+import com.music.vivi.compose.ui.onboarding.tourAnchor
+import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
@@ -48,6 +50,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import com.music.vivi.compose.ui.dnd.TrackDrag
+import com.music.vivi.compose.ui.dnd.carryOnDrag
+import com.music.vivi.compose.ui.dnd.trackDropTarget
+import kotlin.math.roundToInt
+import androidx.compose.ui.input.pointer.positionChange
+import kotlinx.coroutines.withTimeoutOrNull
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.items
@@ -108,6 +121,7 @@ import com.music.vivi.database.Play_event
 import com.music.vivi.player.NowPlaying
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
 
@@ -138,11 +152,13 @@ fun AnimatedQueuePinnedRail(
             shrinkHorizontally(animationSpec = PinSizeSpring, shrinkTowards = if (fromStart) Alignment.Start else Alignment.End),
         modifier = modifier,
     ) {
-        QueuePinnedPanel(
-            onDismiss = onDismiss,
-            onSwitchMode = onExpandFullscreen,
-            mirrored = fromStart,
-        )
+        androidx.compose.foundation.layout.Box(Modifier.tourAnchor("queue.panel")) {
+            QueuePinnedPanel(
+                onDismiss = onDismiss,
+                onSwitchMode = onExpandFullscreen,
+                mirrored = fromStart,
+            )
+        }
     }
 }
 
@@ -190,7 +206,7 @@ fun BoxScope.AnimatedQueueBottomTray(
         ) {
             Box {
                 com.music.vivi.compose.ui.glass.GlassBackdrop(
-                    tint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.5f),
+                    tint = com.music.vivi.compose.ui.glass.panelGlassTint(0.5f),
                     modifier = Modifier.matchParentSize(),
                     shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
                 )
@@ -226,7 +242,7 @@ fun QueuePinnedPanel(
         Box {
             // Blur setting on: frosted glass over the tinted page background.
             com.music.vivi.compose.ui.glass.GlassBackdrop(
-                tint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                tint = com.music.vivi.compose.ui.glass.panelGlassTint(0.45f),
                 modifier = Modifier.matchParentSize(),
                 shape = RoundedCornerShape(20.dp),
             )
@@ -258,7 +274,8 @@ private fun QueuePanelBody(
     onSwitchMode: () -> Unit,
 ) {
     val controller = LocalPlaybackController.current
-    val history = koinInject<PlayHistoryRepository>()
+    // The Settings live preview renders this panel with sample data: no database behind it.
+    val history = if (com.music.vivi.compose.ui.settings.preview.LocalSettingsPreview.current) null else koinInject<PlayHistoryRepository>()
     val scope = rememberCoroutineScope()
     val nowPlaying by controller.nowPlaying.collectAsState()
     val queueTracks by controller.queueTracks.collectAsState()
@@ -269,11 +286,14 @@ private fun QueuePanelBody(
 
     LaunchedEffect(tab) {
         if (tab == QueueTab.Recent) {
-            recent = withContext(Dispatchers.IO) { history.recentDistinct(80) }
+            recent = withContext(Dispatchers.IO) { history?.recentDistinct(80).orEmpty() }
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(16.dp)) {
+    Column(
+        Modifier.fillMaxSize()
+            .padding(16.dp),
+    ) {
         Row(
             Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -286,6 +306,8 @@ private fun QueuePanelBody(
                 Icon(
                     if (pinned) Icons.Outlined.OpenInFull else Icons.Outlined.PushPin,
                     contentDescription = if (pinned) "Fullscreen queue" else "Pin queue to the right",
+                    // OpenInFull's arrows fill its whole box and read bigger than the Close X; 18dp matches them.
+                    modifier = Modifier.size(if (pinned) 18.dp else 24.dp),
                 )
             }
             IconButton(onClick = onDismiss) {
@@ -326,7 +348,8 @@ private fun QueuePanelBody(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.visageMarquee(),
                     )
                     NextLabel(
                         if (radioActive) "Next from Radio" else "Next in Queue",
@@ -376,13 +399,29 @@ private fun QueuePanelBody(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(bottom = 8.dp),
                     )
-                    QueueSongRow(
-                        title = nowPlaying!!.title,
-                        subtitle = nowPlaying!!.artist,
-                        artworkUrl = nowPlaying!!.artworkUrl,
-                        active = true,
-                        onClick = {},
-                    )
+                    // The current song can be carried off like any queue row (to drop on a playlist); it has no order to change.
+                    Box(
+                        Modifier.carryOnDrag {
+                            nowPlaying?.let { np ->
+                                com.music.vivi.compose.ui.dnd.DragCard(
+                                    np.title, np.artist, np.artworkUrl,
+                                    com.music.vivi.player.QueueTrack(
+                                        videoId = np.videoId, title = np.title, artist = np.artist, artworkUrl = np.artworkUrl,
+                                        localPath = np.localPath, durationMs = np.durationMs, album = np.album, albumId = np.albumId,
+                                        lyricsPath = np.lyricsPath, embeddedLyrics = np.embeddedLyrics,
+                                    ),
+                                )
+                            }
+                        },
+                    ) {
+                        QueueSongRow(
+                            title = nowPlaying!!.title,
+                            subtitle = nowPlaying!!.artist,
+                            artworkUrl = nowPlaying!!.artworkUrl,
+                            active = true,
+                            onClick = {},
+                        )
+                    }
                     Spacer(Modifier.height(12.dp))
                     NextLabel(
                         if (radioActive) "Next from Radio" else "Next from queue",
@@ -427,8 +466,29 @@ private fun QueuePanelBody(
                 }
 
                 val drag = remember(listState) { QueueDragState(listState) }
+                val dropBase = queueIndex + 1
+                // Where a carried song would land: the slot (0..upcoming) nearest the pointer, in list rows.
+                fun dropSlot(): Int {
+                    val y = TrackDrag.pointer.y - drag.windowOrigin.y
+                    val rows = listState.layoutInfo.visibleItemsInfo.filter { it.index < upcoming.size.coerceAtMost(shown) }
+                    val hit = rows.firstOrNull { y < it.offset + it.size / 2f }
+                    return (hit?.index ?: (rows.lastOrNull()?.index?.plus(1) ?: 0)).coerceIn(0, upcoming.size)
+                }
+                Box(
+                    Modifier.weight(1f)
+                        // Songs carried from search, lists or the library land at the slot under the pointer.
+                        .trackDropTarget("queue-panel") { t ->
+                            val at = dropBase + dropSlot()
+                            controller.insertIntoQueue(t, at)
+                            "Added to queue"
+                        },
+                ) {
                 LazyColumn(
-                    modifier = Modifier.weight(1f).smoothWheelScroll(listState),
+                    modifier = Modifier.fillMaxSize().smoothWheelScroll(listState)
+                        .onGloballyPositioned { drag.windowOrigin = it.positionInWindow() }
+                        .queueReorder(drag, listState, maxIndex = { shown.coerceAtMost(upcoming.size) - 1 }, trackAt = { upcoming.getOrNull(it) }) { f, t ->
+                            controller.moveQueueItem(dropBase + f, dropBase + t)
+                        },
                     state = listState,
                     contentPadding = PaddingValues(bottom = 24.dp),
                 ) {
@@ -444,7 +504,8 @@ private fun QueuePanelBody(
                     itemsIndexed(upcoming.take(shown), key = { i, t -> "${t.videoId}-$i" }) { i, track ->
                         val animate = remember { revealing }
                         val base = queueIndex + 1
-                        RevealRow(animate) {
+                        // The lifted row must sit above its neighbours: zIndex has to be on the lazy item's own root.
+                        RevealRow(animate, Modifier.zIndex(if (drag.from == i) 1f else 0f)) {
                             UpcomingRow(
                                 track = track,
                                 position = i,
@@ -457,11 +518,25 @@ private fun QueuePanelBody(
                                 },
                                 onMove = { to -> controller.moveQueueItem(base + i, base + to) },
                                 onRemove = { controller.removeFromQueue(base + i) },
-                                onDrop = { from, to -> controller.moveQueueItem(base + from, base + to) },
                             )
                         }
                     }
                     items(placeholders, key = { "skeleton-$it" }) { QueueSkeletonRow(it) }
+                }
+                // Insertion marker while a song from outside is carried over the queue.
+                if (TrackDrag.hoverKey == "queue-panel" && !TrackDrag.hoverRejected && !drag.active) {
+                    val slot = dropSlot()
+                    val rows = listState.layoutInfo.visibleItemsInfo
+                    val markY = rows.firstOrNull { it.index == slot }?.offset?.toFloat()
+                        ?: rows.lastOrNull { it.index == slot - 1 }?.let { (it.offset + it.size).toFloat() } ?: 0f
+                    Box(
+                        Modifier.align(Alignment.TopStart).fillMaxWidth().padding(horizontal = 12.dp)
+                            .offset { androidx.compose.ui.unit.IntOffset(0, markY.toInt() - 1) }
+                            .height(3.dp)
+                            .background(MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.RoundedCornerShape(2.dp)),
+                    )
+                }
+                DragGhost(drag)
                 }
             }
             QueueTab.Recent -> {
@@ -551,14 +626,16 @@ private fun NowPlayingHeader(track: NowPlaying?) {
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.visageMarquee(),
             )
             Text(
                 track?.artist.orEmpty(),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.visageMarquee(),
             )
         }
     }
@@ -601,13 +678,15 @@ private fun ModeChip(
     active: Boolean = false,
     onClick: () -> Unit,
 ) {
+    // Real buttons: inactive ones are a seed-tinted container with an outline, the active one is solid primary, so
+    // all three stay distinct from the glass panel behind them in both light and dark themes.
     val container by androidx.compose.animation.animateColorAsState(
-        if (active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+        if (active) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.secondaryContainer,
         VisageMotion.settle(),
         label = "modeChipBg",
     )
     val content by androidx.compose.animation.animateColorAsState(
-        if (active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        if (active) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSecondaryContainer,
         VisageMotion.settle(),
         label = "modeChipFg",
     )
@@ -616,6 +695,10 @@ private fun ModeChip(
         shape = RoundedCornerShape(14.dp),
         color = container,
         contentColor = content,
+        border = androidx.compose.foundation.BorderStroke(
+            1.dp,
+            if (active) Color.Transparent else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+        ),
         modifier = modifier.height(48.dp),
     ) {
         Row(
@@ -632,7 +715,8 @@ private fun ModeChip(
                 style = MaterialTheme.typography.labelLarge,
                 maxLines = 1,
                 softWrap = false,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.visageMarquee(),
             )
         }
     }
@@ -679,13 +763,14 @@ private fun QueueSongRow(
             }
         }
         Column(Modifier.padding(start = 12.dp).weight(1f)) {
-            Text(title, maxLines = 1, overflow = TextOverflow.Ellipsis, fontWeight = FontWeight.Medium)
+            Text(title, maxLines = 1, overflow = TextOverflow.Clip, fontWeight = FontWeight.Medium, modifier = Modifier.visageMarquee())
             Text(
                 subtitle,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.visageMarquee(),
             )
         }
         trailing?.invoke()
@@ -697,13 +782,13 @@ private const val SkeletonCount = 6
 
 /** Fades + lifts a freshly spawned row into place; rows that were already there skip the motion. */
 @Composable
-private fun RevealRow(animate: Boolean, content: @Composable () -> Unit) {
+private fun RevealRow(animate: Boolean, modifier: Modifier = Modifier, content: @Composable () -> Unit) {
     val progress = remember { Animatable(if (animate) 0f else 1f) }
     LaunchedEffect(Unit) {
         if (animate) progress.animateTo(1f, VisageMotion.settle())
     }
     Box(
-        Modifier.graphicsLayer {
+        modifier.graphicsLayer {
             alpha = progress.value
             translationY = (1f - progress.value) * 14.dp.toPx()
         },
@@ -741,39 +826,213 @@ internal fun queuePlaceholderCount(upcomingSize: Int, shown: Int, maximum: Int):
     (upcomingSize - shown).coerceIn(0, maximum)
 
 
-/** Drag-to-reorder state for the upcoming list; indexes are positions within the upcoming tracks. */
+/**
+ * Drag-to-reorder state for the upcoming list; indexes are positions within the upcoming tracks.
+ * The gesture lives on the list (see [queueReorder]) and tracks the pointer in the list's own coordinates, so the
+ * lifted row keeps following it while the list auto-scrolls and never depends on the row staying composed.
+ */
 internal class QueueDragState(private val list: androidx.compose.foundation.lazy.LazyListState) {
     var from by mutableIntStateOf(-1)
     var to by mutableIntStateOf(-1)
-    var dy by mutableFloatStateOf(0f)
+    /** Height of the lifted row; the rows it passes slide by this much so they make room live. */
+    var itemHeight by mutableFloatStateOf(0f)
+    var pointerY by mutableFloatStateOf(0f)
+    /** The list's top-left in window coordinates, for turning pointer positions into window ones. */
+    var windowOrigin by mutableStateOf(androidx.compose.ui.geometry.Offset.Zero)
+    /** Pulled out sideways: the row is then carried app-wide (see TrackDrag) instead of reordered. */
+    var detached by mutableStateOf(false)
+    private var downY = 0f
+    private var startCentre = 0f
+    private var settleTop by mutableStateOf<Float?>(null)
+    /** The track being carried; drawn by [DragGhost] above the list so it survives its own slot scrolling away. */
+    var ghost by mutableStateOf<com.music.vivi.player.QueueTrack?>(null)
     val active get() = from >= 0
+    /** True while the released row glides into its slot; input is ignored until it lands. */
+    var settling by mutableStateOf(false)
 
-    fun start(index: Int) { from = index; to = index; dy = 0f }
-
-    fun move(delta: Float) {
-        if (!active) return
-        dy += delta
+    /** Top edge (list coordinates) the carried row is drawn at: follows the pointer, but never leaves the list. */
+    val ghostTop: Float get() = settleTop ?: run {
         val info = list.layoutInfo
-        val me = info.visibleItemsInfo.firstOrNull { it.index == from } ?: return
-        val centre = me.offset + me.size / 2f + dy
-        // Edge auto-scroll: keep the row under the pointer while the list moves beneath it.
-        val edge = 56f
-        val scroll = when {
-            centre < info.viewportStartOffset + edge -> -14f
-            centre > info.viewportEndOffset - edge -> 14f
-            else -> 0f
-        }
-        if (scroll != 0f) dy += list.dispatchRawDelta(scroll)
-        val c = me.offset + me.size / 2f + dy
-        info.visibleItemsInfo.firstOrNull { c >= it.offset && c < it.offset + it.size && it.key.toString().isNotEmpty() }
-            ?.let { to = it.index }
+        val top = info.viewportStartOffset.toFloat()
+        val bottom = (info.viewportEndOffset - itemHeight).coerceAtLeast(top)
+        (startCentre + (pointerY - downY) - itemHeight / 2f).coerceIn(top, bottom)
     }
 
-    /** Returns (from,to) when a reorder should be applied, then resets. */
-    fun finish(): Pair<Int, Int>? {
-        val result = if (active && to >= 0 && to != from) from to to else null
-        from = -1; to = -1; dy = 0f
+    fun begin(index: Int, offset: Int, size: Int, y: Float, track: com.music.vivi.player.QueueTrack?) {
+        from = index; to = index; itemHeight = size.toFloat()
+        downY = y; pointerY = y; startCentre = offset + size / 2f; settleTop = null; ghost = track
+    }
+
+    /** Re-derives the target slot from where the lifted row's centre now is. */
+    fun update(maxIndex: Int) {
+        if (!active || settling) return
+        if (detached) { to = from; return }
+        val items = list.layoutInfo.visibleItemsInfo.filter { it.index <= maxIndex }
+        if (items.isEmpty()) return
+        val centre = startCentre + (pointerY - downY)
+        to = (items.firstOrNull { centre >= it.offset && centre < it.offset + it.size }
+            ?: if (centre < items.first().offset) items.first() else items.last()).index
+    }
+
+    /** Ends a carry-away without moving anything. */
+    fun reset() { from = -1; to = -1; settleTop = null; ghost = null; settling = false; detached = false }
+
+    /** Called every frame while dragging: scrolls the list when the pointer rests near its top or bottom edge. */
+    fun autoScroll(edge: Float, maxIndex: Int) {
+        if (!active || settling || detached) return
+        val info = list.layoutInfo
+        val top = info.viewportStartOffset + edge
+        val bottom = info.viewportEndOffset - edge
+        val speed = when {
+            pointerY < top -> -(((top - pointerY) / edge).coerceIn(0f, 1.5f)) * 18f
+            pointerY > bottom -> (((pointerY - bottom) / edge).coerceIn(0f, 1.5f)) * 18f
+            else -> 0f
+        }
+        if (speed == 0f) return
+        list.dispatchRawDelta(speed)
+        update(maxIndex)
+    }
+
+    /**
+     * Lets go of the row: it glides to the slot it hovers over (or back where it started), then everything resets.
+     * Returns (from,to) when a reorder should be applied.
+     */
+    suspend fun finish(): Pair<Int, Int>? {
+        if (!active || settling) return null
+        settling = true
+        val result = if (to >= 0 && to != from) from to to else null
+        val info = list.layoutInfo
+        val dest = result?.let { (_, t) -> info.visibleItemsInfo.firstOrNull { it.index == t } }
+        val start = ghostTop
+        // The row ends up with its near edge flush to the slot it replaces.
+        val target = when {
+            dest == null -> start
+            to > from -> dest.offset + dest.size - itemHeight
+            else -> dest.offset.toFloat()
+        }
+        settleTop = start
+        try {
+            androidx.compose.animation.core.animate(start, target, animationSpec = VisageMotion.spatialFast()) { v, _ -> settleTop = v }
+        } finally {
+            from = -1; to = -1; settleTop = null; ghost = null; settling = false; detached = false
+        }
         return result
+    }
+}
+
+/** Hold a row (or drag its handle) to lift it; see [QueueDragState]. */
+@Composable
+internal fun Modifier.queueReorder(
+    drag: QueueDragState,
+    list: androidx.compose.foundation.lazy.LazyListState,
+    maxIndex: () -> Int,
+    trackAt: (Int) -> com.music.vivi.player.QueueTrack?,
+    onDrop: (Int, Int) -> Unit,
+): Modifier {
+    // The gesture outlives recompositions, but the queue changes under it (playback extends it): read the latest.
+    val maxIndex by rememberUpdatedState(maxIndex)
+    val trackAt by rememberUpdatedState(trackAt)
+    val onDrop by rememberUpdatedState(onDrop)
+    return pointerInput(list, drag) {
+    val holdMs = 220L
+    val wobble = 10.dp.toPx()
+    val handleSlop = 3.dp.toPx()
+    val handleZone = 56.dp.toPx()
+    val edge = 72.dp.toPx()
+    val margin = 14.dp.toPx()
+    coroutineScope {
+        val scope = this
+        launch {
+            while (true) { delay(16); drag.autoScroll(edge, maxIndex()) }
+        }
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+            if (drag.settling || currentEvent.buttons.isSecondaryPressed) return@awaitEachGesture
+            val hit = list.layoutInfo.visibleItemsInfo.firstOrNull {
+                down.position.y >= it.offset && down.position.y < it.offset + it.size && it.index <= maxIndex()
+            } ?: return@awaitEachGesture
+            val onHandle = down.position.x >= size.width - handleZone
+            var lifted = false
+            if (onHandle) {
+                while (true) {
+                    val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                    val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@awaitEachGesture
+                    if (!ch.pressed) return@awaitEachGesture
+                    if ((ch.position - down.position).getDistance() > handleSlop) { lifted = true; break }
+                }
+            } else {
+                // A mouse wobbles, so the hold tolerates a few dp of drift rather than cancelling on the touch slop.
+                val gaveUp = withTimeoutOrNull(holdMs) {
+                    while (true) {
+                        val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                        val ch = ev.changes.firstOrNull { it.id == down.id } ?: return@withTimeoutOrNull true
+                        if (!ch.pressed || (ch.position - down.position).getDistance() > wobble) return@withTimeoutOrNull true
+                    }
+                    @Suppress("UNREACHABLE_CODE") false
+                }
+                if (gaveUp == true) return@awaitEachGesture
+                lifted = true
+            }
+            if (!lifted) return@awaitEachGesture
+            drag.begin(hit.index, hit.offset, hit.size, down.position.y, trackAt(hit.index))
+            while (true) {
+                // Initial pass: consume before the row's own click sees the release, so letting go never plays the track.
+                val ev = awaitPointerEvent(androidx.compose.ui.input.pointer.PointerEventPass.Initial)
+                val ch = ev.changes.firstOrNull { it.id == down.id } ?: break
+                ch.consume()
+                if (!ch.pressed) break
+                drag.pointerY = ch.position.y
+                // Pulling sideways out of the list carries a copy of the row across the app instead of reordering.
+                val outside = ch.position.x < -margin || ch.position.x > size.width + margin
+                if (outside && !drag.detached) {
+                    drag.detached = true
+                    drag.ghost?.let { TrackDrag.begin(it, drag.windowOrigin + ch.position) }
+                } else if (!outside && drag.detached) {
+                    drag.detached = false
+                    TrackDrag.cancel()
+                }
+                if (drag.detached) TrackDrag.moveTo(drag.windowOrigin + ch.position)
+                drag.update(maxIndex())
+            }
+            if (drag.detached) {
+                scope.launch { TrackDrag.release(); drag.reset() }
+            } else {
+                scope.launch { drag.finish()?.let { (f, t) -> onDrop(f, t) } }
+            }
+        }
+    }
+}
+}
+
+/** The carried row, drawn over the list at the pointer (clamped inside the list) rather than inside its lazy slot. */
+@Composable
+private fun DragGhost(drag: QueueDragState) {
+    val track = drag.ghost ?: return
+    if (drag.detached) return
+    val bg = MaterialTheme.colorScheme.surfaceContainerHighest
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .offset { androidx.compose.ui.unit.IntOffset(0, drag.ghostTop.roundToInt()) }
+            .graphicsLayer {
+                scaleX = 1.02f; scaleY = 1.02f
+                alpha = 0.95f
+                shadowElevation = 12.dp.toPx()
+                shape = RoundedCornerShape(12.dp)
+                clip = false
+            }
+            .background(bg, RoundedCornerShape(12.dp)),
+    ) {
+        QueueSongRow(
+            title = track.title.ifBlank { track.videoId },
+            subtitle = track.artist.ifBlank { "Queued track" },
+            artworkUrl = track.artworkUrl,
+            active = false,
+            onClick = {},
+            trailing = {
+                Icon(Icons.Filled.DragHandle, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp).size(22.dp))
+            },
+        )
     }
 }
 
@@ -788,49 +1047,26 @@ private fun UpcomingRow(
     onPlay: () -> Unit,
     onMove: (Int) -> Unit,
     onRemove: () -> Unit,
-    onDrop: (Int, Int) -> Unit,
 ) {
     var menu by remember { mutableStateOf(false) }
     val dragging = drag.from == position
     val accent = MaterialTheme.colorScheme.primary
-    val dropAbove = drag.active && !dragging && drag.to == position && drag.to < drag.from
-    val dropBelow = drag.active && !dragging && drag.to == position && drag.to > drag.from
-    val pos by rememberUpdatedState(position)
-    val onDropNow by rememberUpdatedState(onDrop)
-
-    fun Modifier.reorder(immediate: Boolean): Modifier = pointerInput(immediate) {
-        val start = { _: androidx.compose.ui.geometry.Offset -> drag.start(pos) }
-        val end = { drag.finish()?.let { (f, t) -> onDropNow(f, t) }; Unit }
-        val cancel = { drag.finish(); Unit }
-        val onMove = { change: androidx.compose.ui.input.pointer.PointerInputChange, amount: androidx.compose.ui.geometry.Offset ->
-            change.consume(); drag.move(amount.y)
-        }
-        if (immediate) detectDragGestures(onDragStart = start, onDragEnd = end, onDragCancel = cancel, onDrag = onMove)
-        else detectDragGesturesAfterLongPress(onDragStart = start, onDragEnd = end, onDragCancel = cancel, onDrag = onMove)
+    // Rows between the lifted row's start and its current slot slide out of the way as it moves.
+    val shiftTarget = when {
+        !drag.active || dragging -> 0f
+        drag.from < drag.to && position > drag.from && position <= drag.to -> -drag.itemHeight
+        drag.from > drag.to && position >= drag.to && position < drag.from -> drag.itemHeight
+        else -> 0f
     }
-
+    val shift by animateFloatAsState(shiftTarget, VisageMotion.spatialFast(), label = "queueShift")
+    val pos by rememberUpdatedState(position)
     Box(
         Modifier
             .fillMaxWidth()
             .zIndex(if (dragging) 1f else 0f)
-            .graphicsLayer {
-                if (dragging) {
-                    translationY = drag.dy
-                    scaleX = 1.02f; scaleY = 1.02f
-                    alpha = 0.92f
-                    shadowElevation = 12.dp.toPx()
-                    shape = RoundedCornerShape(12.dp)
-                    clip = false
-                }
-            }
-            .then(if (dragging) Modifier.background(MaterialTheme.colorScheme.surfaceContainerHighest, RoundedCornerShape(12.dp)) else Modifier)
-            .drawWithContent {
-                drawContent()
-                val y = if (dropAbove) 0f else size.height
-                if (dropAbove || dropBelow) drawRoundRect(accent, androidx.compose.ui.geometry.Offset(8.dp.toPx(), y - 1.5.dp.toPx()), androidx.compose.ui.geometry.Size(size.width - 16.dp.toPx(), 3.dp.toPx()), androidx.compose.ui.geometry.CornerRadius(2.dp.toPx()))
-            }
-            .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true }
-            .reorder(immediate = false),
+            // The carried row is drawn by DragGhost; its own slot just stays empty so the gap reads as the drop target.
+            .graphicsLayer { if (dragging && !drag.detached) alpha = 0f else translationY = if (dragging) 0f else shift }
+            .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true },
     ) {
         QueueSongRow(
             title = track.title.ifBlank { track.videoId },
@@ -843,7 +1079,7 @@ private fun UpcomingRow(
                     Icons.Filled.DragHandle,
                     contentDescription = "Drag to reorder",
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 8.dp).size(22.dp).reorder(immediate = true),
+                    modifier = Modifier.padding(start = 8.dp).size(22.dp),
                 )
             },
         )

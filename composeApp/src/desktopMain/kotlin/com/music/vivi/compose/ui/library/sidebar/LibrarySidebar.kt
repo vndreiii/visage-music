@@ -1,5 +1,10 @@
 package com.music.vivi.compose.ui.library.sidebar
 
+import androidx.compose.material.icons.outlined.OpenInNew
+import androidx.compose.material.icons.outlined.PlayArrow
+import com.music.vivi.compose.ui.onboarding.tourAnchor
+import com.music.vivi.compose.ui.expressive.VisageTextField
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.LinearEasing
@@ -82,7 +87,6 @@ import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -146,6 +150,14 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.koin.compose.koinInject
+import com.music.vivi.compose.ui.expressive.ExpressiveStyle
+import com.music.vivi.compose.ui.expressive.ExpressiveButton
+import com.music.vivi.compose.ui.dnd.DragCard
+import com.music.vivi.compose.ui.dnd.carryOnDrag
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.zIndex
+import com.music.vivi.compose.ui.dnd.trackDropTarget
+import com.music.vivi.compose.ui.dnd.TrackDrag
 import org.koin.core.context.GlobalContext
 import org.koin.core.context.loadKoinModules
 
@@ -171,6 +183,32 @@ fun AnimatedLibrarySidebar(
     navController: NavController,
     onStateChange: (LibrarySidebarState) -> Unit,
     modifier: Modifier = Modifier,
+) {
+    LibrarySidebarFrame(state, side, expandedWidth, modifier, tourAnchored = true) { f, expanded, panelModifier ->
+        LibraryPanel(
+            f = f,
+            expanded = expanded,
+            side = side,
+            navController = navController,
+            onStateChange = onStateChange,
+            modifier = panelModifier,
+        )
+    }
+}
+
+/**
+ * The sidebar's animated shell: slide/expand in and out, the rail/expanded width spring, the rounded glass surface.
+ * [panel] draws the contents given the expand fraction `f` (1 = expanded, 0 = rail), whether it is expanded, and a
+ * modifier that measures it at the full width. Shared by the real sidebar and the Settings live preview.
+ */
+@Composable
+internal fun LibrarySidebarFrame(
+    state: LibrarySidebarState,
+    side: SidebarSide,
+    expandedWidth: Dp,
+    modifier: Modifier = Modifier,
+    tourAnchored: Boolean = false,
+    panel: @Composable (f: Float, expanded: Boolean, modifier: Modifier) -> Unit,
 ) {
     val fromRight = side == SidebarSide.RIGHT
     val offset = VisageMotion.rail<IntOffset>()
@@ -198,7 +236,8 @@ fun AnimatedLibrarySidebar(
                     start = if (fromRight) 4.dp else 8.dp, end = if (fromRight) 8.dp else 4.dp,
                     top = 8.dp, bottom = 8.dp,
                 )
-                .width(width),
+                .width(width)
+                .then(if (tourAnchored) Modifier.tourAnchor("library.sidebar") else Modifier),
             shape = RoundedCornerShape(20.dp),
             color = if (com.music.vivi.compose.ui.glass.glassActive()) androidx.compose.ui.graphics.Color.Transparent
                 else MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.92f),
@@ -207,21 +246,18 @@ fun AnimatedLibrarySidebar(
             Box(Modifier.fillMaxSize()) {
                 // Blur setting on: frosted glass over the tinted page background.
                 com.music.vivi.compose.ui.glass.GlassBackdrop(
-                    tint = MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.45f),
+                    tint = com.music.vivi.compose.ui.glass.panelGlassTint(0.45f),
                     modifier = Modifier.matchParentSize(),
                     shape = RoundedCornerShape(20.dp),
                 )
                 // Fixed-width content anchored to the start edge: the surface only reveals/clips it.
-                LibraryPanel(
-                    f = f,
-                    expanded = state == LibrarySidebarState.EXPANDED,
-                    side = side,
-                    navController = navController,
-                    onStateChange = onStateChange,
+                panel(
+                    f,
+                    state == LibrarySidebarState.EXPANDED,
                     // Root-cause fix for the "empty rail": requiredWidth centres an oversized child inside a
                     // narrower parent, which pushed every cover out of the clipped surface. Measure at the
                     // full width but always place at the start edge so the surface merely reveals it.
-                    modifier = Modifier.fillMaxHeight().layout { m, c ->
+                    Modifier.fillMaxHeight().layout { m, c ->
                         val w = expandedWidth.roundToPx()
                         val p = m.measure(androidx.compose.ui.unit.Constraints.fixed(w, c.maxHeight))
                         layout(c.maxWidth, c.maxHeight) { p.place(0, 0) }
@@ -354,17 +390,26 @@ private fun LibraryPanel(
     var renaming by remember { mutableStateOf<LibraryEntry?>(null) }
     var deleting by remember { mutableStateOf<LibraryEntry?>(null) }
 
+    // Collected once for the whole sidebar (State objects only, read inside the rows), not once per row.
+    val nowState = controller.nowPlaying.collectAsState()
+    val stateState = controller.state.collectAsState()
     val playback = remember(yt, repo, cache, controller) {
         EntryPlayback(yt, repo, cache, controller) { toast = it }
     }
+    playback.nowState = nowState
+    playback.stateState = stateState
     val actions = remember(navController, playback) {
         EntryActions(
             open = { e ->
                 when (e.kind) {
                     EntryKind.LIKED -> navController.navigate(Routes.onlinePlaylist("LM")) { launchSingleTop = true }
-                    EntryKind.DOWNLOADS ->
-                        if (navController is androidx.navigation.NavHostController) navigateMain(navController, Routes.LIBRARY)
+                    EntryKind.DOWNLOADS -> {
+                        // Land on the Offline tab, not the Library's home.
+                        com.music.vivi.compose.ui.library.LibraryNavigator.showOffline()
+                        if (navController.currentDestination?.route == Routes.LIBRARY) Unit
+                        else if (navController is androidx.navigation.NavHostController) navigateMain(navController, Routes.LIBRARY)
                         else navController.navigate(Routes.LIBRARY) { launchSingleTop = true }
+                    }
                     EntryKind.YT_PLAYLIST -> navController.navigate(Routes.onlinePlaylist(e.id)) { launchSingleTop = true }
                     EntryKind.LOCAL_PLAYLIST -> navController.navigate(Routes.localPlaylist(e.id)) { launchSingleTop = true }
                     EntryKind.ALBUM -> navController.navigate(Routes.album(e.id)) { launchSingleTop = true }
@@ -390,6 +435,10 @@ private fun LibraryPanel(
             edit = { editingFolder = it; showFolderDialog = true },
             delete = { deletingFolder = it },
             setSort = { f, s -> scope.launch(Dispatchers.IO) { repo.setFolderSort(f.id, s.name) } },
+            drop = { f, e ->
+                if (e.key in f.children) "${e.title} is already in ${f.title}"
+                else { withContext(Dispatchers.IO) { repo.addToFolder(f.id, e.dbType(), e.id) }; "Added ${e.title} to ${f.title}" }
+            },
         )
     }
     fun setFilter(v: LibraryFilter) { filter = v; prefs.setString(SidebarKeys.LibraryFilter, v.name) }
@@ -397,6 +446,137 @@ private fun LibraryPanel(
     fun setView(v: LibraryViewMode) { view = v; prefs.setString(SidebarKeys.LibraryView, v.name) }
     fun setShowHidden(v: Boolean) { showHidden = v; prefs.setBoolean(SidebarKeys.LibraryShowHidden, v) }
 
+    LibraryPanelBody(
+        f = f, expanded = expanded, side = side, onStateChange = onStateChange,
+        rows = rows, thumbsByFolder = thumbsByFolder, hiddenCount = hiddenKeys.size,
+        query = query, onQuery = { query = it },
+        filter = filter, onFilter = { setFilter(it) },
+        sort = sort, onSort = { setSort(it) },
+        view = view, onView = { setView(it) },
+        showHidden = showHidden, onShowHidden = { setShowHidden(it) },
+        loading = ytData.playlists.isEmpty() && ytData.error == null,
+        playback = playback, actions = actions, folderActions = folderActions,
+        onNewPlaylist = { showCreate = true },
+        onNewFolder = { creatingFolder = null; editingFolder = null; showFolderDialog = true },
+        modifier = modifier,
+    )
+
+    VisageToast(toast, onDismiss = { toast = null })
+
+    if (showFolderDialog) {
+        val editing = editingFolder
+        val pending = creatingFolder
+        FolderDialog(
+            initial = editing,
+            thumbs = editing?.let { thumbsByFolder[it.id] }.orEmpty().ifEmpty { listOfNotNull(pending?.let { ChildThumb(it.thumbnail, it.id) }) },
+            onDismiss = { showFolderDialog = false; editingFolder = null; creatingFolder = null },
+            onSave = { d ->
+                showFolderDialog = false; editingFolder = null; creatingFolder = null
+                scope.launch(Dispatchers.IO) {
+                    if (editing != null) repo.updateFolder(editing.id, d.title, d.icon, d.accent, d.coverKind.name, d.coverRef)
+                    else {
+                        val id = repo.createFolder(d.title, d.icon, d.accent, d.coverKind.name, d.coverRef)
+                        if (pending != null) repo.addToFolder(id, pending.dbType(), pending.id)
+                    }
+                }
+            },
+        )
+    }
+    deletingFolder?.let { f ->
+        AlertDialog(
+            onDismissRequest = { deletingFolder = null },
+            title = { Text("Delete folder \"${f.title}\"?") },
+            text = { Text("Only the folder is removed. Its ${f.children.size} item(s) return to your library list and nothing is deleted from YouTube Music.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deletingFolder = null
+                    scope.launch(Dispatchers.IO) { repo.deleteFolder(f.id); FolderCovers.discard(f.coverRef.takeIf { f.coverKind == CoverKind.IMAGE }) }
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { deletingFolder = null }) { Text("Cancel") } },
+        )
+    }
+
+    if (showCreate) PlaylistDialog(
+        onDismiss = { showCreate = false },
+        onConfirm = { name, description, cover ->
+            showCreate = false
+            scope.launch {
+                val id = withContext(Dispatchers.IO) { repo.createLocalPlaylist(name, description = description, thumbnail = cover) }
+                navController.navigate(Routes.localPlaylist(id)) { launchSingleTop = true }
+            }
+        },
+    )
+    renaming?.let { e ->
+        // "Edit": the same card as New playlist, with the playlist's current name, description and photo.
+        // Loaded off the UI thread; the dialog opens once the row is in.
+        val loaded by produceState(false to (null as com.music.vivi.database.Playlist?), e.id) {
+            value = true to withContext(Dispatchers.IO) { runCatching { repo.getPlaylist(e.id) }.getOrNull() }
+        }
+        val current = loaded.second
+        if (loaded.first) PlaylistDialog(
+            title = "Edit playlist", confirm = "Save",
+            initialName = e.title,
+            initialDescription = current?.description.orEmpty(),
+            initialCover = current?.thumbnail?.takeIf { it.startsWith("/") },
+            onDismiss = { renaming = null },
+            onConfirm = { name, description, cover ->
+                renaming = null
+                scope.launch(Dispatchers.IO) {
+                    val thumb = cover ?: current?.thumbnail?.takeIf { !it.startsWith("/") }
+                    repo.updateLocalPlaylistDetails(e.id, name, description, thumb)
+                }
+            },
+        )
+    }
+    deleting?.let { e ->
+        AlertDialog(
+            onDismissRequest = { deleting = null },
+            title = { Text("Delete \"${e.title}\"?") },
+            text = { Text("The playlist is removed from this device. The songs themselves are not deleted.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    deleting = null
+                    scope.launch(Dispatchers.IO) { repo.deleteLocalPlaylist(e.id) }
+                }) { Text("Delete") }
+            },
+            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
+        )
+    }
+}
+
+/**
+ * Everything the library panel draws, as pure presentation: rows and state come in as parameters, nothing reads a
+ * repository. The real [LibraryPanel] feeds it from the database; the Settings preview feeds it sample entries.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun LibraryPanelBody(
+    f: Float,
+    expanded: Boolean,
+    side: SidebarSide,
+    onStateChange: (LibrarySidebarState) -> Unit,
+    rows: List<SidebarRow>,
+    thumbsByFolder: Map<String, List<ChildThumb>>,
+    hiddenCount: Int,
+    query: String,
+    onQuery: (String) -> Unit,
+    filter: LibraryFilter,
+    onFilter: (LibraryFilter) -> Unit,
+    sort: LibrarySort,
+    onSort: (LibrarySort) -> Unit,
+    view: LibraryViewMode,
+    onView: (LibraryViewMode) -> Unit,
+    showHidden: Boolean,
+    onShowHidden: (Boolean) -> Unit,
+    loading: Boolean,
+    playback: EntryPlayingHolder,
+    actions: EntryActions,
+    folderActions: FolderActions,
+    onNewPlaylist: () -> Unit,
+    onNewFolder: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     Column(modifier.padding(top = 8.dp)) {
         // Header: library icon doubles as the expand/collapse handle; the rest fades with f.
         Row(
@@ -419,16 +599,16 @@ private fun LibraryPanel(
                 )
                 Box {
                     var addMenu by remember { mutableStateOf(false) }
-                    IconButton(onClick = { addMenu = true }, enabled = f > 0.5f) {
+                    IconButton(onClick = { addMenu = true }, enabled = f > 0.5f, modifier = Modifier.tourAnchor("library.add")) {
                         Icon(Icons.Outlined.Add, contentDescription = "Create")
                     }
                     DropdownMenu(
                         expanded = addMenu, onDismissRequest = { addMenu = false },
                         shape = RoundedCornerShape(20.dp), containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                     ) {
-                        MenuItem("New playlist", Icons.Outlined.QueueMusic) { addMenu = false; showCreate = true }
+                        MenuItem("New playlist", Icons.Outlined.QueueMusic) { addMenu = false; onNewPlaylist() }
                         MenuItem("New folder", Icons.Outlined.CreateNewFolder) {
-                            addMenu = false; creatingFolder = null; editingFolder = null; showFolderDialog = true
+                            addMenu = false; onNewFolder()
                         }
                     }
                 }
@@ -455,7 +635,7 @@ private fun LibraryPanel(
         ) {
             SearchField(
                 query = query,
-                onQuery = { query = it },
+                onQuery = onQuery,
                 modifier = Modifier.padding(horizontal = ContentPad, vertical = 4.dp),
             )
             WheelLazyRow(
@@ -466,7 +646,7 @@ private fun LibraryPanel(
                 items(LibraryFilter.entries.toList()) { fl ->
                     FilterChip(
                         selected = fl == filter,
-                        onClick = { setFilter(fl) },
+                        onClick = { onFilter(fl) },
                         label = { Text(fl.label) },
                         shape = RoundedCornerShape(12.dp),
                         colors = FilterChipDefaults.filterChipColors(
@@ -478,11 +658,11 @@ private fun LibraryPanel(
             SortBar(
                 sort = sort,
                 view = view,
-                onSort = { setSort(it) },
-                onView = { setView(it) },
-                hiddenCount = hiddenKeys.size,
+                onSort = onSort,
+                onView = onView,
+                hiddenCount = hiddenCount,
                 showHidden = showHidden,
-                onShowHidden = { setShowHidden(it) },
+                onShowHidden = onShowHidden,
             )
         }
 
@@ -495,9 +675,9 @@ private fun LibraryPanel(
             ) { grid ->
                 when {
                     rows.isEmpty() -> EmptyState(
-                        loading = ytData.playlists.isEmpty() && ytData.error == null,
+                        loading = loading,
                         searching = query.isNotBlank() || filter != LibraryFilter.ALL,
-                        onCreate = { showCreate = true },
+                        onCreate = onNewPlaylist,
                         f = f,
                     )
                     grid -> {
@@ -540,78 +720,6 @@ private fun LibraryPanel(
             }
         }
     }
-
-    VisageToast(toast, onDismiss = { toast = null })
-
-    if (showFolderDialog) {
-        val editing = editingFolder
-        val pending = creatingFolder
-        FolderDialog(
-            initial = editing,
-            thumbs = editing?.let { thumbsByFolder[it.id] }.orEmpty().ifEmpty { listOfNotNull(pending?.let { ChildThumb(it.thumbnail, it.id) }) },
-            onDismiss = { showFolderDialog = false; editingFolder = null; creatingFolder = null },
-            onSave = { d ->
-                showFolderDialog = false; editingFolder = null; creatingFolder = null
-                scope.launch(Dispatchers.IO) {
-                    if (editing != null) repo.updateFolder(editing.id, d.title, d.icon, d.accent, d.coverKind.name, d.coverRef)
-                    else {
-                        val id = repo.createFolder(d.title, d.icon, d.accent, d.coverKind.name, d.coverRef)
-                        if (pending != null) repo.addToFolder(id, pending.dbType(), pending.id)
-                    }
-                }
-            },
-        )
-    }
-    deletingFolder?.let { f ->
-        AlertDialog(
-            onDismissRequest = { deletingFolder = null },
-            title = { Text("Delete folder \"${f.title}\"?") },
-            text = { Text("Only the folder is removed. Its ${f.children.size} item(s) return to your library list and nothing is deleted from YouTube Music.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    deletingFolder = null
-                    scope.launch(Dispatchers.IO) { repo.deleteFolder(f.id); FolderCovers.discard(f.coverRef.takeIf { f.coverKind == CoverKind.IMAGE }) }
-                }) { Text("Delete") }
-            },
-            dismissButton = { TextButton(onClick = { deletingFolder = null }) { Text("Cancel") } },
-        )
-    }
-
-    if (showCreate) NameDialog(
-        title = "New playlist", initial = "", confirm = "Create",
-        onDismiss = { showCreate = false },
-        onConfirm = { name ->
-            showCreate = false
-            scope.launch {
-                val id = withContext(Dispatchers.IO) { repo.createLocalPlaylist(name) }
-                navController.navigate(Routes.localPlaylist(id)) { launchSingleTop = true }
-            }
-        },
-    )
-    renaming?.let { e ->
-        NameDialog(
-            title = "Rename playlist", initial = e.title, confirm = "Rename",
-            onDismiss = { renaming = null },
-            onConfirm = { name ->
-                renaming = null
-                scope.launch(Dispatchers.IO) { repo.renameLocalPlaylist(e.id, name) }
-            },
-        )
-    }
-    deleting?.let { e ->
-        AlertDialog(
-            onDismissRequest = { deleting = null },
-            title = { Text("Delete \"${e.title}\"?") },
-            text = { Text("The playlist is removed from this device. The songs themselves are not deleted.") },
-            confirmButton = {
-                TextButton(onClick = {
-                    deleting = null
-                    scope.launch(Dispatchers.IO) { repo.deleteLocalPlaylist(e.id) }
-                }) { Text("Delete") }
-            },
-            dismissButton = { TextButton(onClick = { deleting = null }) { Text("Cancel") } },
-        )
-    }
 }
 
 /** Callbacks shared by rows, cards and their context menus. */
@@ -631,13 +739,20 @@ internal class EntryActions(
 )
 
 /** Resolves an entry to tracks and starts / queues them. Network lookups are done on demand. */
+internal open class EntryPlayingHolder {
+    /** Set by the sidebar host; rows read them so only one collector exists. */
+    var nowState: androidx.compose.runtime.State<Any?>? = null
+    var stateState: androidx.compose.runtime.State<PlaybackState?>? = null
+}
+
 internal class EntryPlayback(
     private val yt: YouTubeMusicService,
     private val repo: LibraryRepository,
     private val cache: LibraryCache,
     private val controller: com.music.vivi.player.PlaybackController,
     private val say: (String) -> Unit,
-) {
+) : EntryPlayingHolder() {
+
     private suspend fun tracks(e: LibraryEntry): List<QueueTrack> = withContext(Dispatchers.IO) {
         when (e.kind) {
             EntryKind.LIKED -> cache.ytData.value.songs.map { it.toQueueTrack() }
@@ -685,18 +800,24 @@ internal fun com.music.vivi.database.Song.toQueueTrack(): QueueTrack = QueueTrac
 )
 
 @Composable
-private fun SearchField(query: String, onQuery: (String) -> Unit, modifier: Modifier = Modifier) {
+internal fun SearchField(
+    query: String,
+    onQuery: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    placeholder: String = "Search your library",
+    height: androidx.compose.ui.unit.Dp = 40.dp,
+) {
     Surface(
         shape = RoundedCornerShape(14.dp),
         color = MaterialTheme.colorScheme.surfaceContainerHighest,
-        modifier = modifier.fillMaxWidth().height(40.dp),
+        modifier = modifier.fillMaxWidth().height(height),
     ) {
         Row(Modifier.padding(horizontal = 12.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(Icons.Outlined.Search, null, Modifier.size(18.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Spacer(Modifier.width(8.dp))
             Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
                 if (query.isEmpty()) {
-                    Text("Search your library", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(placeholder, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 BasicTextField(
                     value = query,
@@ -800,47 +921,29 @@ private fun EmptyState(loading: Boolean, searching: Boolean, onCreate: () -> Uni
     }
 }
 
-@Composable
-private fun NameDialog(title: String, initial: String, confirm: String, onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
-    var text by remember { mutableStateOf(initial) }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = {
-            OutlinedTextField(
-                value = text, onValueChange = { text = it }, singleLine = true,
-                label = { Text("Name") }, shape = RoundedCornerShape(14.dp),
-            )
-        },
-        confirmButton = { TextButton(onClick = { onConfirm(text.trim().ifBlank { "New playlist" }) }) { Text(confirm) } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } },
-    )
-}
-
 // ── Rows ─────────────────────────────────────────────────────────────────────────────────────
 
 @Composable
-private fun rememberEntryPlaying(e: LibraryEntry): Pair<Boolean, Boolean> {
-    val controller = LocalPlaybackController.current
-    val now by controller.nowPlaying.collectAsState()
-    val st by controller.state.collectAsState()
-    val current = LibraryPlayback.playingKey == e.key && now != null
-    return current to (current && st == PlaybackState.Playing)
+private fun entryPlaying(e: LibraryEntry, playback: EntryPlayingHolder): Pair<Boolean, Boolean> {
+    val current = LibraryPlayback.playingKey == e.key && playback.nowState?.value != null
+    return current to (current && playback.stateState?.value == PlaybackState.Playing)
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayback, actions: EntryActions, modifier: Modifier = Modifier) {
+private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayingHolder, actions: EntryActions, modifier: Modifier = Modifier) {
     val e = r.entry
     val nested = r.folderId != null
     val folderAccent = actions.folders.firstOrNull { it.id == r.folderId }?.let { folderAccentColor(it, MaterialTheme.colorScheme.primary) }
     val dim by animateFloatAsState(if (r.hidden) 0.5f else 1f, VisageMotion.effectsDefault(), label = "hiddenDim")
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
-    val (isCurrent, isPlaying) = rememberEntryPlaying(e)
+    val (isCurrent, isPlaying) = entryPlaying(e, playback)
     var menu by remember { mutableStateOf(false) }
     val bg by animateFloatAsState(if (hovered || isCurrent) 1f else 0f, VisageMotion.effectsDefault(), label = "rowBg")
-    Box(modifier.alpha(dim).padding(start = if (nested) 14.dp * f else 0.dp, top = 1.dp, bottom = 1.dp)
+    // A queue row carried over this playlist drops into it.
+    val (dropTarget, dropTint) = rememberEntryDrop(e)
+    Box(modifier.then(dropTarget).carryOnDrag { if (e.pinned) null else DragCard(e.title, e.subtitle, e.thumbnail, e) }.alpha(dim).padding(start = if (nested) 14.dp * f else 0.dp, top = 1.dp, bottom = 1.dp)
         .let { m -> if (folderAccent != null) m.drawBehind {
             drawRoundRect(folderAccent.copy(alpha = 0.55f * f), Offset(-8.dp.toPx(), 6.dp.toPx()), Size(2.dp.toPx(), size.height - 12.dp.toPx()), CornerRadius(1.dp.toPx()))
         } else m }) {
@@ -849,6 +952,7 @@ private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayback, ac
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = bg * (if (isCurrent && !hovered) 0.6f else 1f)))
+                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.28f * dropTint.coerceIn(0f, 1f)))
                 .hoverable(interaction)
                 .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true }
                 .clickable { actions.open(e) }
@@ -862,13 +966,15 @@ private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayback, ac
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    maxLines = 1, overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
                 Text(
                     e.subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1, overflow = TextOverflow.Ellipsis,
+                    maxLines = 1, overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
             }
             Box(Modifier.alpha(f)) {
@@ -885,16 +991,25 @@ private fun LibraryRow(r: SidebarRow.Item, f: Float, playback: EntryPlayback, ac
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
-private fun LibraryGridCard(r: SidebarRow.Item, playback: EntryPlayback, actions: EntryActions, modifier: Modifier = Modifier) {
+private fun LibraryGridCard(r: SidebarRow.Item, playback: EntryPlayingHolder, actions: EntryActions, modifier: Modifier = Modifier) {
     val e = r.entry
     val interaction = remember { MutableInteractionSource() }
     val hovered by interaction.collectIsHoveredAsState()
-    val (isCurrent, isPlaying) = rememberEntryPlaying(e)
+    val (isCurrent, isPlaying) = entryPlaying(e, playback)
     var menu by remember { mutableStateOf(false) }
-    Box(modifier.alpha(if (r.hidden) 0.5f else 1f)) {
+    val (dropTarget, dropHover) = rememberEntryDrop(e)
+    val primary = MaterialTheme.colorScheme.primary
+    Box(
+        modifier.then(dropTarget)
+            .carryOnDrag { if (e.pinned) null else DragCard(e.title, e.subtitle, e.thumbnail, e) }
+            .zIndex(dropHover)
+            .graphicsLayer { val sc = 1f + 0.1f * dropHover; scaleX = sc; scaleY = sc }
+            .alpha(if (r.hidden) 0.5f else 1f),
+    ) {
         Column(
             Modifier
                 .clip(RoundedCornerShape(14.dp))
+                .background(primary.copy(alpha = 0.22f * dropHover.coerceIn(0f, 1f)))
                 .hoverable(interaction)
                 .onPointerEvent(PointerEventType.Press) { if (it.buttons.isSecondaryPressed) menu = true }
                 .clickable { actions.open(e) }
@@ -908,11 +1023,12 @@ private fun LibraryGridCard(r: SidebarRow.Item, playback: EntryPlayback, actions
             Text(
                 e.title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold,
                 color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-                maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.padding(top = 8.dp),
+                maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.padding(top = 8.dp).visageMarquee(),
             )
             Text(
                 e.subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1, overflow = TextOverflow.Ellipsis,
+                maxLines = 1, overflow = TextOverflow.Clip,
+                modifier = Modifier.visageMarquee(),
             )
         }
         EntryMenu(menu, { menu = false }, e, actions, r.folderId, r.hidden)
@@ -979,13 +1095,13 @@ private fun EntryMenu(expanded: Boolean, onDismiss: () -> Unit, e: LibraryEntry,
             MenuItem(label, icon) { onDismiss(); run() }
         if (page == 0) {
             if (e.kind != EntryKind.ARTIST) {
-                item("Play", Icons.Filled.PlayArrow) { a.play(e) }
+                item("Play", Icons.Outlined.PlayArrow) { a.play(e) }
                 item("Shuffle", Icons.Outlined.Shuffle) { a.shuffle(e) }
                 item("Add to queue", Icons.Outlined.QueueMusic) { a.enqueue(e) }
             }
-            item("Open", Icons.Outlined.OpenInFull) { a.open(e) }
+            item("Open", Icons.Outlined.OpenInNew) { a.open(e) }
             if (e.kind == EntryKind.LOCAL_PLAYLIST) {
-                item("Rename", Icons.Outlined.Edit) { a.rename(e) }
+                item("Edit", Icons.Outlined.Edit) { a.rename(e) }
                 item("Delete", Icons.Outlined.Delete) { a.delete(e) }
             }
             if (!e.pinned) {
@@ -1026,3 +1142,81 @@ fun EqualizerBars(playing: Boolean, color: Color, modifier: Modifier = Modifier)
         }
     }
 }
+
+
+/**
+ * Makes a sidebar entry (row or grid card) a drop target for a carried queue track, when it is a playlist.
+ * Returns the modifier to apply and how strongly the entry is currently being hovered (0..1, springy).
+ */
+@Composable
+private fun rememberEntryDrop(e: LibraryEntry): Pair<Modifier, Float> {
+    val controller = com.music.vivi.compose.LocalPlaybackController.current
+    // The Settings live preview shows sample rows: no services behind them, nothing to drop onto.
+    val mod = if (com.music.vivi.compose.ui.settings.preview.LocalSettingsPreview.current) Modifier else {
+        val repo = koinInject<LibraryRepository>()
+        val yt = koinInject<YouTubeMusicService>()
+        val downloads = koinInject<com.music.vivi.compose.download.TrackDownloadService>()
+        if (e.isPlaylist || e.kind == EntryKind.LIKED || e.kind == EntryKind.DOWNLOADS) {
+            Modifier.trackDropTarget(e.key, accepts = { t -> canDropOnto(e, t) }) { t -> dropTrackOnto(e, t, repo, yt, controller, downloads) }
+        } else Modifier
+    }
+    val hover by animateFloatAsState(
+        if (TrackDrag.hoverKey == e.key && !TrackDrag.hoverRejected) 1f else 0f,
+        androidx.compose.animation.core.spring(dampingRatio = 0.55f, stiffness = 420f), label = "dropHover",
+    )
+    // A refusing target is covered in red (drawn over the cover art, not behind it).
+    val refused by animateFloatAsState(
+        if (TrackDrag.hoverKey == e.key && TrackDrag.hoverRejected) 1f else 0f,
+        VisageMotion.effectsDefault(), label = "dropRefused",
+    )
+    val red = MaterialTheme.colorScheme.error
+    val overlay = Modifier.drawWithContent {
+        drawContent()
+        if (refused > 0.001f) drawRoundRect(red.copy(alpha = 0.62f * refused), cornerRadius = CornerRadius(14.dp.toPx()))
+    }
+    return mod.then(overlay) to hover
+}
+
+/** A track that is a local file (or a download of one) can only go into your own playlists, not YouTube Music ones. */
+private fun isLocalFile(t: com.music.vivi.player.QueueTrack) = t.videoId.startsWith("local:") || (t.localPath != null && !t.videoId.startsWith("offline:"))
+
+private fun canDropOnto(e: LibraryEntry, t: com.music.vivi.player.QueueTrack): Boolean =
+    when (e.kind) {
+        EntryKind.LOCAL_PLAYLIST -> true
+        EntryKind.YT_PLAYLIST -> !isLocalFile(t)
+        // Local files have no YouTube Music page to like or download.
+        EntryKind.LIKED, EntryKind.DOWNLOADS -> !isLocalFile(t)
+        else -> false
+    }
+
+/** Adds a carried queue track to a playlist row; returns the toast text. */
+private suspend fun dropTrackOnto(
+    e: LibraryEntry, t: com.music.vivi.player.QueueTrack, repo: LibraryRepository, yt: YouTubeMusicService,
+    controller: com.music.vivi.player.PlaybackController,
+    downloads: com.music.vivi.compose.download.TrackDownloadService,
+): String? =
+    withContext(Dispatchers.IO) {
+        when (e.kind) {
+            EntryKind.LOCAL_PLAYLIST -> {
+                val added = repo.addToLocalPlaylist(e.id, t.videoId, t.title, t.artist, t.artworkUrl, (t.durationMs / 1000).takeIf { it > 0 }, t.localPath)
+                if (added) "Added ${t.title} to ${e.title}" else "${t.title} is already in ${e.title}"
+            }
+            EntryKind.YT_PLAYLIST -> {
+                if (isLocalFile(t)) "${t.title} is a local file, so it can't go into the YouTube Music playlist ${e.title}"
+                // A downloaded YouTube track is queued as offline:<id>; YouTube only knows the bare id.
+                else runCatching { yt.addToPlaylist(e.id, t.videoId.removePrefix("offline:")).getOrThrow() }
+                    .fold({ "Added ${t.title} to ${e.title}" }, { it.message ?: "Couldn't add to ${e.title}" })
+            }
+            EntryKind.LIKED -> {
+                if (isLocalFile(t)) "${t.title} is a local file, so it can't be liked on YouTube Music"
+                else runCatching { controller.setLiked(t.videoId, true) }
+                    .fold({ "Liked ${t.title}" }, { it.message ?: "Couldn't like ${t.title}" })
+            }
+            EntryKind.DOWNLOADS -> when {
+                isLocalFile(t) -> "${t.title} is a local file, so there is nothing to download"
+                t.videoId.startsWith("offline:") -> "${t.title} is already downloaded"
+                else -> { downloads.enqueue(t.videoId, t.title, t.artist); "Downloading ${t.title}" }
+            }
+            else -> null
+        }
+    }

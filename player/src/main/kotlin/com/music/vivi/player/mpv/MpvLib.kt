@@ -30,6 +30,10 @@ interface MpvLib : Library {
     fun mpv_get_property(ctx: Pointer, name: String, format: Int, data: IntByReference): Int
     fun mpv_wait_event(ctx: Pointer, timeout: Double): Pointer?
     fun mpv_error_string(error: Int): String?
+    fun mpv_get_property(ctx: Pointer, name: String, format: Int, data: Pointer): Int
+    fun mpv_free_node_contents(node: Pointer)
+    fun mpv_get_property_string(ctx: Pointer, name: String): Pointer?
+    fun mpv_free(data: Pointer)
 
     companion object {
         const val MPV_FORMAT_NONE = 0
@@ -37,6 +41,9 @@ interface MpvLib : Library {
         const val MPV_FORMAT_FLAG = 3
         const val MPV_FORMAT_INT64 = 4
         const val MPV_FORMAT_DOUBLE = 5
+        const val MPV_FORMAT_NODE = 6
+        const val MPV_FORMAT_NODE_ARRAY = 7
+        const val MPV_FORMAT_NODE_MAP = 8
 
         const val MPV_EVENT_NONE = 0
         const val MPV_EVENT_SHUTDOWN = 1

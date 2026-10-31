@@ -1,8 +1,15 @@
 package com.music.vivi.compose.ui.playlist
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.PageHeaderTopPadding
+import com.music.vivi.compose.ui.component.PageInset
+import com.music.vivi.compose.ui.component.PageHeaderBottomPadding
+import com.music.vivi.compose.ui.expressive.VisageTextField
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,7 +41,6 @@ import androidx.compose.material3.Icon
 import com.music.vivi.compose.ui.component.PageLoadingState
 import com.music.vivi.compose.ui.component.VisageLoadingIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -152,15 +158,15 @@ fun OnlinePlaylistScreen(
             LazyColumn(
                 state = listState,
                 modifier = Modifier.fillMaxSize()
-                    .smoothWheelScroll(listState),
+                    .pageScrollEdge { listState.edgeProgress() }.smoothWheelScroll(listState),
                 // Mini player floats over the list — keep last tracks reachable.
-                contentPadding = PaddingValues(bottom = 120.dp),
+                contentPadding = PaddingValues(bottom = MiniPlayerClearance),
             ) {
                 item(key = "toolbar") {
                     Row(
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 8.dp, vertical = 4.dp),
+                            .padding(start = PageInset, end = PageInset, top = PageHeaderTopPadding, bottom = PageHeaderBottomPadding),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         com.music.vivi.compose.ui.component.VisageBackButton(onClick = { navController.navigateUp() })
@@ -173,7 +179,7 @@ fun OnlinePlaylistScreen(
 
                 if (searching) {
                     item(key = "search") {
-                        OutlinedTextField(
+                        VisageTextField(
                             value = searchQuery,
                             onValueChange = { searchQuery = it },
                             modifier = Modifier

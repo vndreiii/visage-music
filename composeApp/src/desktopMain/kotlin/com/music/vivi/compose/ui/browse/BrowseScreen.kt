@@ -1,5 +1,9 @@
 package com.music.vivi.compose.ui.browse
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.edgeProgress
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.PageInset
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -108,10 +112,10 @@ fun BrowseScreen(
             else -> LazyVerticalGrid(
                 state = gridState,
                 columns = GridCells.Adaptive(minSize = 172.dp),
-                contentPadding = PaddingValues(start = 16.dp, end = 16.dp, bottom = 120.dp),
+                contentPadding = PaddingValues(start = PageInset, end = PageInset, bottom = MiniPlayerClearance),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
-                modifier = Modifier.fillMaxSize().smoothWheelScroll(gridState),
+                modifier = Modifier.fillMaxSize().pageScrollEdge { gridState.edgeProgress() }.smoothWheelScroll(gridState),
             ) {
                 loaded.forEachIndexed { sectionIndex, section ->
                     val sectionTitle = section.title

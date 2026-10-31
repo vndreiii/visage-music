@@ -1,5 +1,8 @@
 package com.music.vivi.compose.ui.home
 
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import androidx.compose.ui.input.pointer.onPointerEvent
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import com.music.vivi.compose.ui.dnd.carryOnDrag
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
@@ -19,6 +23,9 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.MusicNote
@@ -70,7 +77,8 @@ internal fun HomeHeader(
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.visageMarquee(),
         )
         Spacer(Modifier.height(12.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -110,6 +118,7 @@ internal fun RecentlyPlayedShelf(
     isPlaying: Boolean,
     onPlay: (index: Int) -> Unit,
     onSeeAll: () -> Unit,
+    onRemove: (Play_event) -> Unit = {},
 ) {
     Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         Row(
@@ -137,6 +146,7 @@ internal fun RecentlyPlayedShelf(
                     active = event.song_id == playingId,
                     playing = isPlaying,
                     onClick = { onPlay(index) },
+                    onRemove = { onRemove(event) },
                 )
             }
         }
@@ -144,12 +154,26 @@ internal fun RecentlyPlayedShelf(
 }
 
 @Composable
-private fun RecentCard(event: Play_event, active: Boolean, playing: Boolean, onClick: () -> Unit) {
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
+private fun RecentCard(event: Play_event, active: Boolean, playing: Boolean, onClick: () -> Unit, onRemove: () -> Unit) {
+    var menu by androidx.compose.runtime.remember { androidx.compose.runtime.mutableStateOf(false) }
+    Box {
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(16.dp),
         color = Color.Transparent,
-        modifier = Modifier.width(160.dp).interactiveScale(),
+        modifier = Modifier
+            .width(160.dp)
+            .interactiveScale()
+            .carryOnDrag(holdMs = 220L) {
+                com.music.vivi.compose.ui.dnd.DragCard(
+                    event.title, event.artists, event.thumbnail,
+                    com.music.vivi.player.QueueTrack(event.song_id, event.title, event.artists, event.thumbnail),
+                )
+            }
+            .onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press) {
+                if (it.buttons.isSecondaryPressed) menu = true
+            },
     ) {
         // Inner padding keeps text clear of the card's rounded corners (the Surface clips to its shape).
         Column(Modifier.padding(start = 6.dp, end = 6.dp, top = 6.dp, bottom = 10.dp)) {
@@ -188,17 +212,35 @@ private fun RecentCard(event: Play_event, active: Boolean, playing: Boolean, onC
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp),
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.padding(top = 8.dp, start = 4.dp, end = 4.dp).visageMarquee(),
             )
-            Text(
-                event.artists,
+            // Each credited name is a link (artist page when its id is known, else a search), like everywhere else.
+            val credited = androidx.compose.runtime.remember(event.artists) {
+                event.artists.split(", ").filter { it.isNotBlank() }
+                    .map { com.music.innertube.models.Artist(it, com.music.vivi.player.ArtistIdRegistry.idFor(it)) }
+            }
+            com.music.vivi.compose.ui.component.SubtitleLine(
+                parts = listOf(com.music.vivi.compose.ui.component.SubtitlePart.Artists(credited)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(horizontal = 4.dp),
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.padding(horizontal = 4.dp).visageMarquee(),
             )
         }
+    }
+    androidx.compose.material3.DropdownMenu(
+        expanded = menu,
+        onDismissRequest = { menu = false },
+        shape = RoundedCornerShape(20.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        androidx.compose.material3.DropdownMenuItem(
+            text = { Text("Remove from history") },
+            leadingIcon = { Icon(Icons.Outlined.Delete, contentDescription = null) },
+            onClick = { menu = false; onRemove() },
+        )
+    }
     }
 }

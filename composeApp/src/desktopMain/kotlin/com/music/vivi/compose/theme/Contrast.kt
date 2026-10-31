@@ -29,3 +29,12 @@ fun ensureContrastingOn(
 ): Color =
     if (contrastRatio(background, preferredOn) >= minRatio) preferredOn
     else contrastingOn(background)
+
+/**
+ * Ink for text/icons on an opaque [background]: [preferred] when it reaches [minRatio],
+ * otherwise whichever of black/white gives the higher contrast (the best achievable).
+ */
+fun bestInkOn(background: Color, preferred: Color, minRatio: Float = 7f): Color {
+    if (contrastRatio(background, preferred) >= minRatio) return preferred
+    return if (contrastRatio(background, Color.Black) >= contrastRatio(background, Color.White)) Color.Black else Color.White
+}

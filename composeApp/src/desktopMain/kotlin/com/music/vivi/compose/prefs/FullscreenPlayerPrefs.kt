@@ -15,8 +15,8 @@ fun DesktopPrefs.reader(): PrefReader = object : PrefReader {
     override fun getInt(key: String, default: Int) = this@reader.getInt(key, default)
 }
 
-/** Where the cover sits on the fullscreen player. */
-enum class FullscreenLayout { COVER_LEFT, CENTERED, COVER_RIGHT }
+/** Which side of the fullscreen player the big cover / video column sits on (lyrics and controls take the other). */
+enum class FullscreenCoverSide { LEFT, RIGHT }
 
 enum class FullscreenCoverShape { ROUNDED, SOFT, SQUARE, CIRCLE }
 
@@ -27,13 +27,15 @@ const val FullscreenFollow = "FOLLOW"
 
 /** Fullscreen-only preference keys (defaults live in [FullscreenPrefs.defaults]). */
 object FullscreenKeys {
-    const val Layout = "fsLayout"
+    const val CoverSide = "fsCoverSide"
     const val CoverScale = "fsCoverScale"
     const val CoverShape = "fsCoverShape"
     const val ShowArtist = "fsShowArtist"
     const val ShowAlbum = "fsShowAlbum"
     const val ShowQueueButton = "fsShowQueueButton"
     const val LyricsByDefault = "fsLyricsByDefault"
+    /** Last lyrics open/closed choice made on the fullscreen player; absent until the first toggle. */
+    const val LyricsOpen = "fsLyricsOpen"
     const val ShowVolume = "fsShowVolume"
     const val ShowShuffle = "fsShowShuffle"
     const val ShowRepeat = "fsShowRepeat"
@@ -48,7 +50,7 @@ object FullscreenKeys {
 
 /** Fully resolved fullscreen configuration: fullscreen overrides applied over Now Playing prefs. */
 data class FullscreenSettings(
-    val layout: FullscreenLayout,
+    val coverSide: FullscreenCoverSide,
     val coverScale: Float,
     val coverShape: FullscreenCoverShape,
     val showArtist: Boolean,
@@ -79,13 +81,13 @@ data class FullscreenSettings(
 ) {
     companion object {
         val defaults: Map<String, String> = mapOf(
-            FullscreenKeys.Layout to FullscreenLayout.COVER_LEFT.name,
+            FullscreenKeys.CoverSide to FullscreenCoverSide.LEFT.name,
             FullscreenKeys.CoverScale to "100",
             FullscreenKeys.CoverShape to FullscreenCoverShape.ROUNDED.name,
             FullscreenKeys.ShowArtist to "true",
             FullscreenKeys.ShowAlbum to "true",
             FullscreenKeys.ShowQueueButton to "true",
-            FullscreenKeys.LyricsByDefault to "false",
+            FullscreenKeys.LyricsByDefault to "true",
             FullscreenKeys.ShowVolume to "true",
             FullscreenKeys.ShowShuffle to "true",
             FullscreenKeys.ShowRepeat to "true",
@@ -116,11 +118,11 @@ data class FullscreenSettings(
                 runCatching { parse(str(k)) }.getOrDefault(fallback)
 
             val npBg = runCatching {
-                PlayerBackgroundStyle.valueOf(p.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name))
+                PlayerBackgroundStyle.valueOf(p.getString(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle.name))
             }.getOrDefault(PlayerBackgroundStyle.GRADIENT)
             val canvasMode = en(FullscreenKeys.CanvasMode, { FullscreenCanvasMode.valueOf(it) }, FullscreenCanvasMode.FOLLOW)
             return FullscreenSettings(
-                layout = en(FullscreenKeys.Layout, { FullscreenLayout.valueOf(it) }, FullscreenLayout.COVER_LEFT),
+                coverSide = en(FullscreenKeys.CoverSide, { FullscreenCoverSide.valueOf(it) }, FullscreenCoverSide.LEFT),
                 coverScale = p.getInt(FullscreenKeys.CoverScale, 100).coerceIn(50, 100) / 100f,
                 coverShape = en(FullscreenKeys.CoverShape, { FullscreenCoverShape.valueOf(it) }, FullscreenCoverShape.ROUNDED),
                 showArtist = bool(FullscreenKeys.ShowArtist),

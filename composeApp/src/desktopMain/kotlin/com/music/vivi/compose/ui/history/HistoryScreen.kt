@@ -1,11 +1,17 @@
 package com.music.vivi.compose.ui.history
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.edgeProgress
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.PageInset
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -45,10 +51,20 @@ fun HistoryScreen(
     val (playingId, isPlaying) = rememberNowPlayingIds()
 
     var historyItems by remember { mutableStateOf<List<Play_event>>(emptyList()) }
+    var query by remember { mutableStateOf("") }
 
+    // More than the page shows by default, so a search can reach further back.
     LaunchedEffect(Unit) {
         scope.launch(Dispatchers.IO) {
-            historyItems = historyRepo.recentDistinct(100)
+            historyItems = historyRepo.recentDistinct(1000)
+        }
+    }
+    val visible = remember(historyItems, query) {
+        val terms = query.trim().lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        if (terms.isEmpty()) historyItems.take(100)
+        else historyItems.filter { e ->
+            val hay = (e.title + " " + (e.artists ?: "")).lowercase()
+            terms.all { it in hay }
         }
     }
 
@@ -66,16 +82,33 @@ fun HistoryScreen(
         com.music.vivi.compose.ui.component.DetailPageHeader(
             title = "Listening history",
             onBack = { navController.navigateUp() },
+            trailing = {
+                com.music.vivi.compose.ui.component.PageSearchField(
+                    value = query, onValueChange = { query = it }, placeholder = "Search your history",
+                    modifier = Modifier.width(320.dp),
+                )
+            },
         )
 
         val smoothScroll1 = androidx.compose.foundation.lazy.rememberLazyListState()
         LazyColumn(
             state = smoothScroll1,
-            contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 120.dp),
+            contentPadding = PaddingValues(start = PageInset, end = PageInset, bottom = MiniPlayerClearance),
             modifier = Modifier.fillMaxWidth().weight(1f)
+                .pageScrollEdge { smoothScroll1.edgeProgress() }
                 .smoothWheelScroll(smoothScroll1)
         ) {
-            items(historyItems, key = { it.id }) { event ->
+            if (visible.isEmpty() && query.isNotBlank()) {
+                item {
+                    Text(
+                        "Nothing in your history matches “${query.trim()}”.",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(start = 20.dp, top = 16.dp),
+                    )
+                }
+            }
+            items(visible, key = { it.id }) { event ->
                 val song = SongItem(
                     id = event.song_id,
                     title = event.title,

@@ -1,12 +1,12 @@
 package com.music.vivi.compose.ui
 
+import com.music.vivi.compose.ui.expressive.VisageTextField
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -63,7 +63,7 @@ fun SmokePlaybackScreen() {
                 error?.let { append("  ($it)") }
             },
         )
-        OutlinedTextField(
+        VisageTextField(
             value = videoId,
             onValueChange = { videoId = it },
             label = { Text("YouTube video id") },

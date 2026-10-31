@@ -14,12 +14,12 @@ class SidebarPrefsTest {
         override fun getInt(key: String, default: Int) = m[key]?.toIntOrNull() ?: default
     }
 
-    @Test fun `defaults put the library on the right and the queue on the right`() {
+    @Test fun `defaults put the library on the right and the queue on the left`() {
         val c = SidebarConfig.resolve(reader())
         assertTrue(c.libraryEnabled)
         assertEquals(SidebarSide.RIGHT, c.librarySide)
         assertEquals(LibrarySidebarState.EXPANDED, c.libraryState)
-        assertEquals(SidebarSide.RIGHT, c.queueSide)
+        assertEquals(SidebarSide.LEFT, c.queueSide)
         assertFalse(c.queueOnHome)
         assertEquals(SidebarConfig.DefaultLibraryWidth, c.libraryWidthDp)
     }

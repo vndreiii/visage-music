@@ -64,7 +64,19 @@ import kotlin.system.exitProcess
 @Composable
 fun CrashDialogHost(onQuit: () -> Unit) {
     val report by CrashReporter.current.collectAsState()
-    val shown = report ?: return
+    // VISAGE_UI_STATE=crash-dialog shows a made-up report so the dialog can be checked without a real crash.
+    val shown = report ?: if (com.music.vivi.compose.dev.DevUiState.has("crash-dialog")) {
+        CrashReport(
+            id = 0L,
+            title = "Something went wrong (dev preview)",
+            explanation = "This is a forced preview from VISAGE_UI_STATE=crash-dialog. Nothing was crashed or sent.",
+            exceptionSummary = "java.lang.IllegalStateException: preview",
+            stackTrace = "java.lang.IllegalStateException: preview\n\tat dev.preview(DevUiState.kt:1)",
+            thread = "main",
+            timeMs = System.currentTimeMillis(),
+            fatal = false,
+        )
+    } else return
     BasicAlertDialog(onDismissRequest = CrashReporter::dismiss) {
         Surface(
             shape = AlertDialogDefaults.shape,
@@ -156,6 +168,11 @@ fun CrashPanel(
         }
         Text(report.explanation, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
 
+        Text(
+            "The log includes the songs you played and searched for. Look it over before you share it; your home folder is already hidden.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         ConnectedButtonGroup(
             options = listOf(Detail.Error to "Error details", Detail.Log to "Log"),
             selected = detail,
@@ -170,7 +187,7 @@ fun CrashPanel(
             val scroll = rememberScrollState()
             SelectionContainer {
                 Text(
-                    if (detail == Detail.Error) "${report.exceptionSummary}\n\n${report.stackTrace.trimEnd()}" else logText.ifBlank { "(log is empty)" },
+                    if (detail == Detail.Error) com.music.vivi.compose.crash.AppLog.redact("${report.exceptionSummary}\n\n${report.stackTrace.trimEnd()}") else logText.ifBlank { "(log is empty)" },
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
                     lineHeight = 15.sp,

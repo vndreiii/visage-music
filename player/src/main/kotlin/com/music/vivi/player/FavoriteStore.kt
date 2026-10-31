@@ -8,4 +8,7 @@ fun interface FavoriteStore {
     fun isLiked(videoId: String): Boolean
 
     fun setLiked(videoId: String, liked: Boolean) {}
+
+    /** Emits when any like changes (here or by a library sync), so the player can re-read the current track's heart. */
+    val changes: kotlinx.coroutines.flow.Flow<Any?>? get() = null
 }

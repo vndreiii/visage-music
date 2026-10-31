@@ -1,6 +1,11 @@
 package com.music.vivi.compose.ui.library
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.onboarding.tourAnchor
+import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
@@ -40,6 +45,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -120,6 +126,14 @@ object LibraryNavigator {
     val resets: kotlinx.coroutines.flow.SharedFlow<Unit> = _resets
     fun reset() {
         _resets.tryEmit(Unit)
+    }
+
+    /** A tab the Library should show as soon as it is on screen (set before navigating to it, cleared once applied). */
+    internal val requestedTab = kotlinx.coroutines.flow.MutableStateFlow<String?>(null)
+
+    /** Show the Offline tab (downloads), e.g. from the sidebar's "Downloaded" entry. */
+    fun showOffline() {
+        requestedTab.value = "Offline"
     }
 }
 
@@ -383,10 +397,14 @@ fun LibraryScreen(navController: NavController) {
     val (playingId, isPlaying) = rememberNowPlayingIds()
 
     val scanner = koinInject<LocalMusicScanner>()
-    val scanProgress by scanner.progress.collectAsState()
+    // Only `running` matters here; reading the whole progress would recompose this screen once per scanned file.
+    val scanProgressState = scanner.progress.collectAsState()
+    val scanning by remember { androidx.compose.runtime.derivedStateOf { scanProgressState.value.running } }
     val downloadStatus by downloads.status.collectAsState()
     
     var tab by rememberSaveable { mutableStateOf(LibraryTab.Home) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val words = remember(query) { searchWords(query) }
     var openCollection by remember { mutableStateOf<OpenCollection?>(null) }
     var collectionTracks by remember { mutableStateOf(emptyList<Local_track>()) }
     var collectionLoading by remember { mutableStateOf(false) }
@@ -402,6 +420,15 @@ fun LibraryScreen(navController: NavController) {
 
     var homeResetTick by remember { mutableStateOf(0) }
     LaunchedEffect(Unit) {
+        LibraryNavigator.requestedTab.collect { name ->
+            val requested = name?.let { n -> LibraryTab.entries.firstOrNull { it.name == n } } ?: return@collect
+            tab = requested
+            openCollection = null
+            query = ""
+            LibraryNavigator.requestedTab.value = null
+        }
+    }
+    LaunchedEffect(Unit) {
         LibraryNavigator.resets.collect {
             tab = LibraryTab.Home
             openCollection = null
@@ -413,12 +440,12 @@ fun LibraryScreen(navController: NavController) {
     LaunchedEffect(Unit) { cache.refreshIfStale() }
     // Scan finished or a download finished/failed: local index changed, force a reload.
     var firstMutationPass by remember { mutableStateOf(true) }
-    LaunchedEffect(scanProgress.running, downloadStatus) {
+    LaunchedEffect(scanning, downloadStatus) {
         firstMutationPass = false
         // Download status is remembered in the cache so a change made while Library was closed is caught.
         val changed = cache.lastDownloadStatus != downloadStatus
         cache.lastDownloadStatus = downloadStatus
-        if (changed && !scanProgress.running && cache.hasLoadedLocal) cache.loadLocal()
+        if (changed && !scanning && cache.hasLoadedLocal) cache.loadLocal()
     }
     val likeMutations by libraryRepo.mutations.collectAsState()
     LaunchedEffect(likeMutations) { if (likeMutations != 0L) cache.refreshLiked() }
@@ -430,7 +457,7 @@ fun LibraryScreen(navController: NavController) {
             collectionTracks = withContext(Dispatchers.IO) {
                 when (open) {
                     is OpenCollection.Album -> localRepo.tracksForAlbum(open.id)
-                    is OpenCollection.Artist -> localRepo.tracksCreditedTo(open.id).ifEmpty { localRepo.tracksForArtist(open.id) }
+                    is OpenCollection.Artist -> localRepo.tracksForArtist(open.id)
                     is OpenCollection.Genre -> localRepo.tracksByGenre(open.name)
                     is OpenCollection.Year -> localRepo.tracksByYear(open.year)
                     is OpenCollection.Composer -> localRepo.tracksByComposer(open.name)
@@ -471,7 +498,7 @@ fun LibraryScreen(navController: NavController) {
     Column(Modifier.fillMaxSize()) {
         // Tabs and actions share one row, vertically centred, with room below so content never touches the sticky header.
         Row(
-            Modifier.fillMaxWidth().padding(start = 4.dp, end = 12.dp, top = 4.dp, bottom = 12.dp),
+            Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(Modifier.weight(1f)) {
@@ -479,10 +506,12 @@ fun LibraryScreen(navController: NavController) {
                     chips = LibraryTab.entries.map { it to it.label },
                     currentValue = tab,
                     onValueUpdate = { next -> if (next != null) { tab = next; openCollection = null } },
+                    gutter = 16.dp, // the page's content inset, so the first chip lines up with the cards below
                 )
             }
             com.music.vivi.compose.ui.expressive.ExpressiveButton(
                 text = "Tag Manager",
+                modifier = Modifier.tourAnchor("library.tagmanager"),
                 onClick = { navController.navigate(Routes.TAG_MANAGER) },
                 style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Text,
             )
@@ -493,7 +522,15 @@ fun LibraryScreen(navController: NavController) {
                 style = com.music.vivi.compose.ui.expressive.ExpressiveStyle.Text,
             )
         }
-        if (refreshing || scanProgress.running) {
+        com.music.vivi.compose.ui.library.sidebar.SearchField(
+            query = query,
+            onQuery = { query = it; openCollection = null },
+            placeholder = "Search your library — songs, artists, albums",
+            height = 48.dp,
+            // Full content width: same 16dp inset as the cards and the first tab chip.
+            modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
+        )
+        if (refreshing || scanning) {
             LinearProgressIndicator(Modifier.fillMaxWidth().height(2.dp))
         }
         localError?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp)) }
@@ -505,7 +542,7 @@ fun LibraryScreen(navController: NavController) {
             Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 com.music.vivi.compose.ui.component.VisageBackButton(onClick = { openCollection = null })
                 Column(Modifier.weight(1f)) {
-                    Text(open.title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(open.title, style = MaterialTheme.typography.headlineSmall, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
                     Text("${collectionTracks.size} tracks", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 com.music.vivi.compose.ui.expressive.ExpressiveButton(
@@ -536,8 +573,11 @@ fun LibraryScreen(navController: NavController) {
             transitionSpec = { fadeIn(com.music.vivi.compose.ui.motion.VisageMotion.fadeInSpec()) togetherWith fadeOut(com.music.vivi.compose.ui.motion.VisageMotion.fadeOutSpec()) },
             label = "libraryTab",
             modifier = Modifier.weight(1f),
-        ) { selectedTab ->
-        tabStates.SaveableStateProvider(selectedTab) {
+        ) { shownTab ->
+        // Typing on a tab that is not itself a list of songs searches your local files.
+        val searching = words.isNotEmpty() && shownTab in setOf(LibraryTab.Home, LibraryTab.Liked, LibraryTab.Offline, LibraryTab.Recent)
+        val selectedTab = if (searching) LibraryTab.Local else shownTab
+        tabStates.SaveableStateProvider(shownTab) {
         when {
             loading -> PageLoadingState("Opening your library")
             selectedTab == LibraryTab.Home -> LibraryHomeFeed(
@@ -585,30 +625,34 @@ fun LibraryScreen(navController: NavController) {
                 },
             )
             selectedTab == LibraryTab.Albums -> LocalAlbumsGrid(
-                albums = if (local.albums.isNotEmpty()) local.albums else emptyList(),
-                ytAlbums = ytData.albums,
+                albums = remember(words, local.albums) { local.albums.filter { matchesAll(words, it.title, it.artist_name) } },
+                ytAlbums = remember(words, ytData.albums) { ytData.albums.filter { matchesAll(words, it.title, it.artists?.joinToString(" ") { a -> a.name }.orEmpty()) } },
                 onLocalAlbum = ::openAlbum,
                 onYtAlbum = { onYtItem(it, emptyList()) },
             )
             selectedTab == LibraryTab.Artists -> LocalArtistsGrid(
-                artists = local.artists,
-                ytArtists = ytData.artists,
+                artists = remember(words, local.artists) { local.artists.filter { matchesAll(words, it.name) } },
+                ytArtists = remember(words, ytData.artists) { ytData.artists.filter { matchesAll(words, it.title) } },
                 onLocalArtist = ::openArtist,
                 onYtArtist = { onYtItem(it, emptyList()) },
             )
             selectedTab == LibraryTab.Playlists -> PlaylistsGrid(
-                playlists = ytData.playlists,
+                playlists = remember(words, ytData.playlists) { ytData.playlists.filter { matchesAll(words, it.title) } },
                 onItem = { onYtItem(it, emptyList()) },
             )
             selectedTab == LibraryTab.Songs -> LikedList(
-                songs = ytData.songs,
+                songs = remember(words, ytData.songs) { ytData.songs.filter { matchesAll(words, it.title, it.artists.joinToString(" ") { a -> a.name }, it.album?.name.orEmpty()) } },
                 playingId = playingId,
                 isPlaying = isPlaying,
                 onItemClick = onYtItem,
                 emptyMessage = "No songs in library yet",
             )
             selectedTab == LibraryTab.Local -> LocalTrackList(
-                tracks = local.tracks,
+                tracks = remember(words, local.tracks) {
+                    if (words.isEmpty()) local.tracks else local.tracks.filter {
+                        matchesAll(words, it.title, it.artist_name, it.album_title.orEmpty(), it.genre.orEmpty())
+                    }
+                },
                 playingId = playingId,
                 isPlaying = isPlaying,
                 onPlay = playLocalTracks,
@@ -625,6 +669,17 @@ fun LibraryScreen(navController: NavController) {
     }
     }
     }
+}
+
+/** Lower-cased words of a search query (letters and digits only). */
+private fun searchWords(query: String): List<String> =
+    query.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.isNotBlank() }
+
+/** True when every query word appears in at least one of [fields]; an empty query matches everything. */
+private fun matchesAll(words: List<String>, vararg fields: String): Boolean {
+    if (words.isEmpty()) return true
+    val hay = fields.joinToString(" ").lowercase()
+    return words.all { it in hay }
 }
 
 @Composable
@@ -916,14 +971,16 @@ internal fun LocalCoverCard(
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.visageMarquee(),
             )
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.visageMarquee(),
             )
         }
     }
@@ -948,7 +1005,7 @@ private fun LikedSplit(
             LikedColumnHeader("YouTube", songs.size)
             if (songs.isEmpty()) EmptyContent("No liked YouTube songs") else {
                 val state = androidx.compose.foundation.lazy.rememberLazyListState()
-                LazyColumn(state = state, contentPadding = PaddingValues(bottom = 128.dp), modifier = Modifier.smoothWheelScroll(state)) {
+                LazyColumn(state = state, contentPadding = PaddingValues(bottom = MiniPlayerClearance), modifier = Modifier.smoothWheelScroll(state)) {
                     items(songs, key = { "yt-${it.id}" }) { song ->
                         YouTubeListItem(
                             item = song,
@@ -965,7 +1022,7 @@ private fun LikedSplit(
             LikedColumnHeader("Local", localLiked.size)
             if (localLiked.isEmpty()) EmptyContent("No liked local songs") else {
                 val state = androidx.compose.foundation.lazy.rememberLazyListState()
-                LazyColumn(state = state, contentPadding = PaddingValues(bottom = 128.dp), modifier = Modifier.smoothWheelScroll(state)) {
+                LazyColumn(state = state, contentPadding = PaddingValues(bottom = MiniPlayerClearance), modifier = Modifier.smoothWheelScroll(state)) {
                     items(localLiked, key = { "ll-${it.id}" }) { track ->
                         LocalTrackRow(track, active = playingId == "local:${track.id}") {
                             onPlayLocal(localLiked, localLiked.indexOfFirst { it.id == track.id }.coerceAtLeast(0))
@@ -1009,8 +1066,8 @@ private fun LocalTrackRow(track: Local_track, active: Boolean, onClick: () -> Un
             )
             Spacer(Modifier.width(12.dp))
             Column {
-                Text(track.title, color = primaryText, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(track.artist_name, color = secondaryText, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(track.title, color = primaryText, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
+                Text(track.artist_name, color = secondaryText, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Clip, modifier = Modifier.visageMarquee())
             }
         }
     }
@@ -1029,8 +1086,8 @@ private fun LikedList(
     } else {
         val smoothScroll2 = androidx.compose.foundation.lazy.rememberLazyListState()
         LazyColumn(
-            state = smoothScroll2,contentPadding = PaddingValues(bottom = 128.dp),
-            modifier = Modifier.smoothWheelScroll(smoothScroll2),
+            state = smoothScroll2,contentPadding = PaddingValues(bottom = MiniPlayerClearance),
+            modifier = Modifier.pageScrollEdge { smoothScroll2.edgeProgress() }.smoothWheelScroll(smoothScroll2),
         ) {
             items(songs, key = { it.id }) { song ->
                 YouTubeListItem(
@@ -1058,8 +1115,8 @@ private fun LocalTrackList(
     }
     val smoothScroll3 = androidx.compose.foundation.lazy.rememberLazyListState()
     LazyColumn(
-        state = smoothScroll3,contentPadding = PaddingValues(bottom = 128.dp),
-        modifier = Modifier.smoothWheelScroll(smoothScroll3),
+        state = smoothScroll3,contentPadding = PaddingValues(bottom = MiniPlayerClearance),
+        modifier = Modifier.pageScrollEdge { smoothScroll3.edgeProgress() }.smoothWheelScroll(smoothScroll3),
     ) {
         items(tracks, key = { it.id }) { track ->
             val id = "local:${track.id}"
@@ -1096,7 +1153,8 @@ private fun LocalTrackList(
                             style = MaterialTheme.typography.bodyLarge,
                             fontWeight = FontWeight.SemiBold,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            overflow = TextOverflow.Clip,
+                            modifier = Modifier.visageMarquee(),
                         )
                         Text(
                             buildString {
@@ -1106,7 +1164,8 @@ private fun LocalTrackList(
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
+                            overflow = TextOverflow.Clip,
+                            modifier = Modifier.visageMarquee(),
                         )
                     }
                 }
@@ -1131,8 +1190,8 @@ private fun RecentMixedList(
     }
     val smoothScroll4 = androidx.compose.foundation.lazy.rememberLazyListState()
     LazyColumn(
-        state = smoothScroll4,contentPadding = PaddingValues(bottom = 128.dp),
-        modifier = Modifier.smoothWheelScroll(smoothScroll4),
+        state = smoothScroll4,contentPadding = PaddingValues(bottom = MiniPlayerClearance),
+        modifier = Modifier.pageScrollEdge { smoothScroll4.edgeProgress() }.smoothWheelScroll(smoothScroll4),
     ) {
         if (localRecent.isNotEmpty()) {
             item {
@@ -1194,16 +1253,16 @@ private fun OfflineList(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+            overflow = TextOverflow.Clip,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).visageMarquee(),
         )
         if (tracks.isEmpty()) {
             EmptyContent("Nothing available offline yet")
         } else {
             val smoothScroll5 = androidx.compose.foundation.lazy.rememberLazyListState()
             LazyColumn(
-                state = smoothScroll5,contentPadding = PaddingValues(bottom = 128.dp),
-                modifier = Modifier.smoothWheelScroll(smoothScroll5),
+                state = smoothScroll5,contentPadding = PaddingValues(bottom = MiniPlayerClearance),
+                modifier = Modifier.pageScrollEdge { smoothScroll5.edgeProgress() }.smoothWheelScroll(smoothScroll5),
             ) {
                 items(tracks, key = { it.video_id }) { track ->
                     val id = "offline:${track.video_id}"
@@ -1247,7 +1306,8 @@ private fun OfflineList(
                                     style = MaterialTheme.typography.bodyLarge,
                                     fontWeight = FontWeight.SemiBold,
                                     maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
+                                    overflow = TextOverflow.Clip,
+                                    modifier = Modifier.visageMarquee(),
                                 )
                                 Text(
                                     track.artist.ifBlank { File(track.file_path).extension.uppercase() },
@@ -1278,11 +1338,11 @@ private fun LocalAlbumsGrid(
     LazyVerticalGrid(
         state = smoothScroll6,
         columns = GridCells.Adaptive(minSize = 164.dp),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 128.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = MiniPlayerClearance),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         modifier = Modifier.fillMaxSize()
-            .smoothWheelScroll(smoothScroll6),
+            .pageScrollEdge { smoothScroll6.edgeProgress() }.smoothWheelScroll(smoothScroll6),
     ) {
         items(albums, key = { "l-${it.id}" }) { album ->
             LocalCoverCard(
@@ -1320,11 +1380,11 @@ private fun LocalArtistsGrid(
     LazyVerticalGrid(
         state = smoothScroll7,
         columns = GridCells.Adaptive(minSize = 164.dp),
-        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = 128.dp),
+        contentPadding = PaddingValues(start = 20.dp, end = 20.dp, top = 12.dp, bottom = MiniPlayerClearance),
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
         modifier = Modifier.fillMaxSize()
-            .smoothWheelScroll(smoothScroll7),
+            .pageScrollEdge { smoothScroll7.edgeProgress() }.smoothWheelScroll(smoothScroll7),
     ) {
         items(artists, key = { "l-${it.id}" }) { artist ->
             com.music.vivi.compose.ui.artist.ArtistTile(
@@ -1357,9 +1417,9 @@ private fun PlaylistsGrid(
     }
     val smoothScroll8 = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
     // YouTube playlists sit in their own tinted container so their origin is obvious.
-    Surface(
+    com.music.vivi.compose.ui.glass.GlassSurface(
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainer,
+        fallbackColor = MaterialTheme.colorScheme.surfaceContainer,
         modifier = Modifier.fillMaxSize().padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 8.dp),
     ) {
         Column(Modifier.fillMaxSize()) {
@@ -1373,10 +1433,10 @@ private fun PlaylistsGrid(
             LazyVerticalGrid(
                 state = smoothScroll8,
                 columns = GridCells.Adaptive(minSize = 164.dp),
-                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 128.dp),
+                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, top = 8.dp, bottom = MiniPlayerClearance),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.fillMaxSize().smoothWheelScroll(smoothScroll8),
+                modifier = Modifier.fillMaxSize().pageScrollEdge { smoothScroll8.edgeProgress() }.smoothWheelScroll(smoothScroll8),
             ) {
                 items(playlists, key = { it.id }) { pl ->
                     YouTubeGridItem(

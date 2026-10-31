@@ -72,6 +72,54 @@ internal class LineLayout(
     val translationOffset: Offset,
 )
 
+/** Everything that influences how a line is shaped/wrapped. */
+internal data class LineLayoutKey(
+    val line: LyricsLine,
+    val font: LyricsFont,
+    val weight: LyricsWeight,
+    val fontSizeSp: Float,
+    val textCase: LyricsTextCase,
+    val align: LyricsTextAlign,
+    val wordSync: Boolean,
+    val showTranslation: Boolean,
+    val sizeScale: Float,
+    val isBackground: Boolean,
+    val maxWidth: Int,
+    val density: Float,
+    val fontScale: Float,
+)
+
+/**
+ * Process-wide bounded LRU of shaped lines, shared by every [LyricLineView]: a line that scrolls out of the
+ * lazy list and back, or a panel that is closed and reopened, reuses its layout instead of re-shaping every word.
+ */
+internal object LineLayoutCache {
+    private const val MAX_LINES = 512
+    private val lines = object : LinkedHashMap<LineLayoutKey, LineLayout>(128, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<LineLayoutKey, LineLayout>?) = size > MAX_LINES
+    }
+    private val spaces = object : LinkedHashMap<Triple<TextStyle, Float, Float>, Float>(16, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Triple<TextStyle, Float, Float>, Float>?) = size > 64
+    }
+
+    internal fun spaceWidth(style: TextStyle, density: Float, fontScale: Float, compute: () -> Float): Float {
+        val k = Triple(style, density, fontScale)
+        synchronized(spaces) { spaces[k]?.let { return it } }
+        val v = compute()
+        synchronized(spaces) { spaces[k] = v }
+        return v
+    }
+
+    internal fun getOrBuild(k: LineLayoutKey, build: () -> LineLayout): LineLayout {
+        synchronized(lines) { lines[k]?.let { return it } }
+        val v = build()
+        synchronized(lines) { lines[k] = v }
+        return v
+    }
+
+    internal fun clear() { synchronized(lines) { lines.clear() }; synchronized(spaces) { spaces.clear() } }
+}
+
 private class LayoutHolder {
     var key: Long = Long.MIN_VALUE
     var layout: LineLayout? = null
@@ -120,8 +168,10 @@ internal fun buildLineLayout(
         val measured = words.map {
             measurer.measure(cfg.textCase.apply(it.text), style, softWrap = false, maxLines = 1, overflow = TextOverflow.Visible, constraints = nowrap)
         }
-        val spaceW = (measurer.measure("n n", style, softWrap = false).size.width - measurer.measure("nn", style, softWrap = false).size.width)
-            .toFloat().coerceAtLeast(fs * 0.2f)
+        val spaceW = LineLayoutCache.spaceWidth(style, density.density, density.fontScale) {
+            (measurer.measure("n n", style, softWrap = false).size.width - measurer.measure("nn", style, softWrap = false).size.width)
+                .toFloat().coerceAtLeast(fs * 0.2f)
+        }
         // clusters = syllables glued together; they never wrap apart
         val clusters = ArrayList<MutableList<Int>>()
         var cur = ArrayList<Int>()
@@ -269,7 +319,13 @@ internal fun LyricLineView(
                 val inner = (c.maxWidth - 2 * pad).coerceAtLeast(10)
                 val key = inner.toLong()
                 if (holder.layout == null || holder.key != key) {
-                    holder.layout = buildLineLayout(measurer, line, cfg, sizeScale, isBg, inner, this)
+                    val key2 = LineLayoutKey(
+                        line, cfg.font, cfg.weight, cfg.fontSizeSp, cfg.textCase, cfg.align, cfg.wordSync,
+                        cfg.showTranslation, sizeScale, isBg, inner, density, fontScale,
+                    )
+                    holder.layout = LineLayoutCache.getOrBuild(key2) {
+                        buildLineLayout(measurer, line, cfg, sizeScale, isBg, inner, this)
+                    }
                     holder.key = key
                 }
                 val lay = holder.layout!!

@@ -70,7 +70,7 @@ data class SidebarConfig(
                 },
                 libraryWidthDp = p.getInt(SidebarKeys.LibraryWidth, DefaultLibraryWidth)
                     .coerceIn(MinLibraryWidth, MaxLibraryWidth),
-                queueSide = p.enum(SidebarKeys.QueueSide, SidebarSide.RIGHT),
+                queueSide = p.enum(SidebarKeys.QueueSide, SidebarSide.LEFT),
                 queueOnHome = p.getBoolean(SidebarKeys.QueueOnHome, false),
             )
         }

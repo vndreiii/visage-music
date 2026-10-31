@@ -24,6 +24,15 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 
+/** Space under every page header (back arrow + title) before the list or grid starts; keep identical on all pages. */
+val PageHeaderBottomPadding = 16.dp
+
+/** Space above every page header (the top bar already floats over the page, so this stays small). */
+val PageHeaderTopPadding = 8.dp
+
+/** Left/right inset of page content; page headers (back button + title) start at the same edge. */
+val PageInset = 20.dp
+
 /** Back arrow + large title used at the top of pushed (non-tab) pages. */
 @Composable
 fun DetailPageHeader(
@@ -31,9 +40,11 @@ fun DetailPageHeader(
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
     subtitle: String? = null,
+    /** Optional control on the header row's right edge (e.g. a page search field), vertically centred with the title. */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     Row(
-        modifier.fillMaxWidth().padding(start = 8.dp, end = 16.dp, top = 8.dp, bottom = 4.dp),
+        modifier.fillMaxWidth().padding(start = PageInset, end = PageInset, top = PageHeaderTopPadding, bottom = PageHeaderBottomPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         com.music.vivi.compose.ui.component.VisageBackButton(onClick = onBack)
@@ -44,12 +55,14 @@ fun DetailPageHeader(
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
+                modifier = Modifier.visageMarquee(),
             )
             if (!subtitle.isNullOrBlank()) {
                 Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
+        trailing?.let { Spacer(Modifier.width(16.dp)); it() }
     }
 }
 

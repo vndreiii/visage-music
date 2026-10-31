@@ -1,8 +1,12 @@
 package com.music.vivi.compose.ui.search
 
+import com.music.vivi.compose.ui.component.MiniPlayerClearance
+import com.music.vivi.compose.ui.component.visageMarquee
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.WheelLazyRow
 import com.music.vivi.compose.ui.component.smoothWheelScroll
+import com.music.vivi.compose.ui.component.pageScrollEdge
+import com.music.vivi.compose.ui.component.edgeProgress
 
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.tween
@@ -467,8 +471,8 @@ fun SearchScreen(navController: NavController) {
                 showingTypingHints -> {
                     LazyColumn(
                         state = listState,
-                        contentPadding = PaddingValues(bottom = 96.dp),
-                        modifier = Modifier.smoothWheelScroll(listState),
+                        contentPadding = PaddingValues(bottom = MiniPlayerClearance),
+                        modifier = Modifier.pageScrollEdge { listState.edgeProgress() }.smoothWheelScroll(listState),
                     ) {
                         if (suggestions.isNotEmpty()) {
                             item {
@@ -518,8 +522,8 @@ fun SearchScreen(navController: NavController) {
                 submittedQuery != null -> {
                     LazyColumn(
                         state = listState,
-                        contentPadding = PaddingValues(bottom = 96.dp),
-                        modifier = Modifier.smoothWheelScroll(listState),
+                        contentPadding = PaddingValues(bottom = MiniPlayerClearance),
+                        modifier = Modifier.pageScrollEdge { listState.edgeProgress() }.smoothWheelScroll(listState),
                     ) {
                         if (filter == SearchFilterType.ALL) {
                             renderLocalHits(localHits) { i ->
@@ -603,8 +607,8 @@ fun SearchScreen(navController: NavController) {
                         showingIdleSuggestions && idleCharts.isNotEmpty() -> {
                             LazyColumn(
                                 state = listState,
-                                contentPadding = PaddingValues(bottom = 96.dp),
-                                modifier = Modifier.smoothWheelScroll(listState),
+                                contentPadding = PaddingValues(bottom = MiniPlayerClearance),
+                                modifier = Modifier.pageScrollEdge { listState.edgeProgress() }.smoothWheelScroll(listState),
                             ) {
                                 item {
                                     Text(
@@ -676,14 +680,16 @@ private fun ChartSuggestionRow(
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
                 Text(
                     track.artist,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -729,15 +735,9 @@ private fun SearchField(
         animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
         label = "searchCorner",
     )
-    val elev by animateDpAsState(
-        targetValue = if (focused) 6.dp else 0.dp,
-        animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
-        label = "searchElev",
-    )
     Surface(
         shape = RoundedCornerShape(corner),
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        shadowElevation = elev,
         modifier = Modifier.fillMaxWidth().height(52.dp),
     ) {
         Row(
@@ -835,9 +835,9 @@ private fun SuggestionRow(
             Text(
                 text,
                 style = MaterialTheme.typography.bodyLarge,
-                modifier = Modifier.weight(1f).padding(horizontal = 14.dp),
+                modifier = Modifier.weight(1f).padding(horizontal = 14.dp).visageMarquee(),
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                overflow = TextOverflow.Clip,
             )
             IconButton(onClick = onAutocomplete, modifier = Modifier.size(36.dp)) {
                 Icon(
@@ -890,7 +890,8 @@ private fun RecommendedRow(
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
                 )
                 if (subtitle.isNotBlank()) {
                     Text(
@@ -898,7 +899,8 @@ private fun RecommendedRow(
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.visageMarquee(),
                     )
                 }
             }

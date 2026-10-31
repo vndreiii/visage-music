@@ -15,6 +15,9 @@ class LibraryRepository(
 
     /** Bumped on user-driven library mutations (like/unlike) so in-memory caches can refresh. */
     val mutations: kotlinx.coroutines.flow.StateFlow<Long> = _mutations
+    private val _likedChanges = kotlinx.coroutines.flow.MutableStateFlow(0L)
+    /** Bumps whenever a like changes or the YouTube Liked Songs list is synced, so every heart can re-read its state. */
+    val likedChanges: kotlinx.coroutines.flow.StateFlow<Long> = _likedChanges
 
     fun upsertSong(
         song: SongItem,
@@ -85,6 +88,7 @@ class LibraryRepository(
                 )
             }
         }
+        if (playlist.id == "LM") _likedChanges.value++
     }
 
     fun getPlaylist(id: String) = db.playlistQueries.selectById(id).executeAsOneOrNull()
@@ -99,13 +103,14 @@ class LibraryRepository(
 
     fun isLiked(id: String): Boolean {
         val song = db.songQueries.selectById(id).executeAsOneOrNull()
-        return song?.liked == 1L
+        return song?.liked == 1L || db.playlistSongQueries.containsSong("LM", id).executeAsOne() > 0L
     }
 
     fun setLiked(id: String, liked: Boolean) {
         try {
             setLikedInternal(id, liked)
         } finally {
+            _likedChanges.value++
             _mutations.value++
         }
     }
@@ -144,14 +149,20 @@ class LibraryRepository(
     /** User-created playlists, most recently touched first. */
     fun localPlaylists(): List<Playlist> = db.playlistQueries.selectBySource(LOCAL_SOURCE).executeAsList()
 
-    fun createLocalPlaylist(title: String, nowMs: Long = System.currentTimeMillis()): String {
+    fun createLocalPlaylist(
+        title: String,
+        nowMs: Long = System.currentTimeMillis(),
+        description: String? = null,
+        /** Absolute path of a cover image the user picked, or null for the automatic cover. */
+        thumbnail: String? = null,
+    ): String {
         val id = LOCAL_PREFIX + java.util.UUID.randomUUID().toString()
         db.playlistQueries.upsert(
             id = id,
             title = title.trim().ifBlank { "New playlist" },
             author = "You",
-            thumbnail = null,
-            description = null,
+            thumbnail = thumbnail,
+            description = description?.trim()?.ifBlank { null },
             song_count = 0,
             total_duration_sec = null,
             source = LOCAL_SOURCE,
@@ -160,6 +171,13 @@ class LibraryRepository(
         )
         _playlistMutations.value++
         return id
+    }
+
+    /** Edits a local playlist's name, description and cover in one go. */
+    fun updateLocalPlaylistDetails(id: String, title: String, description: String?, thumbnail: String?, nowMs: Long = System.currentTimeMillis()) {
+        if (!id.startsWith(LOCAL_PREFIX) || title.isBlank()) return
+        db.playlistQueries.setDetails(title.trim(), description?.trim()?.ifBlank { null }, thumbnail, nowMs, id)
+        _playlistMutations.value++
     }
 
     fun renameLocalPlaylist(id: String, title: String, nowMs: Long = System.currentTimeMillis()) {

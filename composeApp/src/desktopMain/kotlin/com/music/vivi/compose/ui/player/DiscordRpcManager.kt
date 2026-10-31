@@ -19,6 +19,7 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.time.OffsetDateTime
 import java.time.ZoneOffset
+import kotlin.math.abs
 
 class DiscordRpcManager(
     private val scope: CoroutineScope
@@ -29,6 +30,8 @@ class DiscordRpcManager(
     private val applicationId = 839503426907930634L
     private var client: IPCClient? = null
     private var isConnected = false
+    /** Epoch seconds the currently sent elapsed timer counts from; null when no timer is shown. */
+    private var timerStartSec: Long? = null
 
     fun start() {
         scope.launch {
@@ -37,6 +40,15 @@ class DiscordRpcManager(
             
             launch { controller.nowPlaying.collectLatest { updatePresence() } }
             launch { controller.state.collectLatest { updatePresence() } }
+            // A seek moves the position away from what the sent timer counts from; re-send so the timer matches.
+            launch {
+                controller.positionMs.collect { position ->
+                    val start = timerStartSec ?: return@collect
+                    if (controller.state.value != PlaybackState.Playing) return@collect
+                    val elapsedSec = System.currentTimeMillis() / 1000 - start
+                    if (abs(elapsedSec - position / 1000) > SEEK_DRIFT_TOLERANCE_SEC) updatePresence()
+                }
+            }
         }
     }
 
@@ -93,26 +105,30 @@ class DiscordRpcManager(
         val state = controller.state.value
 
         if (track == null) {
+            timerStartSec = null
             currentClient.sendRichPresence(null)
             return
         }
 
         val builder = RichPresence.Builder()
         builder.setDetails(track.title)
-        builder.setState(track.artist)
-        
+        builder.setState(if (state == PlaybackState.Paused) "Paused · ${track.artist}" else track.artist)
+
         // Jagrosh supports arbitrary image URLs if Discord allows them
         track.artworkUrl?.let { url ->
             builder.setLargeImage(url, track.title)
         }
 
+        // Timestamps only while playing: without them Discord shows no moving timer when paused.
+        timerStartSec = null
         if (state == PlaybackState.Playing) {
             val position = controller.positionMs.value
             val duration = controller.durationMs.value.takeIf { it > 0 } ?: track.durationMs
-            
+
             val startTimestamp = System.currentTimeMillis() / 1000 - (position / 1000)
+            timerStartSec = startTimestamp
             builder.setStartTimestamp(OffsetDateTime.ofInstant(java.time.Instant.ofEpochSecond(startTimestamp), ZoneOffset.UTC))
-            
+
             if (duration > 0) {
                 val endTimestamp = startTimestamp + (duration / 1000)
                 builder.setEndTimestamp(OffsetDateTime.ofInstant(java.time.Instant.ofEpochSecond(endTimestamp), ZoneOffset.UTC))
@@ -144,6 +160,7 @@ class DiscordRpcManager(
 }
 
 private const val VISAGE_URL = "https://github.com/vndreiii/visage-music"
+private const val SEEK_DRIFT_TOLERANCE_SEC = 3L
 
 /** jagrosh's RichPresence has no button support; add the `buttons` array to its payload. */
 private class PresenceWithButtons(

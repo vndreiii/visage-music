@@ -49,6 +49,11 @@ class StreamPrefetchCache(
         it.settings == settings() && System.currentTimeMillis() - it.createdMs < 10 * 60_000L
     }?.stream
 
+    /** Forget a cached stream so the next load resolves it again (e.g. after the CDN refused it). */
+    fun drop(videoId: String) {
+        byId.remove(videoId)
+    }
+
     private fun put(videoId: String, resolved: ResolvedStream, config: StreamSettings) {
         byId[videoId] = Entry(resolved, config, System.currentTimeMillis())
         if (byId.size > 12) byId.entries.minByOrNull { it.value.createdMs }?.let { byId.remove(it.key) }

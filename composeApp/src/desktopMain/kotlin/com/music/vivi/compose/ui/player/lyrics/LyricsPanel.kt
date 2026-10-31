@@ -20,18 +20,32 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.material.icons.outlined.Vibration
+import androidx.compose.material.icons.outlined.HourglassEmpty
+import androidx.compose.material.icons.outlined.BlurOn
+import androidx.compose.material.icons.outlined.ContentCut
+import androidx.compose.material.icons.outlined.ViewInAr
+import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.automirrored.outlined.FormatAlignLeft
 import androidx.compose.material.icons.automirrored.outlined.FormatAlignRight
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.AutoAwesome
 import androidx.compose.material.icons.outlined.Check
+import androidx.compose.material.icons.outlined.FormatSize
 import androidx.compose.material.icons.outlined.Remove
+import androidx.compose.material.icons.outlined.Restore
 import androidx.compose.material.icons.outlined.FormatAlignCenter
 import androidx.compose.material.icons.outlined.Lyrics
+import androidx.compose.material.icons.outlined.Translate
+import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -180,11 +194,11 @@ fun LyricsPanel(
         parsed = ParsedLyrics.Empty
         val cached = withContext(Dispatchers.IO) { runCatching { cache.get(track.videoId) }.getOrNull() }
         songDelayMs = cached?.offsetMs ?: 0
+        // Order: a .lrc next to the song, then tags embedded in the file, then the cache, then online providers.
         val localLyrics = withContext(Dispatchers.IO) {
-            val file = track.lyricsPath?.let { java.io.File(it) }
-                ?: track.localPath?.let { java.io.File(it).let { audio -> java.io.File(audio.parentFile, audio.nameWithoutExtension + ".lrc") } }
-            runCatching { file?.takeIf { it.isFile }?.readText() }.getOrNull()?.takeIf { it.isNotBlank() }
-                ?: track.embeddedLyrics?.takeIf { it.isNotBlank() }
+            val lrc = track.localPath?.let { LocalLrc.find(java.io.File(it), track.lyricsPath, track.title) }
+                ?: track.lyricsPath?.let { java.io.File(it) }?.takeIf { it.isFile }
+            lrc?.let(LocalLrc::read) ?: track.embeddedLyrics?.takeIf { it.isNotBlank() }
         }
         var fetched: FetchedLyrics? = null
         val cachedText = cached?.lyrics
@@ -217,9 +231,24 @@ fun LyricsPanel(
         }
     }
 
-    val timeline = remember(parsed, cfg.estimateWords, cfg.showBackgroundVocals, cfg.gapStyle) {
+    // Romanization / translation under each line, filled in after the lyrics load (offline kana/Hangul first).
+    val tOpts = remember(prefsTick) { prefs.lyricsTransformOptions() }
+    var shownParsed by remember { mutableStateOf(parsed) }
+    var transformProblem by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(parsed, tOpts) {
+        shownParsed = parsed
+        transformProblem = null
+        if (!tOpts.enabled || parsed.lines.isEmpty()) return@LaunchedEffect
+        val key = nowPlaying?.videoId ?: return@LaunchedEffect
+        // Offline part first so Japanese/Korean/Cyrillic romanization shows immediately.
+        if (tOpts.romanize) shownParsed = LyricsTransform.apply(key, parsed, tOpts.copy(translate = false, provider = GOOGLE_FREE)).lyrics
+        val full = LyricsTransform.apply(key, parsed, tOpts)
+        shownParsed = full.lyrics
+        transformProblem = full.problem
+    }
+    val timeline = remember(shownParsed, cfg.estimateWords, cfg.showBackgroundVocals, cfg.gapStyle) {
         LyricsTimeline.build(
-            parsed,
+            shownParsed,
             estimateWords = cfg.estimateWords,
             minGapMs = if (cfg.gapStyle == LyricsGapStyle.NONE) Long.MAX_VALUE / 4 else LyricsTimeline.DEFAULT_MIN_GAP_MS,
             showBackground = cfg.showBackgroundVocals,
@@ -228,7 +257,7 @@ fun LyricsPanel(
     val clock = rememberLyricsClock(controller.positionMs, playbackState == PlaybackState.Playing, cfg.syncOffsetMs - songDelayMs)
     val accent = lyricsAccent(cfg.accent)
     val bgStyle = remember(prefsTick) {
-        runCatching { PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PlayerBackgroundStyle, PlayerBackgroundStyle.GRADIENT.name)) }
+        runCatching { PlayerBackgroundStyle.valueOf(prefs.getString(PrefKeys.PlayerBackgroundStyle, com.music.vivi.compose.prefs.LookDefaults.PlayerStyle.name)) }
             .getOrDefault(PlayerBackgroundStyle.GRADIENT)
     }
 
@@ -252,13 +281,35 @@ fun LyricsPanel(
             timeline.lines.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("No lyrics available", color = Color.White.copy(alpha = 0.5f))
             }
-            else -> LyricsList(
-                timeline = timeline,
-                cfg = cfg.copy(align = align),
-                clock = clock,
-                accent = accent,
-                onSeek = { controller.seekTo(it) },
-            )
+            else -> when {
+                cfg.scene == LyricsScene.ROW && timeline.isSynced -> {
+                    Lyrics3DScene(
+                        timeline = timeline,
+                        cfg = cfg.copy(align = align),
+                        clock = clock,
+                        accent = accent,
+                    )
+                }
+                cfg.scene == LyricsScene.CUTS -> {
+                    LyricsCutsScene(
+                        timeline = timeline,
+                        cfg = cfg.copy(align = align),
+                        clock = clock,
+                        accent = accent,
+                        isPlaying = playbackState == PlaybackState.Playing,
+                        palette = LocalArtworkPalette.current,
+                    )
+                }
+                else -> LyricsList(
+                    timeline = timeline,
+                    cfg = cfg.copy(align = align),
+                    clock = clock,
+                    accent = accent,
+                    onSeek = { controller.seekTo(it) },
+                    // The delay pill sits at the bottom centre (16dp + ~48dp tall); Resume goes above it.
+                    bottomInset = if (parsed.isSynced) 64.dp else 0.dp,
+                )
+            }
         }
 
         Row(
@@ -268,6 +319,8 @@ fun LyricsPanel(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            LyricsSizeControl(prefs = prefs, version = prefsTick)
+            LyricsTransformControl(prefs = prefs, version = prefsTick, problem = transformProblem)
             LyricsProviderControl(
                 current = shownProvider ?: provider,
                 onSelect = {
@@ -281,6 +334,24 @@ fun LyricsPanel(
                 onSelect = { next ->
                     align = next
                     prefs.setString(PrefKeys.LyricsTextAlign, next.name)
+                },
+            )
+            LyricsSceneControl(
+                current = cfg.scene,
+                dissolve = cfg.sceneDissolve,
+                lingerSec = cfg.sceneLingerSec,
+                bounceAmp = cfg.bounceAmp,
+                onSelectScene = { next ->
+                    prefs.setString(PrefKeys.LyricsScene, next.name)
+                },
+                onChangeDissolve = { next ->
+                    prefs.setFloat(PrefKeys.LyricsSceneDissolve, next)
+                },
+                onChangeLinger = { next ->
+                    prefs.setFloat(PrefKeys.LyricsSceneLinger, next)
+                },
+                onChangeBounceAmp = { next ->
+                    prefs.setFloat(PrefKeys.LyricsBounceAmp, next)
                 },
             )
         }
@@ -311,7 +382,7 @@ private fun LyricsDelayPill(delayMs: Int, onChange: (Int) -> Unit, modifier: Mod
         modifier = modifier.hoverable(hover).graphicsLayer { this.alpha = alpha },
     ) {
         Row(Modifier.padding(horizontal = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = { onChange(stepLyricsDelay(delayMs, -1)) }) {
+            DelayStepButton(direction = -1, delayMs = delayMs, onChange = onChange) {
                 Icon(Icons.Outlined.Remove, "Lyrics earlier", tint = Color.White)
             }
             Surface(
@@ -328,11 +399,40 @@ private fun LyricsDelayPill(delayMs: Int, onChange: (Int) -> Unit, modifier: Mod
                     modifier = Modifier.widthIn(min = 56.dp).padding(horizontal = 8.dp, vertical = 8.dp),
                 )
             }
-            IconButton(onClick = { onChange(stepLyricsDelay(delayMs, 1)) }) {
+            DelayStepButton(direction = 1, delayMs = delayMs, onChange = onChange) {
                 Icon(Icons.Outlined.Add, "Lyrics later", tint = Color.White)
             }
         }
     }
+}
+
+/** Step button: a click nudges 100 ms; holding repeats, and speeds up to 500 ms steps after two seconds. */
+@Composable
+private fun DelayStepButton(direction: Int, delayMs: Int, onChange: (Int) -> Unit, content: @Composable () -> Unit) {
+    val source = remember { MutableInteractionSource() }
+    val pressed by source.collectIsPressedAsState()
+    val current by rememberUpdatedState(delayMs)
+    val change by rememberUpdatedState(onChange)
+    var repeated by remember { mutableStateOf(false) }
+    LaunchedEffect(pressed) {
+        if (!pressed) return@LaunchedEffect
+        repeated = false
+        kotlinx.coroutines.delay(450)
+        val heldSince = System.nanoTime()
+        while (true) {
+            repeated = true
+            val steps = if ((System.nanoTime() - heldSince) / 1_000_000 > 2_000) 5 else 1
+            change(stepLyricsDelay(current, direction * steps))
+            kotlinx.coroutines.delay(90)
+        }
+    }
+    IconButton(
+        onClick = {
+            // The click that ends a hold must not add one more step.
+            if (repeated) repeated = false else change(stepLyricsDelay(current, direction))
+        },
+        interactionSource = source,
+    ) { content() }
 }
 
 @Composable
@@ -365,6 +465,89 @@ private fun LyricsAlignControls(
             }
         },
     )
+}
+
+/** Text size for the lyrics, translation and romanization together; saved until changed again. */
+@Composable
+private fun LyricsSizeControl(prefs: DesktopPrefs, version: Int) {
+    var open by remember { mutableStateOf(false) }
+    val default = remember { LyricsConfig().fontSizeSp }
+    val size = remember(version) { prefs.getFloat(PrefKeys.LyricsFontSize, default).coerceIn(16f, 56f) }
+    fun set(v: Float) = prefs.setFloat(PrefKeys.LyricsFontSize, v.coerceIn(16f, 56f))
+    Box {
+        Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.28f)) {
+            IconButton(onClick = { open = true }) {
+                Icon(Icons.Outlined.FormatSize, "Lyrics text size", tint = if (size != default) MaterialTheme.colorScheme.primary else Color.White)
+            }
+        }
+        if (open) {
+            Popup(alignment = Alignment.TopEnd, offset = IntOffset(0, 52), onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 8.dp, shadowElevation = 10.dp,
+                ) {
+                    Row(Modifier.padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { set(size - 2f) }, enabled = size > 16f) { Icon(Icons.Outlined.Remove, "Smaller") }
+                        Text("${size.toInt()} sp", style = MaterialTheme.typography.titleSmall, modifier = Modifier.widthIn(min = 52.dp), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                        IconButton(onClick = { set(size + 2f) }, enabled = size < 56f) { Icon(Icons.Outlined.Add, "Larger") }
+                        IconButton(onClick = { set(default) }, enabled = size != default) { Icon(Icons.Outlined.Restore, "Reset size") }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun LyricsTransformControl(prefs: DesktopPrefs, version: Int, problem: String?) {
+    var open by remember { mutableStateOf(false) }
+    val o = remember(version) { prefs.lyricsTransformOptions() }
+    Box {
+        Surface(shape = CircleShape, color = Color.Black.copy(alpha = 0.28f)) {
+            IconButton(onClick = { open = true }) {
+                Icon(
+                    Icons.Outlined.Translate, "Romanization and translation",
+                    tint = if (o.enabled) MaterialTheme.colorScheme.primary else Color.White,
+                )
+            }
+        }
+        if (open) {
+            Popup(alignment = Alignment.TopEnd, offset = IntOffset(0, 52), onDismissRequest = { open = false }, properties = PopupProperties(focusable = true)) {
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    tonalElevation = 8.dp, shadowElevation = 10.dp,
+                    modifier = Modifier.widthIn(min = 240.dp, max = 300.dp),
+                ) {
+                    androidx.compose.foundation.layout.Column(Modifier.padding(vertical = 8.dp, horizontal = 4.dp)) {
+                        fun flip(key: String, on: Boolean) {
+                            prefs.setBoolean(key, on)
+                            if (on) prefs.setBoolean(PrefKeys.LyricsShowTranslation, true)
+                        }
+                        TransformRow("Romanize (romaji, romaja…)", o.romanize) { flip(PrefKeys.LyricsRomanize, it) }
+                        TransformRow("Translate to ${TranslateLanguages.firstOrNull { it.first == o.targetLang }?.second ?: o.targetLang}", o.translate) { flip(PrefKeys.LyricsAutoTranslate, it) }
+                        if (problem != null) {
+                            Text(problem, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp))
+                        }
+                        Text(
+                            "Language, provider and Gemini key: Settings → Lyrics",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TransformRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        androidx.compose.material3.Switch(checked = checked, onCheckedChange = onChange)
+    }
 }
 
 @Composable
@@ -555,4 +738,187 @@ private fun alignIcon(align: LyricsTextAlign): ImageVector = when (align) {
     LyricsTextAlign.LEFT -> Icons.AutoMirrored.Outlined.FormatAlignLeft
     LyricsTextAlign.CENTER -> Icons.Outlined.FormatAlignCenter
     LyricsTextAlign.RIGHT -> Icons.AutoMirrored.Outlined.FormatAlignRight
+}
+
+@Composable
+private fun LyricsSceneControl(
+    current: LyricsScene,
+    dissolve: Float,
+    lingerSec: Float,
+    bounceAmp: Float,
+    onSelectScene: (LyricsScene) -> Unit,
+    onChangeLinger: (Float) -> Unit,
+    onChangeDissolve: (Float) -> Unit,
+    onChangeBounceAmp: (Float) -> Unit,
+) {
+    var menuOpen by remember { mutableStateOf(false) }
+
+    IdleCollapseCluster(
+        collapsedContent = { expand ->
+            IconButton(onClick = expand) {
+                Surface(
+                    shape = CircleShape,
+                    color = if (current != LyricsScene.NONE) Color.White.copy(alpha = 0.22f) else Color.Transparent,
+                ) {
+                    Box(Modifier.padding(6.dp), contentAlignment = Alignment.Center) {
+                        Icon(Icons.Outlined.AutoAwesome, "3D Scene Mode", tint = Color.White)
+                    }
+                }
+            }
+        },
+        expandedContent = { collapse ->
+            Box {
+                Row(
+                    Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Surface(
+                        onClick = { menuOpen = true },
+                        shape = RoundedCornerShape(999.dp),
+                        // No fill: the cluster pill around it already is the highlight.
+                        color = Color.Transparent,
+                    ) {
+                        Row(
+                            Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Icon(Icons.Outlined.AutoAwesome, null, tint = Color.White, modifier = Modifier.size(16.dp))
+                            Text(
+                                current.label,
+                                color = Color.White,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
+                    }
+                }
+
+                if (menuOpen) {
+                    Popup(
+                        alignment = Alignment.TopEnd,
+                        offset = androidx.compose.ui.unit.IntOffset(0, 48),
+                        onDismissRequest = {
+                            menuOpen = false
+                            collapse()
+                        },
+                        properties = PopupProperties(focusable = true),
+                    ) {
+                        Surface(
+                            shape = RoundedCornerShape(24.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            tonalElevation = 8.dp,
+                            shadowElevation = 12.dp,
+                            modifier = Modifier.width(340.dp),
+                        ) {
+                            androidx.compose.foundation.layout.Column(
+                                Modifier.padding(16.dp),
+                                verticalArrangement = Arrangement.spacedBy(14.dp),
+                            ) {
+                                Text(
+                                    "Lyric style",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                // One tile per style, with its icon; the chosen one is filled.
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    LyricsScene.entries.forEach { scene ->
+                                        val selected = scene == current
+                                        Surface(
+                                            onClick = {
+                                                onSelectScene(scene)
+                                                if (scene == LyricsScene.NONE) {
+                                                    menuOpen = false
+                                                    collapse()
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(16.dp),
+                                            color = if (selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                            contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.weight(1f),
+                                        ) {
+                                            androidx.compose.foundation.layout.Column(
+                                                Modifier.fillMaxWidth().padding(vertical = 12.dp),
+                                                horizontalAlignment = Alignment.CenterHorizontally,
+                                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                                            ) {
+                                                Icon(sceneIcon(scene), null, modifier = Modifier.size(24.dp))
+                                                Text(
+                                                    scene.label,
+                                                    style = MaterialTheme.typography.labelLarge,
+                                                    fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                if (current != LyricsScene.NONE) {
+                                    androidx.compose.material3.HorizontalDivider(
+                                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                                    )
+                                    if (current == LyricsScene.ROW) {
+                                        SceneStepper(
+                                            icon = Icons.Outlined.BlurOn, label = "Fade distance",
+                                            value = "${(dissolve * 100).toInt()}%",
+                                            onMinus = { onChangeDissolve((dissolve - 0.05f).coerceIn(0.55f, 0.95f)) },
+                                            onPlus = { onChangeDissolve((dissolve + 0.05f).coerceIn(0.55f, 0.95f)) },
+                                        )
+                                        SceneStepper(
+                                            icon = Icons.Outlined.HourglassEmpty, label = "Linger time",
+                                            value = "${((lingerSec * 10).toInt()) / 10f} s",
+                                            onMinus = { onChangeLinger((lingerSec - 0.5f).coerceIn(0.5f, 8f)) },
+                                            onPlus = { onChangeLinger((lingerSec + 0.5f).coerceIn(0.5f, 8f)) },
+                                        )
+                                    }
+                                    SceneStepper(
+                                        icon = Icons.Outlined.Vibration, label = "Inertial bounce",
+                                        value = if (bounceAmp <= 0f) "Off" else "${(bounceAmp * 100).toInt()}%",
+                                        onMinus = { onChangeBounceAmp((bounceAmp - 0.20f).coerceIn(0f, 2.5f)) },
+                                        onPlus = { onChangeBounceAmp((bounceAmp + 0.20f).coerceIn(0f, 2.5f)) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    )
+}
+
+
+private fun sceneIcon(scene: LyricsScene): ImageVector = when (scene) {
+    LyricsScene.NONE -> Icons.AutoMirrored.Outlined.FormatListBulleted
+    LyricsScene.ROW -> Icons.Outlined.ViewInAr
+    LyricsScene.CUTS -> Icons.Outlined.ContentCut
+}
+
+/** One tunable value: icon and label on the left, a pill with − value + on the right. */
+@Composable
+private fun SceneStepper(icon: ImageVector, label: String, value: String, onMinus: () -> Unit, onPlus: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        Surface(shape = RoundedCornerShape(999.dp), color = MaterialTheme.colorScheme.surfaceContainerHighest) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onMinus, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Outlined.Remove, "Less", modifier = Modifier.size(16.dp))
+                }
+                Text(
+                    value,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                    modifier = Modifier.widthIn(min = 44.dp),
+                )
+                IconButton(onClick = onPlus, modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Outlined.Add, "More", modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+    }
 }

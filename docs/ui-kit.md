@@ -1,6 +1,7 @@
 # UI kit
 
 Everything reusable about how the app looks and moves. Change things **here**, not at call sites.
+The overall rulebook (type roles, colour, shape, spacing, every component) is [design-system.md](design-system.md).
 
 ## Motion — `ui/motion/VisageMotion.kt`
 One object holds every animation spec; nothing in the UI should call `spring(...)`/`tween(...)` directly.

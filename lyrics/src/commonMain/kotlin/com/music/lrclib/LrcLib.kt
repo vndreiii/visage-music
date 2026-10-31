@@ -3,6 +3,7 @@ package com.music.lrclib
 import com.music.lrclib.models.Track
 import com.music.lrclib.models.bestMatchingFor
 import com.music.lrclib.models.bestMatchingForRelaxed
+import com.music.lrclib.models.plausibleFor
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.engine.cio.CIO
@@ -102,6 +103,17 @@ object LrcLib {
         ).filter { it.syncedLyrics != null || it.plainLyrics != null }
         
         if (results.isNotEmpty()) return results
+
+        // Strategy 1b: the album tag is often a compilation / single name LRCLIB doesn't have;
+        // retry on title + artist before dropping the artist (which finds namesake songs).
+        if (album != null) {
+            results = queryLyricsWithParams(
+                trackName = cleanedTitle,
+                artistName = cleanedArtist
+            ).filter { it.syncedLyrics != null || it.plainLyrics != null }
+
+            if (results.isNotEmpty()) return results
+        }
         
         // Strategy 2: Search with cleaned title only (artist might be different)
         results = queryLyricsWithParams(
@@ -153,7 +165,7 @@ object LrcLib {
             }
             else -> {
                 // Try with relaxed duration matching (±5 seconds instead of ±2)
-                tracks.bestMatchingForRelaxed(duration)?.let { track ->
+                tracks.plausibleFor(cleanedTitle, cleanedArtist).bestMatchingForRelaxed(duration)?.let { track ->
                     track.syncedLyrics ?: track.plainLyrics
                 }?.let(LrcLib::Lyrics)
             }

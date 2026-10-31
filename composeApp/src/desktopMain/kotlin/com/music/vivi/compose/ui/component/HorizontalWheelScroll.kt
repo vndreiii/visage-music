@@ -111,6 +111,10 @@ fun Modifier.horizontalWheelScroll(
                     while (true) {
                         val event = awaitPointerEvent(PointerEventPass.Initial)
                         val change = event.changes.firstOrNull { it.id == pointerId } ?: break
+                        // A carried song (or a press that is being held to pick one up) must never pan the shelf.
+                        if (!dragging && (com.music.vivi.compose.ui.dnd.TrackDrag.card != null ||
+                                com.music.vivi.compose.ui.dnd.TrackDrag.holdWinsAt(change.uptimeMillis))) break
+                        if (dragging && com.music.vivi.compose.ui.dnd.TrackDrag.card != null) break
                         tracker.addPosition(change.uptimeMillis, change.position)
                         if (!change.pressed) {
                             if (dragging) {

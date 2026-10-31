@@ -17,7 +17,7 @@ class FullscreenSettingsTest {
         val s = FullscreenSettings.resolve(MapPrefs(mutableMapOf(PrefKeys.PlayerBackgroundStyle to "BLUR")))
         assertEquals(PlayerBackgroundStyle.BLUR, s.backgroundStyle)
         assertTrue(s.canvasEnabled)
-        assertEquals(FullscreenLayout.COVER_LEFT, s.layout)
+        assertEquals(FullscreenCoverSide.LEFT, s.coverSide)
     }
 
     @Test
@@ -27,12 +27,12 @@ class FullscreenSettingsTest {
             PrefKeys.EnableCanvas to "true",
             FullscreenKeys.Background to "WAVE",
             FullscreenKeys.CanvasMode to "OFF",
-            FullscreenKeys.Layout to "nonsense",
+            FullscreenKeys.CoverSide to "nonsense",
         ))
         val s = FullscreenSettings.resolve(p)
         assertEquals(PlayerBackgroundStyle.WAVE, s.backgroundStyle)
         assertFalse(s.canvasEnabled)
-        assertEquals(FullscreenLayout.COVER_LEFT, s.layout)
+        assertEquals(FullscreenCoverSide.LEFT, s.coverSide)
         p.m[FullscreenKeys.Background] = "garbage"
         assertEquals(PlayerBackgroundStyle.BLUR, FullscreenSettings.resolve(p).backgroundStyle)
     }

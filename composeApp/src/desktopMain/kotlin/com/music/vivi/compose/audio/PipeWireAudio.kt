@@ -9,6 +9,8 @@ data class AudioOutputDevice(
     val state: String,
     val iconName: String?,
     val isDefault: Boolean,
+    /** The device's own format as the sound server reports it, e.g. "s32le 2ch 48000Hz". */
+    val sampleSpec: String? = null,
 )
 
 /**
@@ -39,6 +41,8 @@ object PipeWireAudio {
         return out
     }
 
+    internal fun parseSinksPublic(raw: String, defaultName: String) = parseSinks(raw, defaultName)
+
     private fun parseSinks(raw: String, defaultName: String): List<AudioOutputDevice> {
         val blocks = raw.split(Regex("(?=Sink #)"))
             .map { it.trim() }
@@ -57,6 +61,7 @@ object PipeWireAudio {
                 state = state,
                 iconName = icon,
                 isDefault = name == defaultName,
+                sampleSpec = block.lineValue("Sample Specification:"),
             )
         }
     }

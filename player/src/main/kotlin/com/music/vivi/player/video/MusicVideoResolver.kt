@@ -1,6 +1,7 @@
 package com.music.vivi.player.video
 
 import com.music.innertube.YouTube
+import com.music.innertube.models.SongItem
 import com.music.innertube.models.WatchEndpoint
 import com.music.innertube.pages.MusicVideoTypes
 import kotlinx.coroutines.Dispatchers
@@ -21,6 +22,31 @@ object MusicVideoResolver {
         val next = YouTube.next(WatchEndpoint(videoId = trackId)).getOrNull() ?: return@withContext null
         val item = next.items.firstOrNull { it.id == trackId } ?: next.items.firstOrNull() ?: return@withContext null
         MusicVideoTypes.videoIdFor(trackId, item.musicVideoType, item.counterpartVideoId)
+            ?: searchOfficialVideo(item)
+    }
+
+    /**
+     * Many tracks are audio-only "art tracks" that YouTube Music does not link to their official video (new releases
+     * especially). Search for it by title and artist and accept only an official video that matches closely.
+     */
+    private suspend fun searchOfficialVideo(track: SongItem): String? {
+        if (track.musicVideoType != MusicVideoTypes.ATV) return null
+        val artist = track.artists.firstOrNull()?.name ?: return null
+        val hits = YouTube.search("$artist ${track.title}", YouTube.SearchFilter.FILTER_VIDEO)
+            .getOrNull()?.items?.filterIsInstance<SongItem>().orEmpty()
+        return pickOfficialVideo(track, hits)?.id
+    }
+
+    internal fun pickOfficialVideo(track: SongItem, hits: List<SongItem>): SongItem? {
+        fun norm(s: String) = s.lowercase().filter { it.isLetterOrDigit() }
+        val wantTitle = norm(track.title)
+        val wantArtists = track.artists.map { norm(it.name) }.filter { it.isNotEmpty() }
+        return hits
+            .filter { it.musicVideoType == MusicVideoTypes.OMV }
+            .filter { v -> norm(v.title) == wantTitle && v.artists.any { a -> norm(a.name) in wantArtists } }
+            // Official videos run a little longer or shorter than the audio; far off means a different cut or song.
+            .filter { v -> track.duration == null || v.duration == null || kotlin.math.abs(v.duration!! - track.duration!!) <= 45 }
+            .minByOrNull { v -> if (track.duration == null || v.duration == null) 0 else kotlin.math.abs(v.duration!! - track.duration!!) }
     }
 
     /** Forgets resolved videos (memory pressure) and the proxy's downloaded chunks. */

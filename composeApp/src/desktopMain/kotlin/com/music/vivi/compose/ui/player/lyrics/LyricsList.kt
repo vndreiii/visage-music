@@ -77,6 +77,8 @@ internal fun LyricsList(
     onSeek: ((Long) -> Unit)?,
     modifier: Modifier = Modifier,
     sizeScale: Float = 1f,
+    /** Extra space under the Resume button, for controls floating at the bottom of the lyrics (the delay pill). */
+    bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val listState = rememberLazyListState()
     val density = LocalDensity.current
@@ -206,7 +208,7 @@ internal fun LyricsList(
             visible = !following && !plain,
             enter = fadeIn(spring(1f, 400f)) + scaleIn(spring(0.55f, 420f), initialScale = 0.6f) + slideInVertically(spring(0.7f, 400f)) { it / 2 },
             exit = fadeOut(spring(1f, 500f)) + scaleOut(spring(1f, 500f), targetScale = 0.7f) + slideOutVertically(spring(1f, 500f)) { it / 2 },
-            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = (18 * sizeScale).dp),
+            modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = (18 * sizeScale).dp + bottomInset),
         ) {
             Surface(
                 onClick = { following = true },

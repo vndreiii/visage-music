@@ -83,3 +83,11 @@ CLAUDE.md
 
 # Local dev launcher
 run-dev.sh
+
+# Working docs stay local; README screenshots stay tracked. (Files already tracked, e.g. architecture.md, keep being tracked.)
+docs/*
+!docs/screenshots/
+!docs/architecture.md
+!docs/design-system.md
+!docs/ui-kit.md
+!docs/dev-ui-states.md

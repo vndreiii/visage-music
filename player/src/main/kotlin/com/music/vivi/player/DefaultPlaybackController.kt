@@ -40,6 +40,11 @@ class DefaultPlaybackController(
     private val enableMpris: Boolean = true,
     private val engineFactory: ((MpvPlayer.State) -> Unit, (Double, Double) -> Unit, (String) -> Unit) -> PlaybackEngine =
         { state, position, error -> MpvPlayer(state, position, error) },
+    /**
+     * Called when a queue of local files runs out: returns more tracks to keep playing, skipping the ids
+     * in the argument. Empty (the default) leaves the queue to end.
+     */
+    private val fileQueueFiller: suspend (excludeIds: Set<String>) -> List<QueueTrack> = { emptyList() },
 ) : PlaybackController {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val playMutex = Mutex()
@@ -52,6 +57,7 @@ class DefaultPlaybackController(
     private val _durationMs = MutableStateFlow(0L)
     private val _isFavorite = MutableStateFlow(false)
     private val _lastError = MutableStateFlow<String?>(null)
+    private val _notice = MutableStateFlow<String?>(null)
     private val _queueTracks = MutableStateFlow<List<QueueTrack>>(emptyList())
     private val _queueIds = MutableStateFlow<List<String>>(emptyList())
     private val _queueIndex = MutableStateFlow(-1)
@@ -67,6 +73,10 @@ class DefaultPlaybackController(
     override val durationMs: StateFlow<Long> = _durationMs.asStateFlow()
     override val isFavorite: StateFlow<Boolean> = _isFavorite.asStateFlow()
     override val lastError: StateFlow<String?> = _lastError.asStateFlow()
+    override val notice: StateFlow<String?> = _notice.asStateFlow()
+    override fun clearNotice() {
+        _notice.value = null
+    }
     override val queueIds: StateFlow<List<String>> = _queueIds.asStateFlow()
     override val queueTracks: StateFlow<List<QueueTrack>> = _queueTracks.asStateFlow()
     override val queueIndex: StateFlow<Int> = _queueIndex.asStateFlow()
@@ -163,12 +173,10 @@ class DefaultPlaybackController(
         trace("mpv[$slot] state=$mpvState (ui=${_state.value}, pauseRequested=${pauseRequested.get()}, active=${activeSlot.get()})")
         // Incoming (idle) player must not drive UI / queue advance.
         if (slot != activeSlot.get()) {
-            if (mpvState == MpvPlayer.State.Error && dualOverlapActive.get()) {
-                val generation = loadGeneration.get()
-                scope.launch {
-                    if (generation == loadGeneration.get()) failPlayback(_lastError.value ?: "Incoming audio could not be played")
-                }
-            }
+            // An incoming (crossfade) player that errors is reported by loadAndPlay itself: its awaitReady throws, and it
+            // retries the other stream sources. Stopping here would bump the load generation and silently kill that
+            // retry, leaving the player idle after a single refused stream.
+            if (mpvState == MpvPlayer.State.Error && dualOverlapActive.get()) trace("incoming player errored; loadAndPlay will retry or report")
             return
         }
         when (mpvState) {
@@ -238,6 +246,10 @@ class DefaultPlaybackController(
             mpris?.updatePlaybackState(PlaybackState.Idle)
         }
         startPauseWatchdog()
+        // Any change to the likes (another heart, a drag onto Liked Songs, a library sync) re-reads the current heart.
+        favorites?.changes?.let { flow ->
+            scope.launch { flow.collect { _nowPlaying.value?.videoId?.let { refreshFavorite(it) } } }
+        }
     }
 
     /**
@@ -449,6 +461,27 @@ class DefaultPlaybackController(
         }
     }
 
+    override fun insertIntoQueue(track: QueueTrack, index: Int) {
+        if (track.videoId.isBlank()) return
+        scope.launch {
+            playMutex.withLock {
+                val tracks = _queueTracks.value.toMutableList()
+                val playingId = tracks.getOrNull(_queueIndex.value)?.videoId
+                if (tracks.isEmpty() || playingId == null) {
+                    setQueueLocked(listOf(track), 0)
+                    return@withLock
+                }
+                var at = index
+                val dupe = tracks.indexOfFirst { it.videoId == track.videoId && it.videoId != playingId }
+                if (dupe >= 0) { tracks.removeAt(dupe); if (dupe < at) at-- }
+                val cur = tracks.indexOfFirst { it.videoId == playingId }.coerceAtLeast(0)
+                tracks.add(at.coerceIn(cur + 1, tracks.size), track)
+                setQueueLocked(tracks, cur)
+            }
+            schedulePrefetchAfterCurrent()
+        }
+    }
+
     override fun moveQueueItem(from: Int, to: Int) {
         scope.launch {
             playMutex.withLock {
@@ -641,7 +674,7 @@ class DefaultPlaybackController(
             else -> {
                 val seed = q.getOrNull(i)
                 if (seed != null) {
-                    expandQueueFromRadioAwait(seed, replaceUpcoming = true)
+                    extendQueueAtEnd(seed)
                     val after = (desiredIndex.get().takeIf { it >= 0 } ?: _queueIndex.value) + 1
                     if (after < _queueIds.value.size) after else -1
                 } else -1
@@ -667,13 +700,14 @@ class DefaultPlaybackController(
 
     private fun applyOptimisticNowPlaying(track: QueueTrack, softUi: Boolean = false) {
         val cached = streams.get(track.videoId)?.nowPlaying
-        val np = cached ?: NowPlaying(
+        val np = cached?.let { if (it.albumId == null && track.albumId != null) it.copy(albumId = track.albumId, album = it.album ?: track.album) else it } ?: NowPlaying(
             videoId = track.videoId,
             title = track.title.ifBlank { "Loading…" },
             artist = track.artist,
             artworkUrl = track.artworkUrl,
             durationMs = track.durationMs,
             album = track.album,
+            albumId = track.albumId,
             localPath = track.localPath,
             lyricsPath = track.lyricsPath,
             embeddedLyrics = track.embeddedLyrics,
@@ -744,7 +778,7 @@ class DefaultPlaybackController(
             return
         }
         val seed = q.getOrNull(i) ?: return
-        expandQueueFromRadioAwait(seed, replaceUpcoming = true)
+        extendQueueAtEnd(seed)
         val nextIdx = (desiredIndex.get().takeIf { it >= 0 } ?: _queueIndex.value) + 1
         if (nextIdx < _queueIds.value.size) {
             requestIndex(nextIdx, haltPlayer = false)
@@ -807,6 +841,7 @@ class DefaultPlaybackController(
         videoId: String,
         generation: Int = loadGeneration.get(),
         dualCrossfade: Boolean = false,
+        refreshed: Boolean = false,
     ) {
         if (generation != loadGeneration.get()) return
         if (!dualCrossfade) {
@@ -814,7 +849,18 @@ class DefaultPlaybackController(
             mpris?.updatePlaybackState(PlaybackState.Loading)
         }
         try {
-            val queued = _queueTracks.value.firstOrNull { it.videoId == videoId }
+            val inQueue = _queueTracks.value.firstOrNull { it.videoId == videoId }
+            // A local/offline song queued by id only (e.g. from a "Jump back in" shelf) has no path yet: look the
+            // file up instead of asking YouTube about an id that is not a video.
+            val queued = if (inQueue?.localPath.isNullOrBlank() && (videoId.startsWith("local:") || videoId.startsWith("offline:"))) {
+                val file = withContext(Dispatchers.IO) { fileTrackResolver(videoId) }
+                if (file?.localPath.isNullOrBlank()) {
+                    failPlayback("This file is no longer in your library. Rescan its folder or download it again.")
+                    return
+                }
+                _queueTracks.value = _queueTracks.value.map { if (it.videoId == videoId) file!! else it }
+                file
+            } else inQueue
             val localPath = queued?.localPath
             if (!localPath.isNullOrBlank()) {
                 loadAndPlayLocal(
@@ -870,24 +916,52 @@ class DefaultPlaybackController(
                     generation = generation,
                     dualCrossfade = dualCrossfade,
                 )
-            } catch (t: Throwable) {
-                // A resolved URL can still be refused by the CDN (403 / expired). Try the
-                // next source once before giving up, instead of failing the whole track.
-                if (t is kotlinx.coroutines.CancellationException && t !is kotlinx.coroutines.TimeoutCancellationException) throw t
+            } catch (first: Throwable) {
+                // A resolved URL can still be refused by the CDN (403 / expired / an error page instead of audio).
+                // Work through the remaining sources one by one before giving up on the track.
+                if (first is kotlinx.coroutines.CancellationException && first !is kotlinx.coroutines.TimeoutCancellationException) throw first
                 if (generation != loadGeneration.get()) return
-                println("Stream ${resolved.source} failed for $videoId (${t.message}); trying another source")
-                val alternate = withContext(Dispatchers.IO) {
-                    StreamResolver.resolve(videoId, settings = streamSettings(), skipSources = setOf(resolved.source))
+                val tried = linkedSetOf(resolved.source)
+                var failure: Throwable = first
+                var played = false
+                for (attempt in 1..MAX_SOURCE_RETRIES) {
+                    println("Stream ${resolved.source} failed for $videoId (${failure.message}); trying another source")
+                    val alternate = try {
+                        withContext(Dispatchers.IO) {
+                            StreamResolver.resolve(videoId, settings = streamSettings(), skipSources = tried.toSet())
+                        }
+                    } catch (e: kotlinx.coroutines.CancellationException) {
+                        throw e
+                    } catch (e: Throwable) {
+                        failure = e // no source left to try
+                        break
+                    }
+                    if (generation != loadGeneration.get()) return
+                    resolved = alternate.copy(nowPlaying = mergeWithQueued(alternate.nowPlaying, queued))
+                    tried += resolved.source
+                    streams.onBecameCurrent(videoId, resolved)
+                    try {
+                        startDecodedPlayback(
+                            url = resolved.streamUrl,
+                            httpHeaders = resolved.httpHeaders,
+                            generation = generation,
+                            dualCrossfade = false,
+                        )
+                        played = true
+                        break
+                    } catch (t: Throwable) {
+                        if (t is kotlinx.coroutines.CancellationException && t !is kotlinx.coroutines.TimeoutCancellationException) throw t
+                        if (generation != loadGeneration.get()) return
+                        failure = t
+                    }
                 }
-                if (generation != loadGeneration.get()) return
-                resolved = alternate.copy(nowPlaying = mergeWithQueued(alternate.nowPlaying, queued))
-                streams.onBecameCurrent(videoId, resolved)
-                startDecodedPlayback(
-                    url = resolved.streamUrl,
-                    httpHeaders = resolved.httpHeaders,
-                    generation = generation,
-                    dualCrossfade = false,
-                )
+                if (!played) {
+                    throw SourcesFailedException(
+                        "Couldn't play this song: YouTube refused every stream (${tried.joinToString()}). Try again later or pick another song.",
+                        "${tried.size} sources failed (${tried.joinToString()}); last error: ${failure.message}",
+                        failure,
+                    )
+                }
             }
         } catch (t: kotlinx.coroutines.TimeoutCancellationException) {
             if (generation == loadGeneration.get()) failPlayback("Audio did not become ready. Try playing again.")
@@ -912,9 +986,16 @@ class DefaultPlaybackController(
                     c.message?.let { append(": ").append(it) }
                 }
             }
-            failPlayback(detail)
+            // The full chain of causes goes to the log only; the player never shows raw exception text.
             println("play failed: $detail")
             t.printStackTrace(System.out)
+            if (!refreshed) {
+                // One re-fetch of the stream, bypassing the cache, before giving up on this song.
+                streams.drop(videoId)
+                loadAndPlay(videoId, generation, dualCrossfade, refreshed = true)
+                return
+            }
+            skipUnplayable(generation)
         }
     }
 
@@ -942,6 +1023,7 @@ class DefaultPlaybackController(
             artworkUrl = art ?: track.artworkUrl,
             durationMs = track.durationMs,
             album = track.album,
+            albumId = track.albumId,
             localPath = path,
             lyricsPath = track.lyricsPath,
             embeddedLyrics = track.embeddedLyrics,
@@ -1051,6 +1133,15 @@ class DefaultPlaybackController(
         mpris?.updatePlaybackState(PlaybackState.Error)
     }
 
+    /** A song that will not load (after one re-fetch) is skipped instead of parking the player in an error state. */
+    private fun skipUnplayable(generation: Int) {
+        if (generation != loadGeneration.get()) return
+        _notice.value = "Couldn't load that song, skipped it"
+        val q = _queueIds.value
+        val i = desiredIndex.get().takeIf { it >= 0 } ?: _queueIndex.value
+        if (i + 1 < q.size || _repeatMode.value == RepeatMode.All) next() else stop()
+    }
+
     private class CancellationLike : RuntimeException()
 
     private fun schedulePrefetchAfterCurrent() {
@@ -1085,6 +1176,7 @@ class DefaultPlaybackController(
             artist = if (placeholderArtist) queued.artist.ifBlank { resolved.artist } else resolved.artist,
             artworkUrl = resolved.artworkUrl ?: queued.artworkUrl,
             album = resolved.album ?: queued.album,
+            albumId = resolved.albumId ?: queued.albumId,
             durationMs = resolved.durationMs.takeIf { it > 0 } ?: queued.durationMs,
         )
     }
@@ -1128,6 +1220,32 @@ class DefaultPlaybackController(
     private fun isFileTrack(id: String): Boolean =
         id.startsWith("local:") || id.startsWith("offline:") ||
             _queueTracks.value.any { it.videoId == id && it.localPath != null }
+
+    /** The queue ran out after [seedId]: a YouTube song continues with its radio, a local file with random local files. */
+    private suspend fun extendQueueAtEnd(seedId: String) {
+        if (seedId.startsWith("local:")) {
+            appendRandomFiles()
+            return
+        }
+        expandQueueFromRadioAwait(seedId, replaceUpcoming = true)
+    }
+
+    private suspend fun appendRandomFiles() {
+        val extra = runCatching {
+            withContext(Dispatchers.IO) { fileQueueFiller(_queueIds.value.toHashSet()) }
+        }.getOrDefault(emptyList())
+        if (extra.isEmpty()) return
+        playMutex.withLock {
+            val current = _queueTracks.value
+            val have = current.map { it.videoId }.toHashSet()
+            val merged = current + extra.filter { it.videoId !in have }.distinctBy { it.videoId }
+            if (merged.size == current.size) return@withLock
+            _queueTracks.value = merged
+            _queueIds.value = merged.map { it.videoId }
+            println("Queue ran out: added ${merged.size - current.size} random local tracks")
+        }
+        schedulePrefetchAfterCurrent()
+    }
 
     private suspend fun expandQueueFromRadioAwait(
         seedId: String,
@@ -1361,7 +1479,7 @@ class DefaultPlaybackController(
         }
         val seed = q.getOrNull(i) ?: return
         scope.launch {
-            expandQueueFromRadioAwait(seed, replaceUpcoming = true)
+            extendQueueAtEnd(seed)
             val nextIdx = (desiredIndex.get().takeIf { it >= 0 } ?: _queueIndex.value) + 1
             if (nextIdx < _queueIds.value.size) {
                 requestIndex(nextIdx, haltPlayer = _state.value != PlaybackState.Ended)
@@ -1451,15 +1569,18 @@ class DefaultPlaybackController(
 
     override suspend fun toggleFavorite() {
         val id = _nowPlaying.value?.videoId ?: return
-        val next = !_isFavorite.value
+        setLiked(id, !_isFavorite.value)
+    }
+
+    override suspend fun setLiked(videoId: String, like: Boolean) {
         withContext(Dispatchers.IO) {
-            if (!id.startsWith("local:")) YouTube.likeVideo(id.removePrefix("offline:"), next).getOrThrow()
-            favorites?.setLiked(id.removePrefix("offline:"), next)
+            if (!videoId.startsWith("local:")) YouTube.likeVideo(videoId.removePrefix("offline:"), like).getOrThrow()
+            favorites?.setLiked(videoId.removePrefix("offline:"), like)
         }
-        if (_nowPlaying.value?.videoId != id) return
-        _isFavorite.value = next
-        mpris?.updateFavorite(next)
-        mpris?.updateNowPlaying(_nowPlaying.value, artFileUrl, next)
+        if (_nowPlaying.value?.videoId != videoId) return
+        _isFavorite.value = like
+        mpris?.updateFavorite(like)
+        mpris?.updateNowPlaying(_nowPlaying.value, artFileUrl, like)
     }
 
     override fun release() {
@@ -1478,13 +1599,23 @@ class DefaultPlaybackController(
 
         private const val MAX_GET_QUEUE = 20
 
+        /** Other sources tried after the first one fails to play (Saavn, NewPipe, yt-dlp and the InnerTube clients are all candidates). */
+        private const val MAX_SOURCE_RETRIES = 4
+
         fun create(
             applyStoredSession: Boolean = true,
             favorites: FavoriteStore? = null,
             fadeSettings: () -> PlaybackFadeSettings = { PlaybackFadeSettings() },
             streamSettings: () -> com.music.vivi.player.stream.StreamSettings = { com.music.vivi.player.stream.StreamSettings() },
             fileTrackResolver: suspend (String) -> QueueTrack? = { null },
+            fileQueueFiller: suspend (excludeIds: Set<String>) -> List<QueueTrack> = { emptyList() },
         ): PlaybackController =
-            DefaultPlaybackController(applyStoredSession, favorites, fadeSettings, streamSettings, fileTrackResolver)
+            DefaultPlaybackController(
+                applyStoredSession, favorites, fadeSettings, streamSettings, fileTrackResolver,
+                fileQueueFiller = fileQueueFiller,
+            )
     }
 }
+
+/** Every stream source for a track was tried and refused; [message] is shown to the user, [logDetail] goes to the log. */
+private class SourcesFailedException(message: String, val logDetail: String, cause: Throwable?) : RuntimeException(message, cause)

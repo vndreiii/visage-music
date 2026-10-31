@@ -1,5 +1,11 @@
 package com.music.vivi.compose.ui.artist
 
+import kotlinx.coroutines.launch
+import androidx.compose.material.icons.outlined.Restore
+import androidx.compose.material.icons.outlined.Image
+import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.input.pointer.isSecondaryPressed
+import com.music.vivi.compose.ui.component.visageMarquee
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -120,10 +126,12 @@ fun ArtistImage(
     fallbackFontSize: Float = 0f,
     onResolved: (ArtistInfo?) -> Unit = {},
 ) {
-    val lookup by rememberArtistLookup(name, enabled = imageUrl == null)
+    val lookup by rememberArtistLookup(name, enabled = imageUrl == null && ArtistImageOverrides.file(name) == null)
     val info = lookup.info
     LaunchedEffect(info) { onResolved(info) }
-    val url = imageUrl ?: if (banner) info?.bannerUrl ?: info?.imageUrl else info?.imageUrl
+    // A picture the user chose beats anything fetched.
+    val chosen = ArtistImageOverrides.file(name)
+    val url: Any? = chosen ?: imageUrl ?: if (banner) info?.bannerUrl ?: info?.imageUrl else info?.imageUrl
     var decoded by remember(url) { mutableStateOf(false) }
     val alpha by animateFloatAsState(if (decoded) 1f else 0f, VisageMotion.fade(650), label = "artistImageFade")
     Box(modifier.shimmerOverlay(active = lookup.loading || (url != null && !decoded))) {
@@ -160,6 +168,7 @@ fun FadingImage(url: String?, modifier: Modifier = Modifier, blurDp: Int = 0, de
 /**
  * Library grid tile: full-bleed portrait, name on a scrim, lifts and zooms on hover, dips on press.
  */
+@OptIn(androidx.compose.ui.ExperimentalComposeUiApi::class)
 @Composable
 fun ArtistTile(
     name: String,
@@ -184,6 +193,8 @@ fun ArtistTile(
     val zoom by animateFloatAsState(if (hovered) 1.08f else 1f, VisageMotion.spatialSlow(), label = "artistTileZoom")
     val scrimAlpha by animateFloatAsState(if (hovered) 0.88f else 0.7f, VisageMotion.effectsDefault(), label = "artistTileScrim")
     val shape = RoundedCornerShape(24.dp)
+    var menu by remember { mutableStateOf(false) }
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
     Box(
         modifier
             .fillMaxWidth()
@@ -191,6 +202,9 @@ fun ArtistTile(
             .graphicsLayer { scaleX = scale; scaleY = scale }
             .shadow(lift.dp, shape, clip = false)
             .clip(shape)
+            .onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Press) {
+                if (it.buttons.isSecondaryPressed) menu = true
+            }
             .hoverable(source)
             .pointerHoverIcon(PointerIcon.Hand)
             .clickable(interactionSource = source, indication = null, onClick = onClick),
@@ -200,6 +214,31 @@ fun ArtistTile(
             imageUrl = imageUrl,
             modifier = Modifier.fillMaxSize().graphicsLayer { scaleX = zoom; scaleY = zoom },
         )
+        androidx.compose.material3.DropdownMenu(
+            expanded = menu,
+            onDismissRequest = { menu = false },
+            shape = RoundedCornerShape(20.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+        ) {
+            androidx.compose.material3.DropdownMenuItem(
+                text = { Text("Choose image…") },
+                leadingIcon = { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Outlined.Image, null) },
+                onClick = {
+                    menu = false
+                    scope.launch {
+                        com.music.vivi.compose.local.XdgPortalFolderPicker.pickImage("Choose image for $name")
+                            ?.let { ArtistImageOverrides.set(name, it) }
+                    }
+                },
+            )
+            if (ArtistImageOverrides.file(name) != null) {
+                androidx.compose.material3.DropdownMenuItem(
+                    text = { Text("Use the automatic image") },
+                    leadingIcon = { androidx.compose.material3.Icon(androidx.compose.material.icons.Icons.Outlined.Restore, null) },
+                    onClick = { menu = false; ArtistImageOverrides.clear(name) },
+                )
+            }
+        }
         Box(
             Modifier
                 .align(Alignment.BottomCenter)
@@ -223,7 +262,8 @@ fun ArtistTile(
                         color = Color.White.copy(alpha = 0.7f),
                         style = MaterialTheme.typography.labelSmall,
                         maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
+                        overflow = TextOverflow.Clip,
+                        modifier = Modifier.visageMarquee(),
                     )
                 }
             }
