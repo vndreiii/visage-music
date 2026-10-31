@@ -81,6 +81,7 @@ import com.music.vivi.compose.ui.library.LibraryScreen
 import com.music.vivi.compose.ui.player.NowPlayingFullscreenScreen
 import com.music.vivi.compose.ui.player.NowPlayingScreen
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.layout.onSizeChanged
 import com.music.vivi.compose.ui.glass.glassSource
 import com.music.vivi.compose.ui.player.queue.AnimatedQueueBottomTray
@@ -100,6 +101,7 @@ import com.music.vivi.core.session.SessionManager
 import org.koin.compose.koinInject
 
 @Composable
+@androidx.compose.ui.ExperimentalComposeUiApi
 fun FrameWindowScope.AppScaffold(
     windowState: WindowState,
     onClose: () -> Unit,
@@ -409,7 +411,22 @@ fun FrameWindowScope.AppScaffold(
                 // (Now Playing lays itself out; compact windows are unbounded.)
                 val pageCap = windowLayout.contentMaxWidth
                 val capPages = !onNowPlaying && pageCap.value.isFinite()
+                val wheelRedirect = remember { com.music.vivi.compose.ui.component.WheelRedirect() }
                 Box(Modifier.weight(1f).fillMaxSize().trackMainPane(), contentAlignment = Alignment.TopCenter) {
+                    if (capPages) {
+                        // The empty margins beside a capped page still scroll it with the wheel.
+                        Box(
+                            Modifier.fillMaxSize().onPointerEvent(androidx.compose.ui.input.pointer.PointerEventType.Scroll) { event ->
+                                val change = event.changes.firstOrNull() ?: return@onPointerEvent
+                                val sample = wheelRedirect.classifier.classify(change.scrollDelta.x, change.scrollDelta.y, System.nanoTime())
+                                    ?: return@onPointerEvent
+                                if (sample.axis == com.music.vivi.compose.ui.component.WheelAxis.Vertical &&
+                                    wheelRedirect.driver?.apply(sample) == true
+                                ) change.consume()
+                            },
+                        )
+                    }
+                    androidx.compose.runtime.CompositionLocalProvider(com.music.vivi.compose.ui.component.LocalWheelRedirect provides wheelRedirect) {
                     VisageNavHost(
                         navController = navController,
                         startDestination = com.music.vivi.nativelib.AppEnv.get("DEV_ROUTE") ?: if (sessionManager.isLoggedIn()) Routes.HOME else Routes.LIBRARY,
@@ -420,6 +437,7 @@ fun FrameWindowScope.AppScaffold(
                         modifier = (if (capPages) Modifier.fillMaxHeight().widthIn(max = pageCap).fillMaxWidth() else Modifier.fillMaxSize())
                             .nestedScroll(backdropNested).glassSource(glassState),
                     )
+                    }
                 }
             }
             }

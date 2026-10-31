@@ -77,7 +77,7 @@ fun MediaPageHeader(
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 // 3:1 banner, never shorter than the artwork itself so a big cover is not squeezed on a narrow window.
-                Box(Modifier.fillMaxWidth().height(maxOf(cardWidth / 3f, size))) {
+                Box(Modifier.fillMaxWidth().height(maxOf(minOf(cardWidth / 3f, 420.dp), size))) {
                     // The banner fades to transparent (not to an opaque colour), so whatever the page has behind it,
                     // including the tinted blur background, shows through with no visible edge.
                     Box(

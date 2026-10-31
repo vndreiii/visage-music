@@ -22,6 +22,7 @@ import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.expandHorizontally
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -226,15 +227,16 @@ private fun Toolbar(state: TagManagerState) {
                 modifier = Modifier.width(340.dp),
             )
         }
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Box(Modifier.weight(1f)) {
-                ChipsRow(
-                    chips = TagFilter.entries.map { it to if (it == TagFilter.All) "All  ${counts[it]}" else "${it.label}  ${counts[it]}" },
-                    currentValue = state.filter,
-                    onValueUpdate = { state.filter = it ?: TagFilter.All },
-                )
-            }
-            Row(Modifier.padding(end = 20.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        val tagCompact = com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth
+        val chipsRow: @Composable () -> Unit = {
+            ChipsRow(
+                chips = TagFilter.entries.map { it to if (it == TagFilter.All) "All  ${counts[it]}" else "${it.label}  ${counts[it]}" },
+                currentValue = state.filter,
+                onValueUpdate = { state.filter = it ?: TagFilter.All },
+            )
+        }
+        val actionsRow: @Composable () -> Unit = {
+            Row(Modifier.then(if (tagCompact) Modifier.padding(horizontal = 12.dp) else Modifier.padding(end = 20.dp)), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 val note = state.autoNote
                 AnimatedVisibility(note != null, enter = fadeIn(), exit = fadeOut()) {
                     Text(note.orEmpty(), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
@@ -261,6 +263,16 @@ private fun Toolbar(state: TagManagerState) {
                     )
                 }
             }
+        }
+        if (tagCompact) {
+            // Narrow: the actions sit on their own scrolling line under the filter chips.
+            Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                chipsRow()
+                Box(Modifier.fillMaxWidth().horizontalScroll(androidx.compose.foundation.rememberScrollState())) { actionsRow() }
+            }
+        } else Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(Modifier.weight(1f)) { chipsRow() }
+            actionsRow()
         }
     }
 }

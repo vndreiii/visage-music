@@ -52,7 +52,8 @@ internal object FullscreenLyricsLayout {
         }
         val desired = minOf(height, width * MaxCoverFraction) * scale
         val room = width - Gap - MinColumn
-        if (room < MinCover) {
+        // Too narrow for cover + column, or a portrait screen (tablet upright): stack them.
+        if (room < MinCover || height > width * 1.2f) {
             val cover = minOf(width, maxOf(MinStackedCover, height * StackedCoverFraction * scale))
             val col = minOf(width, MaxColumn)
             val colY = cover + StackedGap

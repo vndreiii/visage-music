@@ -209,7 +209,8 @@ private fun TourStep(index: Int, onBack: () -> Unit, onNext: () -> Unit, onSkip:
     var origin by remember { mutableStateOf(Offset.Zero) }
     var size by remember { mutableStateOf(IntSize.Zero) }
     val target = step.anchor?.let { TourAnchors.rects[it] }?.translate(-origin.x, -origin.y)
-    val cardWidthPx = with(density) { 360.dp.toPx() }
+    // 360dp, but never wider than the window minus its margins (phones).
+    val cardWidthPx = with(density) { 360.dp.toPx() }.let { w -> if (size.width > 0) minOf(w, size.width - with(density) { 32.dp.toPx() }) else w }
     val cardHeightPx = with(density) { 260.dp.toPx() }
     val gapPx = with(density) { 20.dp.toPx() }
     val padPx = with(density) { 8.dp.toPx() }
@@ -283,7 +284,7 @@ private fun TourStep(index: Int, onBack: () -> Unit, onNext: () -> Unit, onSkip:
         Surface(
             modifier = Modifier
                 .offset { IntOffset(x.roundToInt(), y.roundToInt()) }
-                .widthIn(max = 360.dp)
+                .widthIn(max = with(density) { cardWidthPx.toDp() })
                 .focusRequester(focus)
                 .focusable()
                 .onPreviewKeyEvent { e ->

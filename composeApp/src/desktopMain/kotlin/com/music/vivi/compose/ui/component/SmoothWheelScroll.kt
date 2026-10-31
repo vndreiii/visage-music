@@ -11,6 +11,7 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.PointerEventType
 import androidx.compose.ui.input.pointer.onPointerEvent
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -114,7 +115,13 @@ internal fun Modifier.wheelScroll(
     val driver = remember(state, notchPx, backdrop) {
         WheelDriver(state, scope, notchPx, backdrop?.let { b -> { d: Float -> b.y = (b.y + d).coerceAtLeast(0f) } })
     }
-    onPointerEvent(PointerEventType.Scroll, pass = pass) { event ->
+    // The biggest vertical scroller on screen is what the empty margins beside a width-capped page forward to.
+    val redirect = LocalWheelRedirect.current.takeIf { axis == WheelAxis.Vertical }
+    if (redirect != null) {
+        androidx.compose.runtime.DisposableEffect(driver) { onDispose { redirect.release(driver) } }
+    }
+    val sizeMod = if (redirect != null) Modifier.onSizeChanged { redirect.offer(driver, it.width.toLong() * it.height) } else Modifier
+    sizeMod.onPointerEvent(PointerEventType.Scroll, pass = pass) { event ->
         val change = event.changes.firstOrNull() ?: return@onPointerEvent
         val sample = classifier.classify(
             change.scrollDelta.x,
@@ -135,3 +142,22 @@ internal fun Modifier.wheelScroll(
  */
 fun Modifier.smoothWheelScroll(state: ScrollableState): Modifier =
     wheelScroll(state, WheelAxis.Vertical, PointerEventPass.Initial)
+
+
+/** Where wheel events over the empty margins of a width-capped page go: the largest vertical scroller registered. */
+internal class WheelRedirect {
+    private var area = 0L
+    internal var driver: WheelDriver? = null
+        private set
+    val classifier = WheelClassifier()
+
+    fun offer(d: WheelDriver, size: Long) {
+        if (size >= area || driver === d) { driver = d; area = size }
+    }
+
+    fun release(d: WheelDriver) {
+        if (driver === d) { driver = null; area = 0L }
+    }
+}
+
+internal val LocalWheelRedirect = androidx.compose.runtime.staticCompositionLocalOf<WheelRedirect?> { null }
