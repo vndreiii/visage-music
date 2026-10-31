@@ -488,6 +488,7 @@ private fun HomeScreenContent(navController: NavController, vm: HomeViewModel) {
                                 emphasized = true,
                             ) {
                                 HomeCategoryHeader(
+                                    lift = 8.dp,
                                     kind = HomeCategoryKind.Playlists,
                                     title = vm.accountInfo?.name ?: "You",
                                     strapline = "Your YouTube Music playlists",
@@ -748,6 +749,7 @@ private fun HomeSectionBlock(
 
     val sectionTitle: @Composable () -> Unit = {
         HomeCategoryHeader(
+            lift = if (framed) 8.dp else 0.dp,
             kind = kind,
             title = sectionData.title,
             strapline = sectionData.label,
@@ -852,13 +854,16 @@ private fun HomeSectionBlock(
                     else -> 260.dp
                 }
                 val cardW = if (halfWidth) 168.dp else 200.dp
+                val anyHeroCard = sectionData.items.any { it !is PlaylistItem && itemUsesLargeCard(it, sectionData) }
                 LazyRow(
                     state = rowState,
                     contentPadding = PaddingValues(horizontal = if (framed) 0.dp else if (halfWidth) 4.dp else 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(cardH + 8.dp)
+                        // Only real hero cards need the tall fixed row. A shelf of plain cards (e.g. "Albums for you")
+                        // sizes to its cards, otherwise the frame is left with a big empty gap under them.
+                        .then(if (anyHeroCard) Modifier.height(cardH + 8.dp) else Modifier)
                         .then(if (framed) Modifier.shelfRightFade() else Modifier)
                         .horizontalWheelScroll(rowState),
                 ) {
@@ -869,6 +874,9 @@ private fun HomeSectionBlock(
                                     item = item,
                                     onClick = { onYtItem(item, emptyList()) },
                                     modifier = Modifier.width(cardW),
+                                    insetHorizontal = if (framed) 0.dp else 6.dp,
+                                    insetVertical = if (framed) 0.dp else 4.dp,
+                                    subtitleLines = 1,
                                 )
                             }
                             itemUsesLargeCard(item, sectionData) -> {
@@ -891,7 +899,7 @@ private fun HomeSectionBlock(
                                     onClick = { onYtItem(item, emptyList()) },
                                     isActive = item.id == playingId,
                                     isPlaying = isPlaying,
-                                    modifier = Modifier.padding(top = 8.dp),
+                                    modifier = Modifier.padding(top = if (framed) 0.dp else 8.dp),
                                     insetHorizontal = if (framed) 0.dp else 6.dp,
                                     insetVertical = if (framed) 0.dp else 4.dp,
                                     subtitleLines = 1,
@@ -974,6 +982,8 @@ private fun HomeSectionBlock(
 
 @Composable
 private fun HomeCategoryHeader(
+    /** Inside a framed panel the row sits this much above centre (optical, for the frame inset); flat shelves use 0. */
+    lift: Dp = 0.dp,
     kind: HomeCategoryKind,
     title: String,
     strapline: String?,
@@ -990,7 +1000,9 @@ private fun HomeCategoryHeader(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(4.dp),
-        modifier = Modifier.fillMaxWidth(),
+        // Title, avatar and trailing buttons share one centre line; the whole row sits 8 dp above the row's middle so
+        // the glyphs are optically centred in the frame's top inset (the 48 dp buttons add slack below).
+        modifier = Modifier.fillMaxWidth().offset(y = -lift),
     ) {
         thumbnail?.invoke()
         val softStrap = strapline?.takeIf { it.isNotBlank() }?.asSoftSentenceCase()
@@ -1023,8 +1035,7 @@ private fun HomeCategoryHeader(
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Clip,
-                // Optical: the row is centred on its 48 dp trailing buttons, which leaves ~16 dp above the glyphs.
-                modifier = Modifier.offset(y = -16.dp).visageMarquee(),
+                modifier = Modifier.visageMarquee(),
             )
         }
         if (onClick != null) {
