@@ -60,3 +60,78 @@ object QualityStepDown {
     fun shouldStepDown(stallsAtMs: List<Long>, nowMs: Long): Boolean =
         stallsAtMs.count { nowMs - it in 0..WINDOW_MS } >= MIN_STALLS
 }
+
+/**
+ * Stall detection for the music video: frames stopping while the video should be playing. Buffering that follows a
+ * seek (the stream is fetched again from the new position) is not a stall, so nothing is counted until
+ * [seekGraceMs] has passed since the last seek. A stall is reported once, when it begins.
+ */
+class VideoStallDetector(
+    private val thresholdMs: Long = 1_000L,
+    private val seekGraceMs: Long = 10_000L,
+) {
+    private var lastFrameMs = 0L
+    private var lastSeekMs: Long? = null
+    private var stallOpen = false
+
+    /** A seek was issued at [nowMs]: the clock restarts and the current stall, if any, is over. */
+    fun noteSeek(nowMs: Long) {
+        lastSeekMs = nowMs
+        lastFrameMs = nowMs
+        stallOpen = false
+    }
+
+    /**
+     * One sample per sync tick. [framesChanged]: a new frame arrived since the previous sample. [expected]: the video
+     * should be showing motion now (playing, and a frame is on screen). Returns true when a stall begins on this sample.
+     */
+    fun observe(nowMs: Long, framesChanged: Boolean, expected: Boolean): Boolean {
+        if (framesChanged || !expected) {
+            lastFrameMs = nowMs
+            stallOpen = false
+            return false
+        }
+        if (stallOpen) return false
+        val seeking = lastSeekMs?.let { nowMs - it < seekGraceMs } ?: false
+        if (seeking || nowMs - lastFrameMs <= thresholdMs) return false
+        stallOpen = true
+        return true
+    }
+}
+
+/**
+ * Debounces the music video's seeks. Repeated skips move the audio clock several times a second; the video should
+ * jump once, to where the clock is after the last jump, once the clock has been still for [quietMs]. A jump is a
+ * change of more than [jumpSec] between two samples, which normal playback never makes.
+ */
+class VideoSeekCoalescer(
+    private val quietMs: Long = 250L,
+    private val jumpSec: Double = 1.5,
+) {
+    private var lastAudioSec: Double? = null
+    private var lastJumpMs = 0L
+    private var seekPending = false
+
+    /** True while a seek is waiting for the clock to settle. */
+    val pending: Boolean get() = seekPending
+
+    /** One sample of the audio clock at [nowMs]. */
+    fun observe(audioSec: Double, nowMs: Long) {
+        val last = lastAudioSec
+        lastAudioSec = audioSec
+        if (last != null && kotlin.math.abs(audioSec - last) > jumpSec) {
+            seekPending = true
+            lastJumpMs = nowMs
+        }
+    }
+
+    /**
+     * The clock position [audioSec] to seek the video to, once a pending seek has been quiet for [quietMs]; null
+     * otherwise. Taking the target clears the pending seek.
+     */
+    fun takeSettled(nowMs: Long, audioSec: Double): Double? {
+        if (!seekPending || nowMs - lastJumpMs < quietMs) return null
+        seekPending = false
+        return audioSec
+    }
+}

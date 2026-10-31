@@ -52,6 +52,8 @@ import com.music.vivi.player.video.QualityStepDown
 import com.music.vivi.player.video.ResolvedVideo
 import com.music.vivi.player.video.SyncAction
 import com.music.vivi.player.video.VideoQuality
+import com.music.vivi.player.video.VideoSeekCoalescer
+import com.music.vivi.player.video.VideoStallDetector
 import com.music.vivi.player.video.VideoSync
 import com.music.vivi.player.video.VisualChain
 import kotlinx.coroutines.delay
@@ -225,20 +227,35 @@ fun MusicVideoSurface(
         val r = renderer ?: return@LaunchedEffect
         val sink = shared?.sink ?: return@LaunchedEffect
         r.setHeld(false)
-        var lastSeekAt = 0L
         // VISAGE_VIDEO_DEBUG=1: print seeks, drift and frame rate to stderr to diagnose stutter.
         val debug = System.getenv("VISAGE_VIDEO_DEBUG") == "1"
+        val coalescer = VideoSeekCoalescer()
+        val stallDetector = VideoStallDetector()
+        // Stalls that began while a frame was showing, as wall-clock ms, for the quality step-down.
+        val stalls = ArrayDeque<Long>()
+        var lastSeekAt = 0L
         var seeks = 0
         var consecutiveSeeks = 0
         var lastFrames = sink.framesRendered
         var lastFrameAt = System.nanoTime()
-        // Stalls that began while a frame was showing, as wall-clock ms, for the quality step-down.
-        val stalls = ArrayDeque<Long>()
-        var stallOpen = false
         var statAt = System.nanoTime()
         var statFrames = sink.framesRendered
+
+        // Seeks the renderer. Drift corrections back off while the stream refills, since each one refetches it.
+        fun seekVideo(toSec: Double, now: Long, nowMs: Long, user: Boolean) {
+            lastSeekAt = now
+            seeks++
+            consecutiveSeeks = if (user) 0 else consecutiveSeeks + 1
+            sink.positionSec = null
+            // Buffering after a seek is not a stall: tell the detector where the seek happened.
+            stallDetector.noteSeek(nowMs)
+            stalls.clear()
+            r.seekTo(toSec)
+        }
+
         while (true) {
             val now = System.nanoTime()
+            val nowMs = System.currentTimeMillis()
             if (debug && now - statAt > 5_000_000_000L) {
                 val fps = (sink.framesRendered - statFrames) * 1e9 / (now - statAt)
                 val v = sink.positionSec
@@ -246,8 +263,10 @@ fun MusicVideoSurface(
                 System.err.println("MusicVideo[debug] ${video.height}p fps=${"%.1f".format(fps)} seeks=$seeks driftMs=$driftMs")
                 statAt = now; statFrames = sink.framesRendered; seeks = 0
             }
+            val audioSec = controller.positionMs.value / 1000.0
+            coalescer.observe(audioSec, nowMs)
             val decision = VideoSync.decide(
-                audioSec = controller.positionMs.value / 1000.0,
+                audioSec = audioSec,
                 videoSec = sink.positionSec,
                 audioPlaying = controller.state.value == PlaybackState.Playing,
                 durationSec = sink.durationSec,
@@ -255,30 +274,37 @@ fun MusicVideoSurface(
             r.setPaused(decision.videoPaused)
             val action = decision.action
             val frames = sink.framesRendered
-            if (frames != lastFrames) { lastFrames = frames; lastFrameAt = now; stallOpen = false }
+            val framesChanged = frames != lastFrames
+            if (framesChanged) { lastFrames = frames; lastFrameAt = now }
             val stalledNs = now - lastFrameAt
-            if (!stallOpen && sink.frame != null && !decision.videoPaused && stalledNs > 1_000_000_000L) {
-                stallOpen = true
-                stalls.addLast(System.currentTimeMillis())
+
+            if (stallDetector.observe(nowMs, framesChanged, expected = sink.frame != null && !decision.videoPaused)) {
+                stalls.addLast(nowMs)
             }
-            val nowMs = System.currentTimeMillis()
             while (stalls.isNotEmpty() && nowMs - stalls.first() > QualityStepDown.WINDOW_MS) stalls.removeFirst()
             // Repeated stalls: step the quality down one level. The re-resolved stream replaces this renderer.
             if (QualityStepDown.shouldStepDown(stalls, nowMs) && MusicVideoResolver.stepDown(video.videoId, video.height)) {
                 stalls.clear()
             }
-            // Seeking a stream that is still buffering restarts the download and makes the lag worse (stutter
-            // loop), so seek only while frames are flowing, and back off exponentially when seeks keep recurring.
+
             val cooldownNs = minOf(10_000_000_000L, 700_000_000L shl consecutiveSeeks.coerceAtMost(4))
+            // Seeking a stream that is still buffering restarts the download and makes the lag worse (stutter
+            // loop), so drift corrections wait for frames to flow again.
             val buffering = !decision.videoPaused && stalledNs > 1_000_000_000L && stalledNs < 8_000_000_000L
             if (action is SyncAction.None && now - lastSeekAt > 3_000_000_000L) consecutiveSeeks = 0
-            // After a seek the renderer reports stale positions until a new frame lands.
-            if (action is SyncAction.Seek && !buffering && now - lastSeekAt > cooldownNs) {
-                lastSeekAt = now
-                seeks++
-                consecutiveSeeks++
-                sink.positionSec = null
-                r.seekTo(action.toSec)
+            val settled = coalescer.takeSettled(nowMs, audioSec)
+            when {
+                // Skips in a row land as one seek, to where the clock is once the burst has settled.
+                settled != null -> seekVideo(settled, now, nowMs, user = true)
+                // Drift correction waits while a user seek is still settling.
+                coalescer.pending -> Unit
+                action is SyncAction.Seek && !buffering && now - lastSeekAt > cooldownNs ->
+                    seekVideo(action.toSec, now, nowMs, user = false)
+                // A seek the renderer never answered (no position since) is retried. Without this, a read that
+                // stalled after the seek leaves the sync loop with nothing to correct against: the picture stays frozen.
+                sink.positionSec == null && lastSeekAt != 0L && now - lastSeekAt > 4_000_000_000L &&
+                    now - lastSeekAt > cooldownNs ->
+                    seekVideo(audioSec, now, nowMs, user = false)
             }
             delay(200)
         }
