@@ -140,20 +140,20 @@ fun PopupPlayerHost(controller: PlaybackController, prefs: DesktopPrefs, icon: P
                     // gesture themselves (sliders, scrollers) keep it. Windows runs its own caption drag on the header.
                     val bodyDrag = if (HostOs.isWindows) Modifier else visageWindowDragModifier()
                     Box(Modifier.fillMaxSize().then(bodyDrag)) {
-                        Column(Modifier.fillMaxSize()) {
-                            PopupHeader(
-                                pinned = pinned,
-                                onTogglePin = {
-                                    pinned = !pinned
-                                    prefs.setBoolean(PopupPrefKeys.Pinned, pinned)
-                                },
-                                onClose = PopupPlayer::close,
-                            )
-                            PopupPlayerContent(
-                                Modifier.weight(1f),
-                                dragArea = if (HostOs.isLinux) { m, c -> VisageWindowDragArea(m, c) } else NoPopupDragArea,
-                            )
-                        }
+                        // Content owns the full window with one even inset on every side; the pin/close row floats
+                        // inside the top-right part of that inset instead of pushing the content down.
+                        PopupPlayerContent(
+                            Modifier.fillMaxSize(),
+                            dragArea = if (HostOs.isLinux) { m, c -> VisageWindowDragArea(m, c) } else NoPopupDragArea,
+                        )
+                        PopupHeader(
+                            pinned = pinned,
+                            onTogglePin = {
+                                pinned = !pinned
+                                prefs.setBoolean(PopupPrefKeys.Pinned, pinned)
+                            },
+                            onClose = PopupPlayer::close,
+                        )
                         ResizeEdges(window)
                     }
                 }
@@ -204,7 +204,7 @@ private fun FrameWindowScope.PopupWindowEffects(
 @Composable
 private fun FrameWindowScope.PopupHeader(pinned: Boolean, onTogglePin: () -> Unit, onClose: () -> Unit) {
     Row(
-        Modifier.fillMaxWidth().height(36.dp).padding(start = 4.dp, end = 2.dp),
+        Modifier.fillMaxWidth().height(28.dp).padding(top = 2.dp, end = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         // No visible handle: the empty header (and, off Windows, the whole popup body) is the drag area.
@@ -222,15 +222,15 @@ private fun FrameWindowScope.PopupHeader(pinned: Boolean, onTogglePin: () -> Uni
         } else {
             Box(dragModifier)
         }
-        IconButton(onClick = onTogglePin, modifier = Modifier.size(32.dp)) {
+        IconButton(onClick = onTogglePin, modifier = Modifier.size(24.dp)) {
             Icon(
                 if (pinned) Icons.Filled.PushPin else Icons.Outlined.PushPin,
                 if (pinned) "Unpin (stop keeping on top)" else "Keep on top",
-                Modifier.size(18.dp),
+                Modifier.size(16.dp),
             )
         }
-        IconButton(onClick = onClose, modifier = Modifier.size(32.dp)) {
-            Icon(Icons.Filled.Close, "Close mini player", Modifier.size(18.dp))
+        IconButton(onClick = onClose, modifier = Modifier.size(24.dp)) {
+            Icon(Icons.Filled.Close, "Close mini player", Modifier.size(16.dp))
         }
     }
 }

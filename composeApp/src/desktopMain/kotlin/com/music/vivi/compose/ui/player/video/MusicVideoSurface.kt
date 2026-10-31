@@ -308,7 +308,7 @@ fun MusicVideoSurface(
             enter = fadeIn(),
             exit = fadeOut(),
             // Tucked into the top-right corner, just inside the rounded clip.
-            modifier = Modifier.align(Alignment.TopEnd).padding(top = 10.dp, end = 10.dp),
+            modifier = Modifier.align(Alignment.TopEnd).padding(top = 4.dp, end = 10.dp),
         ) {
             VideoQualityChip(prefs, playingHeight = video.height, open = menuOpen, onOpenChange = { menuOpen = it })
         }

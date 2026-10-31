@@ -48,12 +48,11 @@ fun PopupPlayerLayout(
         val mode = PopupGeometry.modeFor(maxWidth.value, maxHeight.value)
         // Short windows drop the optional rows (album line, volume) so the art keeps some room.
         val compact = maxHeight.value < PopupGeometry.COMPACT_BELOW_H
+        val pad = if (compact) 20.dp else 28.dp
         when (mode) {
-            // The header bar is gone, so the top padding is a little larger than the bottom one to keep the cover
-            // optically centred between the rounded window corners.
+            // One even inset on all four sides (the pin/close row floats inside the top-right of it).
             PopupMode.Stack -> Column(
-                Modifier.fillMaxSize().testTag("popup-stack")
-                    .padding(start = 22.dp, end = 22.dp, top = if (compact) 18.dp else 24.dp, bottom = if (compact) 12.dp else 18.dp),
+                Modifier.fillMaxSize().testTag("popup-stack").padding(pad),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 dragArea(Modifier.weight(1f).fillMaxWidth()) {
@@ -71,8 +70,7 @@ fun PopupPlayerLayout(
             PopupMode.Landscape -> Row(Modifier.fillMaxSize().testTag("popup-landscape")) {
                 val leftW = PopupGeometry.landscapeLeftWidth(totalW.value).dp
                 Column(
-                    Modifier.width(leftW).fillMaxHeight()
-                        .padding(start = 18.dp, end = 14.dp, top = if (compact) 16.dp else 20.dp, bottom = if (compact) 10.dp else 16.dp),
+                    Modifier.width(leftW).fillMaxHeight().padding(pad),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     dragArea(Modifier.weight(1f).fillMaxWidth()) {
@@ -85,7 +83,12 @@ fun PopupPlayerLayout(
                     Spacer(Modifier.height(if (compact) 4.dp else 10.dp))
                     controls(compact)
                 }
-                Box(Modifier.weight(1f).fillMaxHeight().testTag("popup-lyrics")) { lyrics() }
+                // Same inset as the player column, so the lyrics toolbar (4dp top / 8dp end inside the panel)
+                // lands exactly `pad` from the top and right edges.
+                Box(
+                    Modifier.weight(1f).fillMaxHeight().testTag("popup-lyrics")
+                        .padding(top = pad - 4.dp, end = pad - 8.dp, bottom = pad),
+                ) { lyrics() }
             }
         }
     }

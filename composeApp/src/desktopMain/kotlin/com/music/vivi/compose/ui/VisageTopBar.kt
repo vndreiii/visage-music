@@ -64,7 +64,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.loadImageBitmap
 import androidx.compose.ui.res.useResource
 import androidx.compose.ui.semantics.Role
@@ -147,9 +149,10 @@ fun FrameWindowScope.VisageTopBar(
                 )
                 // Compact: [menu | logo | title (shrinks)] ... [actions + caption buttons] as one row, so the title can
                 // never run under the controls. Desktop: the original three-zone box layout.
+                val edgeInset = 8.dp
                 val leftZone: @Composable (Modifier) -> Unit = { zoneMod ->
                     Row(
-                        modifier = zoneMod.fillMaxHeight().padding(start = if (compact) 6.dp else 14.dp),
+                        modifier = zoneMod.fillMaxHeight().padding(start = if (compact) edgeInset else 14.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         if (compact && navDestinations.isNotEmpty()) {
@@ -158,15 +161,12 @@ fun FrameWindowScope.VisageTopBar(
                                 description = if (navMenuOpen) "Close menu" else "Menu",
                                 iconSize = 27.dp,
                             ) { onNavMenuToggle() }
-                            Spacer(Modifier.width(if (layout.isMobile) 12.dp else 8.dp))
+                        } else if (!compact) {
+                            TopBarBrand(
+                                title = currentLabel,
+                                onLogoClick = { onNavigate(Routes.HOME) },
+                            )
                         }
-                        TopBarBrand(
-                            title = currentLabel,
-                            onLogoClick = { onNavigate(Routes.HOME) },
-                            modifier = if (compact) Modifier.weight(1f, fill = false) else Modifier,
-                            showLogo = !layout.isMobile,
-                            compact = layout.isMobile,
-                        )
                     }
                 }
 
@@ -186,7 +186,7 @@ fun FrameWindowScope.VisageTopBar(
                 Row(
                     modifier = zoneMod
                         .fillMaxHeight()
-                        .padding(end = if (layout.isMobile) 4.dp else 10.dp),
+                        .padding(end = if (compact) edgeInset else 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
@@ -229,10 +229,20 @@ fun FrameWindowScope.VisageTopBar(
                 }
                 }
                 if (compact) {
-                    Row(Modifier.fillMaxSize(), verticalAlignment = Alignment.CenterVertically) {
-                        leftZone(Modifier.weight(1f))
-                        rightZone(Modifier)
+                    // Menu button and caption buttons sit on the same inset from their edges; the brand is centred
+                    // in the bar, between rails as wide as the wider side so it can never run under either.
+                    var railPx by remember { mutableStateOf(0) }
+                    val rail = with(androidx.compose.ui.platform.LocalDensity.current) { railPx.toDp() }
+                    Box(Modifier.fillMaxSize().padding(horizontal = rail), contentAlignment = Alignment.Center) {
+                        TopBarBrand(
+                            title = currentLabel,
+                            onLogoClick = { onNavigate(Routes.HOME) },
+                            modifier = Modifier.clip(RoundedCornerShape(12.dp)),
+                            compact = layout.isMobile,
+                        )
                     }
+                    leftZone(Modifier.align(Alignment.CenterStart).onSizeChanged { railPx = maxOf(railPx, it.width) })
+                    rightZone(Modifier.align(Alignment.CenterEnd).onSizeChanged { railPx = maxOf(railPx, it.width) })
                 } else {
                     leftZone(Modifier.align(Alignment.CenterStart))
                     rightZone(Modifier.align(Alignment.CenterEnd))
@@ -463,8 +473,9 @@ private fun navSelected(route: String, currentRoute: String?) = when (route) {
 }
 
 /**
- * Compact navigation tray: slides down from directly under the top bar, full width, over a scrim that dismisses it.
- * Draw it in a window-sized Box; it leaves the top [TopBarHeight] free so the menu button underneath still toggles it.
+ * Compact navigation tray: unfolds from directly under the top bar (masked by it, so it grows out of the bar instead of
+ * sliding over it), full width, in frosted glass like the queue tray, over a scrim that dismisses it. Draw it in a
+ * window-sized Box; it leaves the top [TopBarHeight] free so the menu button underneath still toggles it.
  */
 @Composable
 fun NavTray(
@@ -476,32 +487,43 @@ fun NavTray(
     modifier: Modifier = Modifier,
 ) {
     val items = destinations.filter { it.route != Routes.SMOKE }
-    Box(modifier.fillMaxSize().padding(top = TopBarHeight)) {
+    val trayShape = RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
+    // The clip is the mask: everything the tray does stays below the bar's bottom edge.
+    Box(modifier.fillMaxSize().padding(top = TopBarHeight).clipToBounds()) {
         androidx.compose.animation.AnimatedVisibility(
             visible = open,
-            enter = androidx.compose.animation.fadeIn(),
-            exit = androidx.compose.animation.fadeOut(),
+            enter = androidx.compose.animation.fadeIn(com.music.vivi.compose.ui.motion.VisageMotion.effectsDefault()),
+            exit = androidx.compose.animation.fadeOut(com.music.vivi.compose.ui.motion.VisageMotion.effectsDefault()),
             modifier = Modifier.fillMaxSize(),
         ) {
             Box(
-                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.45f))
+                Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.4f))
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = onDismiss),
             )
         }
         androidx.compose.animation.AnimatedVisibility(
             visible = open,
-            enter = androidx.compose.animation.slideInVertically { -it } + androidx.compose.animation.fadeIn(),
-            exit = androidx.compose.animation.slideOutVertically { -it } + androidx.compose.animation.fadeOut(),
+            enter = androidx.compose.animation.expandVertically(
+                animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
+                expandFrom = Alignment.Top,
+            ) + androidx.compose.animation.fadeIn(com.music.vivi.compose.ui.motion.VisageMotion.effectsDefault()),
+            exit = androidx.compose.animation.shrinkVertically(
+                animationSpec = com.music.vivi.compose.ui.motion.VisageMotion.settle(),
+                shrinkTowards = Alignment.Top,
+            ) + androidx.compose.animation.fadeOut(com.music.vivi.compose.ui.motion.VisageMotion.effectsDefault()),
             modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth(),
         ) {
-            Surface(
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                shape = RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
-                shadowElevation = 8.dp,
+            com.music.vivi.compose.ui.glass.GlassSurface(
+                shape = trayShape,
+                fallbackColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                tint = com.music.vivi.compose.ui.glass.panelGlassTint(0.5f),
                 modifier = Modifier.fillMaxWidth()
                     .clickable(indication = null, interactionSource = remember { MutableInteractionSource() }, onClick = {}),
             ) {
-                Column(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column(
+                    Modifier.padding(start = 12.dp, end = 12.dp, top = 8.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     items.forEach { dest ->
                         val sel = navSelected(dest.route, currentRoute)
                         val fg = if (sel) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurface
@@ -512,15 +534,15 @@ fun NavTray(
                                 .padding(horizontal = 16.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(
-                                destIcon(dest.route, sel), contentDescription = null,
-                                tint = if (sel) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Spacer(Modifier.width(16.dp))
-                            Text(
-                                dest.label, color = fg, style = MaterialTheme.typography.titleMedium,
-                                fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
-                            )
+                            Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                                Icon(
+                                    destIcon(dest.route, sel), contentDescription = null,
+                                    modifier = Modifier.size(22.dp),
+                                    tint = if (sel) MaterialTheme.colorScheme.onSecondaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Spacer(Modifier.width(18.dp))
+                            Text(dest.label, color = fg, style = com.music.vivi.compose.theme.VisageType.cardTitle)
                         }
                     }
                 }
