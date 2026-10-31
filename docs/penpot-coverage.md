@@ -32,8 +32,9 @@ indicator = morph cycle illustration, `Recent ▾` icon).
 | Screen | Breakpoint / state | Status |
 |--------|--------------------|--------|
 | HomeScreen | Desktop 1920x1080 default, queue + library docked | **done, measured against capture (layout, panel rects, rows, shelves, mini player)** |
-| HomeScreen | 1366, Mobile 390, Tablet 800, Large, UltraWide, light, blur-off, loading/empty/error, tray/queue/library overlays | missing (captures for 390/800/1366/2560/3440 were scheduled; frames not built) |
-| Settings hub | 1920 | **removed**: first attempt was not 1:1; real capture exists |
+| HomeScreen | 1366, Mobile 390, Tablet 800, Large 2560, UltraWide 3440 (default, dark) | **done, measured from Xvfb captures** (responsive rules: quick-picks columns, top-bar variants, UltraWide width cap) |
+| HomeScreen | light, blur-off, loading, error/login, tray/queue/library overlays | missing (captures taken, frames not built) |
+| Settings hub | Desktop 1920x1080 default (queue docked) | **done, compared against capture** (rows, chevrons, account card, search, mini-player) |
 | Settings sub-pages (Theme, Interface, Now Playing, Playback, Downloads, Account, Lyrics, Song swappings, Fullscreen player, Local files, Diagnostics, Keyboard shortcuts, Sidebars) | all | missing (row lists extracted into `tools/penpot/settings-grouped.json`, grouping heuristic) |
 | Now Playing (idle/lyrics/video/queue/stacked/ultrawide), Fullscreen player | all | missing |
 | Library (+ sidebar hidden items), Search, Album, Artist, Playlist, Charts, Moods, New releases, History, Browse, Tag Manager | all | missing |
