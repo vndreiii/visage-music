@@ -1,13 +1,18 @@
 package com.music.vivi.compose.ui
 
-import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.window.WindowDraggableArea
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.WindowScope
 import com.sun.jna.Library
 import com.sun.jna.Memory
@@ -55,29 +60,51 @@ fun WindowScope.visageWindowDragModifier(): Modifier {
     return Modifier.visageWindowDrag(window)
 }
 
+/**
+ * The drag gesture. It deliberately does NOT use `detectDragGestures`: since Compose 1.7 a mouse has a ~0.1 dp touch
+ * slop, so a click that moves one pixel between press and release was taken as a drag by this (parent) area, which
+ * consumed the pointer and cancelled the child's click: the nav chip showed its ripple and then did nothing.
+ * Here nothing is consumed until the pointer has travelled [DragSlop], and a press a child already consumed (sliders,
+ * buttons) is left alone.
+ */
 private fun Modifier.visageWindowDrag(win: Window): Modifier = composed {
     val state = remember(win) { DragState() }
     Modifier.pointerInput(win) {
-        detectDragGestures(
-            onDragStart = {
-                state.nativeActive = WindowMover.begin(win)
-                if (!state.nativeActive) {
-                    state.startPointer = pointerOnScreen()
-                    state.startWindow = win.location
+        val slop = DragSlop.toPx()
+        awaitEachGesture {
+            val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Main)
+            if (down.isConsumed) return@awaitEachGesture
+            var travelled = Offset.Zero
+            var dragging = false
+            while (true) {
+                val event = awaitPointerEvent(PointerEventPass.Main)
+                val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                if (!change.pressed) break
+                if (!dragging) {
+                    if (change.isConsumed) break
+                    travelled += change.positionChange()
+                    if (travelled.getDistance() < slop) continue
+                    dragging = true
+                    state.nativeActive = WindowMover.begin(win)
+                    if (!state.nativeActive) {
+                        state.startPointer = pointerOnScreen()
+                        state.startWindow = win.location
+                    }
                 }
-            },
-            onDragEnd = { state.nativeActive = false },
-            onDragCancel = { state.nativeActive = false },
-        ) { change, _ ->
-            change.consume()
-            if (state.nativeActive) return@detectDragGestures
-            val p = pointerOnScreen() ?: return@detectDragGestures
-            val sp = state.startPointer ?: return@detectDragGestures
-            val sw = state.startWindow ?: return@detectDragGestures
-            win.setLocation(sw.x + (p.x - sp.x), sw.y + (p.y - sp.y))
+                change.consume()
+                if (state.nativeActive) continue
+                val p = pointerOnScreen() ?: continue
+                val sp = state.startPointer ?: continue
+                val sw = state.startWindow ?: continue
+                win.setLocation(sw.x + (p.x - sp.x), sw.y + (p.y - sp.y))
+            }
+            state.nativeActive = false
         }
     }
 }
+
+/** How far the pointer must move before a press on the drag area becomes a window drag instead of a click. */
+private val DragSlop = 6.dp
 
 private class DragState {
     var nativeActive = false
