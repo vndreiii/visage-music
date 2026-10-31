@@ -24,4 +24,14 @@ export MALLOC_ARENA_MAX="${MALLOC_ARENA_MAX:-2}"
 export MALLOC_TRIM_THRESHOLD_="${MALLOC_TRIM_THRESHOLD_:-262144}"
 # Keep the game frame-generation Vulkan layer out of libmpv/Chromium probing.
 export DISABLE_LSFGVK=1
+# Native Wayland is OPT-IN (VISAGE_WAYLAND=1, experimental): the bundled JetBrains Runtime has WLToolkit, but Skiko (the Compose
+# renderer, 0.9.x through 0.156) can only draw into an X11 JAWT surface, so a WLToolkit window fails with "Can't lock
+# DrawingSurface". Default stays X11 / XWayland until Skiko grows a Wayland backend.
+wayland_ok() {
+  [[ -n "${WAYLAND_DISPLAY:-}" ]] || return 1
+  case "$WAYLAND_DISPLAY" in /*) [[ -S "$WAYLAND_DISPLAY" ]] ;; *) [[ -S "${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/$WAYLAND_DISPLAY" ]] ;; esac
+}
+if [[ "${VISAGE_WAYLAND:-0}" == 1 && "${VISAGE_FORCE_X11:-0}" != 1 && -e "$ROOT/lib/runtime/lib/libawt_wlawt.so" ]] && wayland_ok; then
+  opts+=(-Dawt.toolkit.name=WLToolkit -Dvisage.toolkit=wayland)
+fi
 exec "$ROOT/lib/runtime/bin/java" "${opts[@]}" -cp "$cp" "$main" "$@"

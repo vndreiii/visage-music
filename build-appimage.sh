@@ -11,6 +11,8 @@ esac
 
 if [[ -z "${APP_DIR:-}" ]]; then
   "$ROOT/scripts/fetch-ytdlp-linux.sh"
+  # JetBrains Runtime (WLToolkit = native Wayland, JBR window-move API); VISAGE_NO_JBR=1 packages the stock JDK instead.
+  "$ROOT/scripts/fetch-jbr-linux.sh" >/dev/null
   ./gradlew :composeApp:createDistributable "$@"
   APP_DIR="$ROOT/composeApp/build/compose/binaries/main/app/visage"
 fi

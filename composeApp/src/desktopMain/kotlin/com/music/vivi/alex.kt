@@ -108,6 +108,8 @@ val desktopModule = module {
 fun main() {
     // Prefer this as Wayland app_id / X11 WM_CLASS where the toolkit honors it
     System.setProperty("awt.appClassName", "visage")
+    // Native Wayland (JBR WLToolkit) takes the xdg app_id (Hyprland class) from this one.
+    System.setProperty("awt.app.id", "visage")
     // The JDK ignores that property on X11 and derives WM_CLASS from the main class; set the toolkit's
     // field directly (needs --add-opens java.desktop/sun.awt.X11, already in the run args).
     runCatching {
