@@ -15,6 +15,12 @@ class PopupGeometryTest {
         assertEquals(PopupMode.Stack, PopupGeometry.modeFor(560f, 0f))
     }
 
+    @Test fun landscapeLeftColumnIsFixedWhenWide() {
+        assertEquals(264f, PopupGeometry.landscapeLeftWidth(520f))
+        assertEquals(330f, PopupGeometry.landscapeLeftWidth(800f))
+        assertEquals(330f, PopupGeometry.landscapeLeftWidth(1100f))
+    }
+
     @Test fun sizeClamped() {
         assertEquals(280 to 340, PopupGeometry.clampSize(10, 10))
         assertEquals(PopupGeometry.MAX_W to PopupGeometry.MAX_H, PopupGeometry.clampSize(9999, 9999))

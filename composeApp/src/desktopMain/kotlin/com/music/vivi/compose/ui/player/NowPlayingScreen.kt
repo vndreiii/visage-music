@@ -378,7 +378,8 @@ private fun NowPlayingScreenContent(
                 // Stacked = media on top, controls below, queue in a tray. Narrow or portrait-ish panes.
                 val stacked = maxWidth < 760.dp || maxHeight > maxWidth * 1.25f
                 // Three panes (cover | lyrics | controls) when lyrics are open and the pane is ultra wide.
-                val triple = !stacked && showLyrics && maxWidth >= 1700.dp && maxWidth.value / maxHeight.value >= 1.85f
+                // Not with a music video: it already plays above the controls, so a left cover would show it twice.
+                val triple = !stacked && showLyrics && trackVideo == null && maxWidth >= 1700.dp && maxWidth.value / maxHeight.value >= 1.85f
                 val paneGap = if (stacked) 16.dp else NowPlayingPaneGap
                 val underQueue = showUnderPlaybar && !showLyrics && !stacked
                 val idle = nowPlayingIdleMetrics(maxWidth, maxHeight, limitControlsWidth, controlsMaxWidth, expanded = windowLayout.isExpanded)
