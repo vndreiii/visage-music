@@ -173,9 +173,12 @@ fun YouTubeGridItem(
         if (item is ArtistItem) CircleShape else RoundedCornerShape(ThumbnailCornerRadius)
     val menu = rememberItemMenuState()
     var heightPx by androidx.compose.runtime.remember { androidx.compose.runtime.mutableIntStateOf(0) }
+    // With no inset the text touches the card's bottom-left corner, and a 12 dp rounded clip there cuts into the glyphs;
+    // a flush card therefore uses a tight corner radius.
+    val cardRadius = if (insetHorizontal == 0.dp && insetVertical == 0.dp) 4.dp else InteractionCornerRadius
     Surface(
         onClick = onClick,
-        shape = RoundedCornerShape(InteractionCornerRadius),
+        shape = RoundedCornerShape(cardRadius),
         color = Color.Transparent,
         // 16:9 covers keep the shelf's cover height, so they are wider instead of a tiny letterbox in a square cell.
         modifier = (if (fillWidth) modifier.fillMaxWidth() else modifier.width(GridThumbnailHeight * thumbnailRatio.coerceAtLeast(1f) + 16.dp))
