@@ -145,10 +145,22 @@ internal fun lyricsAccent(mode: LyricsAccent): Color {
 fun LyricsPanel(
     @Suppress("UNUSED_PARAMETER") onClose: () -> Unit,
     modifier: Modifier = Modifier,
+    /** Popup: the toolbar and delay pill fade out after a short idle and only show while the pointer is over the panel. */
+    autoHideControls: Boolean = false,
 ) {
     val controller = LocalPlaybackController.current
     val prefs = koinInject<DesktopPrefs>()
     val nowPlaying by controller.nowPlaying.collectAsState()
+    val panelHover = remember { MutableInteractionSource() }
+    val panelHovered by panelHover.collectIsHoveredAsState()
+    var controlsShown by remember { mutableStateOf(true) }
+    LaunchedEffect(panelHovered, autoHideControls) {
+        if (!autoHideControls || panelHovered) controlsShown = true
+        else { kotlinx.coroutines.delay(1200); controlsShown = false }
+    }
+    val controlsAlpha by androidx.compose.animation.core.animateFloatAsState(
+        if (controlsShown) 1f else 0f, androidx.compose.animation.core.tween(220), label = "lyricsControlsAlpha",
+    )
     val durationMs by controller.durationMs.collectAsState()
     val playbackState by controller.state.collectAsState()
     var prefsTick by remember { mutableStateOf(0) }
@@ -263,7 +275,7 @@ fun LyricsPanel(
 
     var align by remember(cfg.align) { mutableStateOf(cfg.align) }
 
-    Box(modifier.fillMaxSize()) {
+    Box(modifier.fillMaxSize().then(if (autoHideControls) Modifier.hoverable(panelHover) else Modifier)) {
         LyricsBackground(
             mode = cfg.background,
             intensity = cfg.backgroundIntensity,
@@ -315,8 +327,9 @@ fun LyricsPanel(
         Row(
             Modifier
                 .align(Alignment.TopEnd)
-                .padding(top = 4.dp, end = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(top = 4.dp, end = 8.dp)
+                .graphicsLayer { alpha = controlsAlpha },
+            horizontalArrangement = Arrangement.spacedBy(if (autoHideControls) 2.dp else 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             LyricsSizeControl(prefs = prefs, version = prefsTick)
@@ -364,7 +377,7 @@ fun LyricsPanel(
                     val id = nowPlaying?.videoId
                     if (id != null) scope.launch(Dispatchers.IO) { runCatching { cache.setOffset(id, next) } }
                 },
-                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp),
+                modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp).graphicsLayer { alpha = controlsAlpha },
             )
         }
     }

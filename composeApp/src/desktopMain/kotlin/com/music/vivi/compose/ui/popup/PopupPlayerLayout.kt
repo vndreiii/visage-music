@@ -1,6 +1,5 @@
 package com.music.vivi.compose.ui.popup
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -8,9 +7,11 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -19,9 +20,19 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.min
 
 /**
- * Aspect-driven arrangement of the popup: slots in, geometry out. Portrait / square windows get the compact
- * stack (art, info, controls); wide windows (see [PopupGeometry.modeFor]) put lyrics beside the player.
- * Kept free of playback state so the switch can be tested with plain stub slots.
+ * Wraps the art + info block so the host window can make it the drag surface (e.g. `WindowDraggableArea`).
+ * The default is a plain [Box], so tests and previews need nothing.
+ */
+typealias PopupDragArea = @Composable (modifier: Modifier, content: @Composable () -> Unit) -> Unit
+
+val NoPopupDragArea: PopupDragArea = { modifier, content -> Box(modifier) { content() } }
+
+/**
+ * Aspect-driven arrangement of the popup: slots in, geometry out.
+ *
+ * Portrait / square windows get the stack (art, info, controls). Wide windows (see [PopupGeometry.modeFor]) get a
+ * fixed-width player column on the left (art, info, seek, transport, volume stacked) and the lyrics filling the whole
+ * right side, top to bottom. Kept free of playback state so the switch can be tested with plain stub slots.
  */
 @Composable
 fun PopupPlayerLayout(
@@ -30,41 +41,51 @@ fun PopupPlayerLayout(
     controls: @Composable (compact: Boolean) -> Unit,
     lyrics: @Composable () -> Unit,
     modifier: Modifier = Modifier,
+    dragArea: PopupDragArea = NoPopupDragArea,
 ) {
     BoxWithConstraints(modifier.fillMaxSize()) {
+        val totalW = maxWidth
         val mode = PopupGeometry.modeFor(maxWidth.value, maxHeight.value)
         // Short windows drop the optional rows (album line, volume) so the art keeps some room.
         val compact = maxHeight.value < PopupGeometry.COMPACT_BELOW_H
         when (mode) {
+            // The header bar is gone, so the top padding is a little larger than the bottom one to keep the cover
+            // optically centred between the rounded window corners.
             PopupMode.Stack -> Column(
-                Modifier.fillMaxSize().testTag("popup-stack").padding(horizontal = 18.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                Modifier.fillMaxSize().testTag("popup-stack")
+                    .padding(start = 22.dp, end = 22.dp, top = if (compact) 18.dp else 24.dp, bottom = if (compact) 12.dp else 18.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
-                ArtSlot(Modifier.weight(1f).fillMaxWidth(), art)
-                info(compact)
+                dragArea(Modifier.weight(1f).fillMaxWidth()) {
+                    Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                        ArtSlot(Modifier.weight(1f).fillMaxWidth(), art)
+                        Spacer(Modifier.height(if (compact) 8.dp else 16.dp))
+                        info(compact)
+                    }
+                }
+                Spacer(Modifier.height(if (compact) 6.dp else 12.dp))
                 controls(compact)
             }
 
-            // Art + info on the left, lyrics on the right, one full-width transport strip underneath.
-            PopupMode.Landscape -> Column(
-                Modifier.fillMaxSize().testTag("popup-landscape").padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                    Column(
-                        Modifier.weight(0.42f).fillMaxHeight(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        ArtSlot(Modifier.weight(1f).fillMaxWidth(), art)
-                        info(compact)
+            // Fixed-width player column on the left, lyrics own the entire right side.
+            PopupMode.Landscape -> Row(Modifier.fillMaxSize().testTag("popup-landscape")) {
+                val leftW = PopupGeometry.landscapeLeftWidth(totalW.value).dp
+                Column(
+                    Modifier.width(leftW).fillMaxHeight()
+                        .padding(start = 18.dp, end = 14.dp, top = if (compact) 16.dp else 20.dp, bottom = if (compact) 10.dp else 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    dragArea(Modifier.weight(1f).fillMaxWidth()) {
+                        Column(Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally) {
+                            ArtSlot(Modifier.weight(1f).fillMaxWidth(), art)
+                            Spacer(Modifier.height(if (compact) 6.dp else 12.dp))
+                            info(compact)
+                        }
                     }
-                    Box(Modifier.weight(0.58f).fillMaxHeight().testTag("popup-lyrics")) { lyrics() }
+                    Spacer(Modifier.height(if (compact) 4.dp else 10.dp))
+                    controls(compact)
                 }
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Box(Modifier.widthIn(max = 520.dp)) { controls(compact) }
-                }
+                Box(Modifier.weight(1f).fillMaxHeight().testTag("popup-lyrics")) { lyrics() }
             }
         }
     }
