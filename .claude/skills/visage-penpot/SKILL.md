@@ -101,3 +101,15 @@ Frame names carry `WxH`; implement differences with `windowLayout()` / `layout.i
 page entry only if it is a new Kotlin symbol. 3. Name layers per §2, annotate glass per §3, place the frame on the matching
 `Screens · …` page named `<Composable> / <Breakpoint WxH> / <state>`. 4. Add a Legend row (element → symbol → file → params) and a
 row in `docs/penpot-coverage.md`. 5. Compare `export_shape` of the frame to the screenshot.
+
+## 8. Capture harness and Now Playing builders
+
+* `tools/penpot/capture/` (`sess.sh`, `live.sh`, `edges.py`, README) is the Xvfb harness. The scratchpad copies get wiped between days, so keep
+  using the repo copy (`SC=<dir>` env). To play a real song: `live.sh start 1920x1080`, wait 100 s, click the Search tab, wait 60 s,
+  click the field, `xdotool type`, Enter, click a Songs row, then `live.sh nav now_playing`; click the lyrics tool button for lyrics.
+* Now Playing is built by plugin-data builders `H.npIdle(W,H,{playing,x0})` and `H.npLyrics(W,H,{synced,canvas,playing,x0,track})`
+  (patches 21/22 on the Legend page; they depend on `H.homeA`, `H.seekBar`, `H.loadingIndicator`, `H.icon`). Formulas copied from
+  `NowPlayingScreen.kt`: `nowPlayingIdleMetrics`, stacked when pane < 760dp or taller than 1.25x width, lyrics stack = min(0.44*maxW, 440),
+  triple layout at maxW >= 1700 and ratio >= 1.85, thumb 72dp in the card unless a canvas shows on the right, controls card height =
+  20 + title(lines x 36|28) + 6 + 24 (+20 album) + 28 + 56 + 28 + 56 + 20.
+* Lyrics text in frames is placeholder copy (never paste real song lyrics).
