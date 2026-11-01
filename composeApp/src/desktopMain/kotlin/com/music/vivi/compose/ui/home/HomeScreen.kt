@@ -1028,7 +1028,8 @@ private fun HomeCategoryHeader(
                 ),
                 maxLines = 1,
                 overflow = TextOverflow.Clip,
-                modifier = Modifier.visageMarquee(),
+                // With an avatar the title sits 12 dp from it (4 row gap + 8), as in the Penpot design.
+                modifier = Modifier.padding(start = if (thumbnail != null) 8.dp else 0.dp).visageMarquee(),
             )
         }
         if (onClick != null) {
