@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # usage: sess.sh PREFIX WxH "route1 route2 ..." [ENV=VAL ...]   Xvfb only, never the live session.
 PFX=$1; SIZE=$2; ROUTES=$3; shift 3
-D=:77; SC=${SC:-/tmp/visage-capture}
-pgrep -a Xvfb | grep -q ":77" || { Xvfb $D -screen 0 3600x1500x24 >/dev/null 2>&1 & sleep 2; }
+D=${D:-:77}; SC=${SC:-/tmp/visage-capture}
+pgrep -a Xvfb | grep -q "$D" || { Xvfb $D -screen 0 3600x1500x24 >/dev/null 2>&1 & sleep 2; }
 rm -rf $SC/xdg/config/visage && cp -r ~/.config/visage $SC/xdg/config/
 sed -i 's/^dynamicTheme=.*/dynamicTheme=false/' $SC/xdg/config/visage/settings.properties
 sed -i -e '/^bodyFont=/d' -e '/^headingFont=/d' -e '/^interfaceFont=/d' -e '/^paletteStyle=/d' -e '/^miniPlayerBackgroundStyle=/d' -e 's/^matugenTheme=.*/matugenTheme=false/' $SC/xdg/config/visage/settings.properties
