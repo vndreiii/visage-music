@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -72,6 +73,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.snapshots.SnapshotStateMap
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -128,6 +139,7 @@ fun TagManagerScreen(navController: NavController) {
         DetailPageHeader(
             title = "Tag Manager",
             onBack = { navController.navigateUp() },
+            subtitleInline = true,
             subtitle = when {
                 state.loading -> "Reading your library"
                 else -> "${state.tracks.size} local tracks" + state.missingCount.takeIf { it > 0 }?.let { " · $it need attention" }.orEmpty()
@@ -201,7 +213,7 @@ private fun Toolbar(state: TagManagerState) {
         TagBrowser.filter(state.tracks, state.filter, state.query, state.modified)
     }
     val needy = remember(visible) { visible.filter { TagHealth.of(it).any } }
-    Column(Modifier.fillMaxWidth().padding(top = 28.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    Column(Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         // The search field takes the height of the grouping selector, so the two sit flush in one row.
         if (com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth) {
             Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -285,7 +297,7 @@ private fun SearchField(value: String, onChange: (String) -> Unit, modifier: Mod
         VisageMotion.effectsDefault(), label = "searchBg",
     )
     Row(
-        modifier.heightIn(min = 32.dp).clip(CircleShape).background(bg).padding(horizontal = 16.dp),
+        modifier.heightIn(min = 40.dp).clip(CircleShape).background(bg).padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Icon(Icons.Outlined.Search, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -325,15 +337,21 @@ private fun TrackBrowser(state: TagManagerState, modifier: Modifier) {
     val rows by remember { derivedStateOf { TagBrowser.rows(visible, state.grouping) } }
     val order by remember { derivedStateOf { rows.filterIsInstance<TagBrowser.Row.Item>().map { it.track.id } } }
     val listState = rememberLazyListState()
+    // Column widths the user dragged (by label); a column without an entry keeps its default weight.
+    val weights = remember { mutableStateMapOf<String, Float>() }
     BoxWithConstraints(modifier.padding(start = 12.dp, end = 8.dp)) {
         val cols = allColumns.filter { maxWidth - (if (state.selection.ids.isEmpty()) 0.dp else 0.dp) >= it.minWidth }
+        // Width left for the weighted columns: row inset 116 + end padding 12 + the cover tile.
+        val areaW = maxWidth - (116.dp + 12.dp + CoverTileWidth)
         Column(Modifier.fillMaxSize()) {
-            // Same insets as TrackRow (8 + checkbox 48 + cover 48 + gap 12), so every title sits over its column.
-            Row(Modifier.fillMaxWidth().padding(end = 12.dp, top = 4.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+            // Same insets as TrackRow (8 + checkbox 48 + cover slot 48 + gap 12), so every title sits over its column.
+            Row(Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 13.dp), verticalAlignment = Alignment.CenterVertically) {
                 Spacer(Modifier.width(116.dp))
-                cols.forEach { Text(it.label, Modifier.weight(it.weight).padding(end = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
-                Text("Cover", Modifier.width(56.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                cols.forEachIndexed { i, it -> Text(it.label, Modifier.weight(weights[it.label] ?: it.weight).padding(start = if (i >= 2) DividerGap else 0.dp, end = 8.dp), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1) }
+                Spacer(Modifier.width(12.dp))
+                Text("Cover", Modifier.width(CoverTileWidth), textAlign = TextAlign.Center, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
+            Box(Modifier.weight(1f).fillMaxWidth()) {
             AnimatedContent(visible.isEmpty(), transitionSpec = { fadeIn(VisageMotion.fadeInSpec()) togetherWith fadeOut(VisageMotion.fadeOutSpec()) }, label = "tagEmpty") { empty ->
                 if (empty) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -352,7 +370,7 @@ private fun TrackBrowser(state: TagManagerState, modifier: Modifier) {
                         when (row) {
                             is TagBrowser.Row.Header -> GroupHeader(row, Modifier.animateItem())
                             is TagBrowser.Row.Item -> TrackRow(
-                                track = row.track, cols = cols,
+                                track = row.track, cols = cols, weights = weights,
                                 selected = row.track.id in state.selection.ids,
                                 modified = row.track.id in state.modified,
                                 onClick = { shift, ctrl -> state.select(state.selection.click(row.track.id, order, shift, ctrl)) },
@@ -367,7 +385,52 @@ private fun TrackBrowser(state: TagManagerState, modifier: Modifier) {
                     }
                 }
             }
+            if (visible.isNotEmpty()) ColumnDividers(cols, weights, areaW)
+            }
         }
+    }
+}
+
+private val CoverTileWidth = 65.dp
+
+/** Gap between a column divider and the text of the column to its right (14dp in the Penpot design). */
+private val DividerGap = 14.dp
+
+/** Dotted, draggable dividers in the gutter left of every column from Album on; dragging moves width between the two neighbours. */
+@Composable
+private fun ColumnDividers(cols: List<Col>, weights: SnapshotStateMap<String, Float>, areaW: Dp) {
+    val density = LocalDensity.current
+    val total = cols.sumOf { (weights[it.label] ?: it.weight).toDouble() }.toFloat()
+    var x = 116.dp
+    cols.forEachIndexed { i, c ->
+        if (i >= 2) {
+            val left = cols[i - 1]
+            Box(
+                Modifier.offset(x = x - 6.dp).width(12.dp).fillMaxHeight()
+                    .pointerHoverIcon(PointerIcon.Hand)
+                    .pointerInput(left.label, c.label, total, areaW) {
+                        detectHorizontalDragGestures { change, dx ->
+                            change.consume()
+                            val dw = dx / density.density / areaW.value * total
+                            val lw = weights[left.label] ?: left.weight
+                            val rw = weights[c.label] ?: c.weight
+                            if (lw + dw >= left.weight * 0.35f && rw - dw >= c.weight * 0.35f) {
+                                weights[left.label] = lw + dw
+                                weights[c.label] = rw - dw
+                            }
+                        }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Canvas(Modifier.fillMaxHeight().width(1.dp)) {
+                    drawLine(
+                        Color.White.copy(alpha = 0.5f), Offset(0f, 0f), Offset(0f, size.height),
+                        strokeWidth = 1.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 3.dp.toPx())),
+                    )
+                }
+            }
+        }
+        x += areaW * ((weights[c.label] ?: c.weight) / total)
     }
 }
 
@@ -470,6 +533,7 @@ private fun GroupHeader(h: TagBrowser.Row.Header, modifier: Modifier) {
 private fun TrackRow(
     track: TagTrack,
     cols: List<Col>,
+    weights: SnapshotStateMap<String, Float>,
     selected: Boolean,
     modified: Boolean,
     onClick: (shift: Boolean, ctrl: Boolean) -> Unit,
@@ -487,8 +551,7 @@ private fun TrackRow(
     Row(
         modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(radius))
-            .background(bg)
+            .height(IntrinsicSize.Min)
             .onPointerEvent(PointerEventType.Release) { e ->
                 // Opens on release: a popup shown on press is dismissed by the same click's release.
                 if (e.button == PointerButton.Secondary) menuFor = onContext()
@@ -506,34 +569,46 @@ private fun TrackRow(
                         onClick(m.isShiftPressed, m.isCtrlPressed || m.isMetaPressed)
                     }
                 }
-            }
-            .padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+            },
         verticalAlignment = Alignment.CenterVertically,
     ) {
         menuFor?.let { TrackContextMenu(it) { menuFor = null } }
-        Checkbox(selected, { onToggle() }, Modifier.size(48.dp))
-        Box(Modifier.size(48.dp).clip(RoundedCornerShape(10.dp))) {
-            CoverImage(track.coverPath?.takeIf { !it.startsWith("opus-lazy://") && it != "embedded" }?.let { File(it) }, seed = track.id, modifier = Modifier.fillMaxSize())
+        Row(
+            Modifier.weight(1f).fillMaxHeight().clip(RoundedCornerShape(radius)).background(bg)
+                .padding(start = 8.dp, end = 12.dp, top = 8.dp, bottom = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(selected, { onToggle() }, Modifier.size(48.dp))
+            // 48dp slot, 38dp cover (the Penpot "Tag Manager" design sizes every cover like this).
+            Box(Modifier.size(48.dp), contentAlignment = Alignment.Center) {
+                Box(Modifier.size(38.dp).clip(RoundedCornerShape(6.dp))) {
+                    CoverImage(track.coverPath?.takeIf { !it.startsWith("opus-lazy://") && it != "embedded" }?.let { File(it) }, seed = track.id, modifier = Modifier.fillMaxSize())
+                }
+            }
+            Spacer(Modifier.width(12.dp))
+            cols.forEachIndexed { ci, c ->
+                val text = c.text(track)
+                val miss = text.isBlank() || c.missing?.invoke(health) == true
+                val color by animateColorAsState(
+                    if (miss && c.missing != null) MaterialTheme.colorScheme.error.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurface,
+                    VisageMotion.effectsDefault(), label = "cellColor",
+                )
+                Text(
+                    text.ifBlank { "—" }, Modifier.weight(weights[c.label] ?: c.weight).padding(start = if (ci >= 2) DividerGap else 0.dp, end = 8.dp).visageMarquee(),
+                    style = if (c.label == "Title") MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium) else MaterialTheme.typography.bodyLarge,
+                    color = if (text.isBlank() && c.missing == null) MaterialTheme.colorScheme.onSurfaceVariant else color,
+                    maxLines = 1, overflow = TextOverflow.Clip,
+                )
+            }
         }
-        Spacer(Modifier.width(12.dp))
-        cols.forEach { c ->
-            val text = c.text(track)
-            val miss = text.isBlank() || c.missing?.invoke(health) == true
-            val color by animateColorAsState(
-                if (miss && c.missing != null) MaterialTheme.colorScheme.error.copy(alpha = 0.85f) else MaterialTheme.colorScheme.onSurface,
-                VisageMotion.effectsDefault(), label = "cellColor",
-            )
-            Text(
-                text.ifBlank { "—" }, Modifier.weight(c.weight).padding(end = 8.dp).visageMarquee(),
-                style = if (c.label == "Title") MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.Medium) else MaterialTheme.typography.bodyLarge,
-                color = if (text.isBlank() && c.missing == null) MaterialTheme.colorScheme.onSurfaceVariant else color,
-                maxLines = 1, overflow = TextOverflow.Clip,
-            )
-        }
-        Box(Modifier.width(56.dp), contentAlignment = Alignment.CenterStart) {
-            val tint by animateColorAsState(if (health.missingCover) MaterialTheme.colorScheme.error.copy(alpha = 0.8f) else MaterialTheme.colorScheme.primary, VisageMotion.effectsDefault(), label = "coverTint")
+        // Cover status tile: a separate rounded tile at the row's end, tonal when the file has a cover, error-tinted when it lacks one.
+        Box(
+            Modifier.width(CoverTileWidth).fillMaxHeight().clip(RoundedCornerShape(radius))
+                .background((if (health.missingCover) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.secondaryContainer).copy(alpha = 0.7f)),
+            contentAlignment = Alignment.Center,
+        ) {
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (health.missingCover) Icons.Outlined.Image else Icons.Outlined.Check, if (health.missingCover) "No cover" else "Has cover", Modifier.size(22.dp), tint = tint)
+                Icon(if (health.missingCover) Icons.Outlined.Close else Icons.Outlined.Check, if (health.missingCover) "No cover" else "Has cover", Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurface)
                 if (modified) Box(Modifier.size(8.dp).clip(CircleShape).background(MaterialTheme.colorScheme.tertiary))
                 if (track.readonly) Icon(Icons.Outlined.ErrorOutline, "Read-only", Modifier.size(14.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             }

@@ -13,8 +13,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -90,8 +93,10 @@ fun HistoryScreen(
             },
         )
 
-        val smoothScroll1 = androidx.compose.foundation.lazy.rememberLazyListState()
-        LazyColumn(
+        // Column based: as many 280dp+ columns as the page is wide (4 on a 1920 window), filled left to right.
+        val smoothScroll1 = rememberLazyGridState()
+        LazyVerticalGrid(
+            columns = GridCells.Adaptive(280.dp),
             state = smoothScroll1,
             contentPadding = PaddingValues(start = PageInset, end = PageInset, bottom = MiniPlayerClearance),
             modifier = Modifier.fillMaxWidth().weight(1f)
@@ -99,7 +104,7 @@ fun HistoryScreen(
                 .smoothWheelScroll(smoothScroll1)
         ) {
             if (visible.isEmpty() && query.isNotBlank()) {
-                item {
+                item(span = { GridItemSpan(maxLineSpan) }) {
                     Text(
                         "Nothing in your history matches “${query.trim()}”.",
                         style = MaterialTheme.typography.bodyMedium,

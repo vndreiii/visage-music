@@ -42,6 +42,8 @@ fun DetailPageHeader(
     subtitle: String? = null,
     /** Optional control on the header row's right edge (e.g. a page search field), vertically centred with the title. */
     trailing: (@Composable () -> Unit)? = null,
+    /** Puts the subtitle on the title's line ("Title · subtitle") instead of under it (Tag Manager). */
+    subtitleInline: Boolean = false,
 ) {
     // Phones: the trailing control (search field ...) gets its own row under the title instead of crowding it out.
     val stackTrailing = trailing != null && com.music.vivi.compose.ui.responsive.windowLayout().isMobile
@@ -55,16 +57,30 @@ fun DetailPageHeader(
         com.music.vivi.compose.ui.component.VisageBackButton(onClick = onBack)
         Spacer(Modifier.width(14.dp))
         Column(Modifier.weight(1f)) {
-            Text(
-                title.orEmpty(),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                maxLines = 1,
-                overflow = TextOverflow.Clip,
-                modifier = Modifier.visageMarquee(),
-            )
-            if (!subtitle.isNullOrBlank()) {
-                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (subtitleInline && !subtitle.isNullOrBlank()) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        "${title.orEmpty()} ·",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Clip,
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+            } else {
+                Text(
+                    title.orEmpty(),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Clip,
+                    modifier = Modifier.visageMarquee(),
+                )
+                if (!subtitle.isNullOrBlank()) {
+                    Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
         }
         if (!stackTrailing) trailing?.let { Spacer(Modifier.width(16.dp)); it() }

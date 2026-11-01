@@ -14,6 +14,6 @@ class LyricsDelayTest {
     @Test fun stepsAndClamps() {
         assertEquals(100, stepLyricsDelay(0, 1))
         assertEquals(-200, stepLyricsDelay(-100, -1))
-        assertEquals(LYRICS_DELAY_MAX_MS, stepLyricsDelay(LYRICS_DELAY_MAX_MS, 1))
+        assertEquals(60_100, stepLyricsDelay(60_000, 1)) // unbounded
     }
 }

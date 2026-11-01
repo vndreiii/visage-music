@@ -231,7 +231,7 @@ fun DesktopPrefs.lyricsConfig(): LyricsConfig {
         showBackgroundVocals = getBoolean(PrefKeys.LyricsShowBackgroundVocals, d.showBackgroundVocals),
         tapToSeek = getBoolean(PrefKeys.LyricsTapToSeek, d.tapToSeek),
         autoResume = getBoolean(PrefKeys.LyricsAutoResume, d.autoResume),
-        syncOffsetMs = getInt(PrefKeys.LyricsSyncOffsetMs, d.syncOffsetMs).coerceIn(-1500, 1500),
+        syncOffsetMs = getInt(PrefKeys.LyricsSyncOffsetMs, d.syncOffsetMs),
         gapStyle = enumOr(PrefKeys.LyricsGapStyle, d.gapStyle),
         background = enumOr(PrefKeys.LyricsBackground, d.background),
         backgroundIntensity = getFloat(PrefKeys.LyricsBackgroundIntensity, d.backgroundIntensity).coerceIn(0f, 1f),

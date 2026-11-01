@@ -4,10 +4,9 @@ import kotlin.math.abs
 
 /** Per-song lyrics delay: positive shows the lyrics later, negative earlier. */
 internal const val LYRICS_DELAY_STEP_MS = 100
-internal const val LYRICS_DELAY_MAX_MS = 30_000
-
+/** No upper or lower bound: the delay can be nudged as far as the song needs. */
 internal fun stepLyricsDelay(currentMs: Int, steps: Int): Int =
-    (currentMs + steps * LYRICS_DELAY_STEP_MS).coerceIn(-LYRICS_DELAY_MAX_MS, LYRICS_DELAY_MAX_MS)
+    currentMs + steps * LYRICS_DELAY_STEP_MS
 
 /** "+0.3s", "-1.2s", "0.0s". */
 internal fun formatLyricsDelay(ms: Int): String {
