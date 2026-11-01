@@ -36,7 +36,10 @@ indicator = morph cycle illustration, `Recent ▾` icon).
 | HomeScreen | light, blur-off, loading, error/login, tray/queue/library overlays | missing (captures taken, frames not built) |
 | Settings hub | Desktop 1920x1080 default (queue docked) | **done, compared against capture** (rows, chevrons, account card, search, mini-player) |
 | Settings sub-pages (Theme, Interface, Now Playing, Playback, Downloads, Account, Lyrics, Song swappings, Fullscreen player, Local files, Diagnostics, Keyboard shortcuts, Sidebars) | all | missing (row lists extracted into `tools/penpot/settings-grouped.json`, grouping heuristic) |
-| Now Playing (idle/lyrics/video/queue/stacked/ultrawide), Fullscreen player | all | missing |
+| NowPlayingScreen | idle (default) at Desktop 1920x1080 / 1366x768, Large 2560x1440, UltraWide 3440x1440, Tablet 800x1280, Mobile 390x844 | **done**: layout formulas (`nowPlayingIdleMetrics`, stacked column, compact tools row) checked against Xvfb captures at all six sizes |
+| NowPlayingScreen | lyrics state (LyricsPanel loading + toolbar, controls card with 72dp cover thumb, triple layout at UltraWide) at the same six sizes | **done for the loading state** (no lyrics text rendered); 1920/1366/800/390 compared with captures, 2560 and 3440 (triple) built from `NowPlayingScreen.kt` and checked if a capture was taken (see below) |
+| NowPlayingScreen | lyrics with synced lines, video / canvas cover, queue tray / inline queue strip, light, blur-off, popup | missing |
+| Fullscreen player (`NowPlayingFullscreenScreen`) | all | missing |
 | Library (+ sidebar hidden items), Search, Album, Artist, Playlist, Charts, Moods, New releases, History, Browse, Tag Manager | all | missing |
 | Popup mini player, What's New, onboarding, login gate, update prompt, crash dialog, splash | all | missing |
 
