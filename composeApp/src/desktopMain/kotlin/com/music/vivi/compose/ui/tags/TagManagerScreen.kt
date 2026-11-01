@@ -215,8 +215,10 @@ private fun Toolbar(state: TagManagerState) {
     val needy = remember(visible) { visible.filter { TagHealth.of(it).any } }
     Column(Modifier.fillMaxWidth().padding(top = 0.dp, bottom = 18.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         // The search field takes the height of the grouping selector, so the two sit flush in one row.
-        if (com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth) {
-            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // Too narrow for search + grouping side by side (docked panels at ~900dp windows): stack them.
+        if (com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth || maxWidth < 620.dp) {
+            Column(Modifier.fillMaxWidth().padding(horizontal = if (maxWidth < 620.dp) 20.dp else 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 SearchField(state.query, { state.query = it }, Modifier.fillMaxWidth())
                 ConnectedButtonGroup(
                     options = TagGrouping.entries.map { it to it.label },
@@ -238,6 +240,7 @@ private fun Toolbar(state: TagManagerState) {
                 size = ExpressiveSize.Small,
                 modifier = Modifier.width(340.dp),
             )
+        }
         }
         val tagCompact = com.music.vivi.compose.ui.responsive.windowLayout().isCompactWidth
         val chipsRow: @Composable () -> Unit = {
@@ -302,7 +305,7 @@ private fun SearchField(value: String, onChange: (String) -> Unit, modifier: Mod
     ) {
         Icon(Icons.Outlined.Search, null, Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Box(Modifier.weight(1f)) {
-            if (value.isEmpty()) Text("Search title, artist, album, file name…", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            if (value.isEmpty()) Text("Search title, artist, album, file name…", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             BasicTextField(
                 value, onChange, singleLine = true,
                 textStyle = MaterialTheme.typography.bodyLarge.copy(color = MaterialTheme.colorScheme.onSurface),
