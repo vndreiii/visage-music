@@ -565,6 +565,7 @@ private fun HomeScreenContent(navController: NavController, vm: HomeViewModel) {
                                     currentValue = vm.selectedChip,
                                     onValueUpdate = { vm.toggleChip(it) },
                                     modifier = Modifier.padding(vertical = 4.dp),
+                                    gutter = 12.dp,
                                 )
                             }
                         }
@@ -794,7 +795,7 @@ private fun HomeSectionBlock(
             isSongsOnly -> BoxWithConstraints(Modifier.fillMaxWidth()) {
                 // Fill the row: as many ~280dp columns as fit, rows capped so the shelf
                 // stays compact; extra songs scroll sideways in whole columns.
-                val gap = 8.dp
+                val gap = 12.dp
                 // Framed (Quick picks): the frame already insets by PanelInset, so the grid starts flush with the title.
                 val sidePad = if (framed) 0.dp else 8.dp
                 val usable = maxWidth - sidePad * 2
@@ -814,18 +815,8 @@ private fun HomeSectionBlock(
                     // pull that slack out of the top and bottom so the frame's inset is measured to the text itself.
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(ListItemHeight * rows - (if (framed) 40.dp else 0.dp))
-                        .then(
-                            if (framed) {
-                                // Shift the grid up AND shorten the slot by the same slack, so the frame's bottom inset
-                                // is measured to the last row's text instead of 12 dp of dead space.
-                                Modifier.layout { measurable, constraints ->
-                                    val up = 12.dp.roundToPx()
-                                    val p = measurable.measure(constraints)
-                                    layout(p.width, p.height - up * 2) { p.place(0, -up) }
-                                }
-                            } else Modifier,
-                        )
+                        // Framed (Quick picks): 58.5dp row pitch; the 48dp row content sits centred in the 64dp item.
+                        .height(if (framed) 58.5.dp * rows else ListItemHeight * rows)
                         .horizontalWheelScroll(gridState),
                 ) {
                     itemsIndexed(

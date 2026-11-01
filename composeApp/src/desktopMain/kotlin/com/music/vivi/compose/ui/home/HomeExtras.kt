@@ -98,7 +98,7 @@ internal fun HomeHeader(
             ) { pills() }
         } else {
             androidx.compose.foundation.layout.FlowRow(
-                Modifier.padding(horizontal = 20.dp),
+                Modifier.padding(horizontal = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) { pills() }
