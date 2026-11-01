@@ -41,8 +41,9 @@ indicator = morph cycle illustration, `Recent ▾` icon).
 | NowPlayingScreen | lyrics state (LyricsPanel loading + toolbar, controls card with 72dp cover thumb, triple layout at UltraWide) at the same six sizes | **done for the loading state** (no lyrics text rendered); 1920/1366/800/390 compared with captures, 2560 and 3440 (triple) built from `NowPlayingScreen.kt` and checked if a capture was taken (see below) |
 | NowPlayingScreen | `playing` (wavy seek bar, pause icon) and `lyrics-synced + canvas` (synced lines with blur by distance, delay pill, tall canvas above the controls, no cover thumb) at Desktop 1920x1080 | **done, compared with a real capture of a song with lyrics** |
 | NowPlayingScreen | synced lyrics / canvas at the other five sizes, music-video cover, queue tray / inline queue strip, light, blur-off, popup | missing |
-| Fullscreen player (`NowPlayingFullscreenScreen`) | all | missing |
-| Library (+ sidebar hidden items), Search, Album, Artist, Playlist, Charts, Moods, New releases, History, Browse, Tag Manager | all | missing |
+| Fullscreen player (`NowPlayingFullscreenScreen`) | all | missing: navfile route capture shows a half-loaded transitional state; capture it by clicking the fullscreen tool button in a playing Now Playing session (`live.sh`) |
+| History, Tag Manager, Charts ("Whole world"), New Releases at Desktop 1920x1080 (page `Screens · Library & browse`) | built from `q1920__*` captures; History/Tag Manager/Charts compared with the capture, covers are CC placeholder photos (the app shows generated pattern art for covers without artwork on New Releases/Moods) | **partial**: 1920 only, default state, first screenful; other breakpoints missing |
+| Library home, Search (idle/results), Moods & genres, Album, Artist, Playlist, Browse | all | missing (captures of Library / Moods / Search results exist in the scratchpad but are not built; Moods and New Releases use procedural pattern art that would need its own builder) |
 | Popup mini player, What's New, onboarding, login gate, update prompt, crash dialog, splash | all | missing |
 
 ## Legend page

@@ -129,3 +129,10 @@ Controls: `sSeg` (segmented 380x40, selected pill white on `#20272c`), `sSwitch`
 Page builders: `sInterface, sTheme, sPlayback, sAccount, sSongSwap, sDownloads, sLocal, sDiag, sKeybinds, sSidebars, sLyrics, sFsPlayer, sNowPlayingSettings`.
 Heavy calls (>~25 s) time out and still half-run: build 2 frames per call, then list `penpot.root.children` and delete duplicates by x position.
 Never put machine-specific values (paths, kernel, user names) in frames.
+
+## 11. Page builders for list/browse screens (patches 27-30)
+
+`H.pgFrame(x0,name,title)` = Desktop 1920x1080 frame with queue + library docked and only the library toggle lit (Library/Charts/History/Tag Manager captures), `H.pgHeader` (back circle 44 + subPageTitle + optional search pill 320x44), `H.pgMini`.
+Built: `pgHistory`, `pgTagManager` (table: rows pitch 68, h60, columns Title 492 / Artist 749 / Album 935 / Album artist 1121 / Year 1261 / Genre 1325 / # 1441 / Cover 1488), `pgCharts` (top-3 cards 409/355/356 wide + 2-column ranked list), `pgNewReleases` (6x grid, cell pitch 195x241, cover 173).
+TODO next (in this order): Library home, Search idle + results (play a real song with `live.sh`), Moods & genres (needs a procedural pattern-art builder), Fullscreen player (capture via the UI, not the navfile), popup player, dialogs/onboarding, then the other breakpoints and light/blur-off for every screen.
+Real songs with synced lyrics for captures: search "pinkpantheress" in the harness (Paxsenix lyrics worked within ~2 minutes).
