@@ -113,3 +113,9 @@ row in `docs/penpot-coverage.md`. 5. Compare `export_shape` of the frame to the 
   triple layout at maxW >= 1700 and ratio >= 1.85, thumb 72dp in the card unless a canvas shows on the right, controls card height =
   20 + title(lines x 36|28) + 6 + 24 (+20 album) + 28 + 56 + 28 + 56 + 20.
 * Lyrics text in frames is placeholder copy (never paste real song lyrics).
+
+## 9. Keep this skill current (standing rule from Alex)
+
+After every batch of frames/builders: update this file (new builders, formulas, harness rules, pitfalls), `docs/penpot-coverage.md`
+(honest done / partial / missing) and the Legend page, then commit locally (`git add -f`, never push). A future session must be able to
+continue from these files alone, without this conversation.
