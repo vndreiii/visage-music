@@ -54,3 +54,6 @@ Table Penpot element → Kotlin symbol → file → parameters: done (24 rows).
   Legend-page plugin data (`visageLib`, `visagePatchN`, `visageIcons`, `visageImgs`, `visagePal`).
 * No backdrop blur; `fetch` blocked; localStorage not permitted; `findByName('Roboto')` returns Roboto Mono; `openPage` async; text sizes read as 1
   until a layout update; images only via `uploadMediaUrl` (public URLs, so covers are CC picsum photos, not the user's real artwork).
+
+## Alex's Home Large 2560 edits (applied 2026-11-01)
+App: pill row + mood chips gutter 12dp (pane x+12, aligned to the cards), Quick picks grid gap 12dp, framed row pitch 58.5dp (48dp content centred in the 64dp item, no layout trim). Penpot: same shift/spacing propagated to the 390, 800, 1366, 1920 and 3440 Home frames (pills/chips x = card x, rows y 319 + 58.5n, columns pitch (card w - 40 + 12) / n). Not re-captured from the new AppImage yet.
