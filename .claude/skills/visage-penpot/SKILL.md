@@ -119,3 +119,13 @@ row in `docs/penpot-coverage.md`. 5. Compare `export_shape` of the frame to the 
 After every batch of frames/builders: update this file (new builders, formulas, harness rules, pitfalls), `docs/penpot-coverage.md`
 (honest done / partial / missing) and the Legend page, then commit locally (`git add -f`, never push). A future session must be able to
 continue from these files alone, without this conversation.
+
+## 10. Settings page builders (patches 23-26 on the Legend page)
+
+`H.sFrame(W,H,x0,name,title)` = `homeA` frame (queue docked, no library) + back button + `subPageTitle` (24/32, not pageTitle). Content column x=`356+round((W-356-711)/2)`, width 711.
+Rows (`H.sRowGen`): switch-with-subtitle 75dp, other with subtitle 71, plain 67, slider 91-99, shortcut 81; card padding 4 top / 3 bottom, section gap 24, label->card 28.
+Controls: `sSeg` (segmented 380x40, selected pill white on `#20272c`), `sSwitch` (on = white track + dark thumb, off = outlined 2dp), `sSlider` (16dp track, 4x44 thumb, stop dots),
+`sPalette` (9 palette tiles, real swatch colours measured from the capture), `sPreview` (black outlined card with a placeholder well), `sFolderCard`, `sSearchField`, `sShortcutRow`.
+Page builders: `sInterface, sTheme, sPlayback, sAccount, sSongSwap, sDownloads, sLocal, sDiag, sKeybinds, sSidebars, sLyrics, sFsPlayer, sNowPlayingSettings`.
+Heavy calls (>~25 s) time out and still half-run: build 2 frames per call, then list `penpot.root.children` and delete duplicates by x position.
+Never put machine-specific values (paths, kernel, user names) in frames.
