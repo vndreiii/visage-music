@@ -104,12 +104,22 @@ fun FrameWindowScope.App(
         VisageTheme(prefs = prefs, artworkPalette = artworkPalette) {
             // Clip to rounded bounds so glow/blur backgrounds can't bleed past the
             // compositor's window corner (the bottom-left "overflow" spit).
-            // Skip rounding while OS-fullscreen so edges aren't inset.
-            // Windows only (see WindowMaximize.isMaximized); elsewhere it recomposed the whole app on every drag step.
-            if (com.music.vivi.nativelib.HostOs.isWindows) {
-                @Suppress("UNUSED_VARIABLE") val geometry = windowState.size to windowState.position
+            // Square corners whenever the window fills its screen (fullscreen, maximized, snapped, tiled to full size):
+            // rounded ones would leave white gaps there. Tracked from resize/move events so the app only recomposes
+            // when the answer flips, not on every drag step.
+            var fillsScreen by remember { mutableStateOf(WindowMaximize.fillsScreen(window)) }
+            androidx.compose.runtime.DisposableEffect(window) {
+                val listener = object : java.awt.event.ComponentAdapter() {
+                    override fun componentResized(e: java.awt.event.ComponentEvent?) { fillsScreen = WindowMaximize.fillsScreen(window) }
+                    override fun componentMoved(e: java.awt.event.ComponentEvent?) { fillsScreen = WindowMaximize.fillsScreen(window) }
+                }
+                window.addComponentListener(listener)
+                fillsScreen = WindowMaximize.fillsScreen(window)
+                onDispose { window.removeComponentListener(listener) }
             }
-            val osFullscreen = windowState.placement == WindowPlacement.Fullscreen ||
+            val osFullscreen = fillsScreen ||
+                windowState.placement == WindowPlacement.Fullscreen ||
+                windowState.placement == WindowPlacement.Maximized ||
                 (com.music.vivi.nativelib.HostOs.isWindows && WindowMaximize.isMaximized(window))
             val windowShape = RoundedCornerShape(16.dp)
             Surface(

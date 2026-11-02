@@ -30,6 +30,23 @@ object WindowMaximize {
         return abs(w.x - u.x) <= 2 && abs(w.y - u.y) <= 2 && abs(w.width - u.width) <= 2 && abs(w.height - u.height) <= 2
     }
 
+    /**
+     * True when the window covers its screen's usable area (or all of the monitor) to within a few pixels: maximized by
+     * the window manager, snapped, tiled to full size or fullscreen. The rounded window shape must then go square or the
+     * corners leave gaps. Looser than [isMaximized], which only recognises this app's own maximize on Windows.
+     */
+    fun fillsScreen(window: Window): Boolean {
+        val gc = window.graphicsConfiguration ?: return false
+        val w = window.bounds
+        val m = gc.bounds
+        val u = usableBounds(window)
+        val slack = 12
+        val fillsUsable = w.width >= u.width - slack && w.height >= u.height - slack &&
+            w.x <= u.x + slack && w.y <= u.y + slack
+        val fillsMonitor = w.width >= m.width - slack && w.height >= m.height - slack
+        return fillsUsable || fillsMonitor
+    }
+
     fun toggle(window: Window, windowState: WindowState) {
         if (windowState.placement != androidx.compose.ui.window.WindowPlacement.Floating) {
             windowState.placement = androidx.compose.ui.window.WindowPlacement.Floating
