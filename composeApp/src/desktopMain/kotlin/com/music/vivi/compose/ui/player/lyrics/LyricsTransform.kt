@@ -64,11 +64,13 @@ object LyricsTransform {
         val tr = arrayOfNulls<String>(lines.size)
         if (o.romanize) lines.forEachIndexed { i, l -> if (!l.isBackground) rom[i] = LyricsRomanizer.romanize(l.text) }
 
+        // A song already in the target language needs no translation: no request, nothing added under the lines.
+        val translateNow = o.translate && !LyricsLanguageGuess.alreadyIn(lines.filter { !it.isBackground }.map { it.text }, o.targetLang)
         // Lines the provider must handle: translations, and kanji readings the offline tables cannot give.
         val wanted = lines.indices.filter { i ->
             val l = lines[i]
             !l.isBackground && l.text.isNotBlank() && l.translation.isNullOrBlank() &&
-                ((o.translate && l.text.any { it.isLetter() }) || (o.romanize && rom[i] == null && LyricsRomanizer.needsDictionary(l.text)))
+                ((translateNow && l.text.any { it.isLetter() }) || (o.romanize && rom[i] == null && LyricsRomanizer.needsDictionary(l.text)))
         }
         var problem: String? = null
         if (wanted.isNotEmpty()) {
@@ -82,7 +84,7 @@ object LyricsTransform {
                 wanted.forEachIndexed { n, i ->
                     val (r, t) = remote[n]
                     if (o.romanize && rom[i] == null) rom[i] = r
-                    if (o.translate) tr[i] = t?.takeUnless { it.equals(lines[i].text, ignoreCase = true) }
+                    if (translateNow) tr[i] = t?.takeUnless { it.equals(lines[i].text, ignoreCase = true) }
                 }
             } catch (e: Exception) {
                 problem = e.message?.take(120) ?: "Translation failed"
