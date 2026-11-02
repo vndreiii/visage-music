@@ -383,9 +383,8 @@ private fun NowPlayingScreenContent(
                 // Pane-based (not window-based): the pinned queue rail steals 360dp from this pane.
                 // Stacked = media on top, controls below, queue in a tray. Narrow or portrait-ish panes.
                 val stacked = maxWidth < 760.dp || maxHeight > maxWidth * 1.25f
-                // Three panes (cover | lyrics | controls) when lyrics are open and the pane is ultra wide.
-                // Not with a music video: it already plays above the controls, so a left cover would show it twice.
-                val triple = !stacked && showLyrics && trackVideo == null && maxWidth >= 1700.dp && maxWidth.value / maxHeight.value >= 1.85f
+                // The cover is never a left pane while lyrics are open: it takes the video's place above the controls.
+                val triple = false
                 val paneGap = if (stacked) 16.dp else NowPlayingPaneGap
                 val underQueue = showUnderPlaybar && !showLyrics && !stacked
                 val idle = nowPlayingIdleMetrics(maxWidth, maxHeight, limitControlsWidth, controlsMaxWidth, expanded = windowLayout.isExpanded)
@@ -435,7 +434,7 @@ private fun NowPlayingScreenContent(
                 // ---- Shared pieces, placed by the wide (side by side) and stacked (compact) layouts below. ----
                 val coverSlot: @Composable () -> Unit = {
                             PlainAnimatedVisibility(
-                                visible = !hideThumbnail && (!showLyrics || triple),
+                                visible = !hideThumbnail && !showLyrics,
                                 enter = fadeIn() + scaleIn(initialScale = 0.92f),
                                 exit = fadeOut() + scaleOut(targetScale = 0.92f),
                                 label = "npCoverLarge",
@@ -777,6 +776,36 @@ private fun NowPlayingScreenContent(
                                             }
                                         }
                                     }
+                                    // No video or canvas: the cover sits on the controls where they would play.
+                                    PlainAnimatedVisibility(
+                                        visible = showLyrics && !hideThumbnail && trackVideo == null && !showCanvasOnRight,
+                                        enter = fadeIn() + scaleIn(initialScale = 0.92f),
+                                        exit = fadeOut() + scaleOut(targetScale = 0.92f),
+                                        label = "npRightCover",
+                                    ) {
+                                        val coverShape = if (squareCover) androidx.compose.ui.graphics.RectangleShape else RoundedCornerShape(24.dp)
+                                        BoxWithConstraints(Modifier.fillMaxSize().padding(bottom = 16.dp), contentAlignment = Alignment.BottomCenter) {
+                                            val side = minOf(maxWidth, maxHeight)
+                                            AsyncImage(
+                                                model = track?.artworkUrl,
+                                                contentDescription = track?.title,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(side)
+                                                    .songSwapCover(swap)
+                                                    .sharedBounds(
+                                                        sharedContentState = coverState,
+                                                        animatedVisibilityScope = this@PlainAnimatedVisibility,
+                                                        resizeMode = SharedTransitionScope.ResizeMode.scaleToBounds(
+                                                            ContentScale.Crop,
+                                                            Alignment.Center,
+                                                        ),
+                                                    )
+                                                    .shadow(24.dp, coverShape, clip = false)
+                                                    .clip(coverShape),
+                                            )
+                                        }
+                                    }
                                     if (rightCanvasUrl != null) {
                                         PlainAnimatedVisibility(
                                             visible = showCanvasOnRight,
@@ -815,7 +844,7 @@ private fun NowPlayingScreenContent(
 
                             controlsBlock(
                                 Modifier.align(Alignment.CenterHorizontally).nowPlayingControlsWidth(limitControlsWidth, if (showLyrics) adwaitaClampWidth(stackW, controlsMaxWidth) else controlsMaxWidth).then(if (underQueue && !showCanvasOnRight) Modifier.weight(1f) else Modifier),
-                                showLyrics && !triple && !hideThumbnail && !showCanvasOnRight,
+                                false,
                             )
                             if (!underQueue) {
                                 Spacer(Modifier.weight((1f - controlsBias).coerceIn(0.001f, 1f)))
