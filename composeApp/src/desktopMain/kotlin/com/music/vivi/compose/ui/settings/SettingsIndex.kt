@@ -174,6 +174,8 @@ internal val SettingsIndex: List<SettingsEntry> = listOf(
     SettingsEntry("Close-up fade", "", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
     SettingsEntry("Linger time", "How long a line stays after its last word", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
     SettingsEntry("Rings cut the lyrics", "The rings slice the lettering; off keeps the text whole", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
+    SettingsEntry("Sync with rings background", "Same ring field, clock and reactivity as the Rings background; off gives the cuts their own", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
+    SettingsEntry("Cut reactivity", "How strongly the cuts react to the music", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
     SettingsEntry("Inertial overshoot", "", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
     SettingsEntry("Bounce frequency", "", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
     SettingsEntry("Bounce damping", "", "Lyrics", Routes.SETTINGS_LYRICS, false, ""),
