@@ -71,3 +71,11 @@ Captured from the real AppImage (Xvfb `:80`, `tools/penpot/capture/sess.sh`, rou
 | all three | light, blur-off, loading, empty, queue-open variants | **missing** |
 Frame positions: x=2826 (Desktop 1920 column), y=0 Library, y=1400 Search, y=2800 Moods.
 Builder: `visagePatch31` (`H.moodCard(f,x,y,w,size,title,colours)`) on the Legend page.
+
+## Home frames re-audited against fresh captures (2026-11-02)
+Captured the current AppImage at 390/800/1366/1920/2560/3440 (`tools/penpot/capture/sess.sh`, route `home`) and compared with the six `Screens · Home` frames.
+* App: Quick picks grid pulled up 17dp (first row content 68dp under the card top, card 315dp at Large); verified on a new 2560 capture (cover top y319, card about 316dp).
+* Penpot, all six frames: real `visage_icon.png` logo (36dp r8) instead of a placeholder picture (Mobile 390 has no logo, as in the capture); greeting Bold; mood chips resized and SemiBold; Quick picks strapline/row title weights; mini player title; 1366 mini player prev/speaker/favourite icons; "Covers and remixes" shelf at 2560, 3440, 800.
+* Queue panel (1920, 1366, 2560, 3440): divider under Shuffle/Repeat/Radio, 48dp header buttons and chips, brighter icon and label colours, 14dp subtitles, 14x2 drag handles.
+* Library sidebar (same four frames): search field, white labels, bold chips and sort label, menu icon, Liked Songs gradient tile with heart, tile caption sizes.
+* Still different: glass backgrounds (no backdrop blur in Penpot), wallpaper, cover art and track names (sample data), 800 "From your library" 3-4px left, 3440 Covers shelf about +-10px, Covers rows reuse sample text, 1920/1366 do not show the Covers shelf in their captures.
