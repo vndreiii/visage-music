@@ -209,6 +209,10 @@ class DefaultPlaybackController(
             }
             MpvPlayer.State.Error -> {
                 if (dualOverlapActive.get()) return
+                // A refused stream while a track is still loading is loadAndPlay's to handle: its awaitReady throws and it
+                // moves on to the next source. Flipping the UI to Error here shows a raw "loading failed" and a user
+                // press on play then cancels the retry chain before the working source is reached.
+                if (_state.value == PlaybackState.Loading) return
                 _state.value = PlaybackState.Error
                 mpris?.updatePlaybackState(PlaybackState.Error)
             }
