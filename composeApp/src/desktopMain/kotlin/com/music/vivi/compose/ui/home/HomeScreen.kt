@@ -818,6 +818,17 @@ private fun HomeSectionBlock(
                         .fillMaxWidth()
                         // Framed (Quick picks): 58.5dp row pitch; the 48dp row content sits centred in the 64dp item.
                         .height(if (framed) 58.5.dp * rows else ListItemHeight * rows)
+                        .then(
+                            if (framed) {
+                                // Penpot Large: first row's 48dp content starts 68dp under the card top, the card is 315dp
+                                // tall. The header row plus gap leave 17dp more than that, so pull the grid up by it.
+                                Modifier.layout { measurable, constraints ->
+                                    val up = 17.dp.roundToPx()
+                                    val p = measurable.measure(constraints)
+                                    layout(p.width, p.height - up) { p.place(0, -up) }
+                                }
+                            } else Modifier,
+                        )
                         .horizontalWheelScroll(gridState),
                 ) {
                     itemsIndexed(
