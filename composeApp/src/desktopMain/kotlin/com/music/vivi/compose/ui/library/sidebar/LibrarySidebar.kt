@@ -31,6 +31,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -585,6 +586,11 @@ internal fun LibraryPanelBody(
 ) {
     Column(modifier.padding(top = 8.dp)) {
         // Header: library icon doubles as the expand/collapse handle; the rest fades with f.
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+        // Narrow sidebar (docked beside the queue in a small window): the four 48 dp buttons leave no room for the title,
+        // so it goes first (an ellipsised "Yo" says nothing) and then the collapse-to-rail button.
+        val showTitle = maxWidth >= 300.dp
+        val showCollapse = maxWidth >= 240.dp
         Row(
             Modifier.fillMaxWidth().height(52.dp).padding(start = 14.dp, end = ContentPad - 4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -596,13 +602,14 @@ internal fun LibraryPanelBody(
                 Icon(Icons.Outlined.LibraryMusic, contentDescription = if (expanded) "Collapse library" else "Expand library")
             }
             Row(Modifier.weight(1f).alpha(f), verticalAlignment = Alignment.CenterVertically) {
-                Text(
+                if (showTitle) Text(
                     "Your Library",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     modifier = Modifier.padding(start = 6.dp).weight(1f),
-                )
+                ) else Spacer(Modifier.weight(1f))
                 Box {
                     var addMenu by remember { mutableStateOf(false) }
                     IconButton(onClick = { addMenu = true }, enabled = f > 0.5f, modifier = Modifier.tourAnchor("library.add")) {
@@ -618,7 +625,7 @@ internal fun LibraryPanelBody(
                         }
                     }
                 }
-                IconButton(onClick = { onStateChange(LibrarySidebarState.RAIL) }, enabled = f > 0.5f) {
+                if (showCollapse) IconButton(onClick = { onStateChange(LibrarySidebarState.RAIL) }, enabled = f > 0.5f) {
                     Icon(
                         if (side == SidebarSide.RIGHT) Icons.Outlined.KeyboardDoubleArrowRight else Icons.Outlined.KeyboardDoubleArrowLeft,
                         contentDescription = "Collapse to rail",
@@ -628,6 +635,7 @@ internal fun LibraryPanelBody(
                     Icon(Icons.Outlined.Close, contentDescription = "Hide library")
                 }
             }
+        }
         }
 
         // Search + chips + sort: height and alpha follow the width animation.
