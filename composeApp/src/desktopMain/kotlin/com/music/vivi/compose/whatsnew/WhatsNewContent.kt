@@ -79,6 +79,12 @@ object WhatsNewCatalog {
                     howTo = "Resize the window. Under 600 px wide tap the menu button in the top bar for Home, Search, Library and Settings. On big screens pages stay centred at a readable width.",
                 ),
                 WhatsNewFeature(
+                    slug = "settings-redesign",
+                    title = "Settings redesign",
+                    summary = "Every settings page was rebuilt. Long rows of chips became dropdowns, options that depend on another switch only show up when it is on, and pages like Interface, Lyrics, Fullscreen player and Sidebars show a live preview of what you are changing as you change it.",
+                    howTo = "Open Settings and pick a page. Change a setting and watch the preview on the same page update at once. Use the search box at the top of Settings to jump straight to any option.",
+                ),
+                WhatsNewFeature(
                     slug = "popout-player",
                     title = "Pop-out mini player",
                     summary = "Pull Now Playing into its own small window. Make it wide enough and the lyrics show up next to the cover.",
