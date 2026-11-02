@@ -26,6 +26,8 @@ import androidx.compose.material.icons.outlined.Vibration
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.BlurOn
 import androidx.compose.material.icons.outlined.ContentCut
+import androidx.compose.material.icons.outlined.Sync
+import androidx.compose.material.icons.outlined.GraphicEq
 import androidx.compose.material.icons.outlined.ViewInAr
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.automirrored.outlined.FormatAlignLeft
@@ -367,6 +369,15 @@ fun LyricsPanel(
                 dissolve = cfg.sceneDissolve,
                 lingerSec = cfg.sceneLingerSec,
                 bounceAmp = cfg.bounceAmp,
+                cutsSlice = cfg.cutsSliceText,
+                cutsSync = cfg.cutsSyncRings,
+                cutsReaction = if (cfg.cutsSyncRings) prefs.getFloat(PrefKeys.RingsReaction, 1f) else cfg.cutsReaction,
+                onChangeCutsSlice = { prefs.setBoolean(PrefKeys.LyricsCutsSlice, it) },
+                onChangeCutsSync = { prefs.setBoolean(PrefKeys.LyricsCutsSync, it) },
+                onChangeCutsReaction = { next ->
+                    // Synced, the stepper edits the Rings background's own reactivity, as Settings does.
+                    prefs.setFloat(if (cfg.cutsSyncRings) PrefKeys.RingsReaction else PrefKeys.LyricsCutsReaction, next)
+                },
                 onSelectScene = { next ->
                     prefs.setString(PrefKeys.LyricsScene, next.name)
                 },
@@ -772,6 +783,12 @@ private fun LyricsSceneControl(
     dissolve: Float,
     lingerSec: Float,
     bounceAmp: Float,
+    cutsSlice: Boolean,
+    cutsSync: Boolean,
+    cutsReaction: Float,
+    onChangeCutsSlice: (Boolean) -> Unit,
+    onChangeCutsSync: (Boolean) -> Unit,
+    onChangeCutsReaction: (Float) -> Unit,
     onSelectScene: (LyricsScene) -> Unit,
     onChangeLinger: (Float) -> Unit,
     onChangeDissolve: (Float) -> Unit,
@@ -905,6 +922,22 @@ private fun LyricsSceneControl(
                                         onMinus = { onChangeBounceAmp((bounceAmp - 0.20f).coerceIn(0f, 2.5f)) },
                                         onPlus = { onChangeBounceAmp((bounceAmp + 0.20f).coerceIn(0f, 2.5f)) },
                                     )
+                                    if (current == LyricsScene.CUTS) {
+                                        SceneSwitch(
+                                            icon = Icons.Outlined.ContentCut, label = "Rings cut the lyrics",
+                                            checked = cutsSlice, onChange = onChangeCutsSlice,
+                                        )
+                                        SceneSwitch(
+                                            icon = Icons.Outlined.Sync, label = "Sync with rings background",
+                                            checked = cutsSync, onChange = onChangeCutsSync,
+                                        )
+                                        SceneStepper(
+                                            icon = Icons.Outlined.GraphicEq, label = "Reactivity",
+                                            value = if (cutsReaction <= 0f) "Off" else "${(cutsReaction * 100).toInt()}%",
+                                            onMinus = { onChangeCutsReaction((cutsReaction - 0.10f).coerceIn(0f, 2f)) },
+                                            onPlus = { onChangeCutsReaction((cutsReaction + 0.10f).coerceIn(0f, 2f)) },
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -920,6 +953,17 @@ private fun sceneIcon(scene: LyricsScene): ImageVector = when (scene) {
     LyricsScene.NONE -> Icons.AutoMirrored.Outlined.FormatListBulleted
     LyricsScene.ROW -> Icons.Outlined.ViewInAr
     LyricsScene.CUTS -> Icons.Outlined.ContentCut
+}
+
+/** One on/off option: icon and label on the left, a switch on the right. */
+@Composable
+private fun SceneSwitch(icon: ImageVector, label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Icon(icon, null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(20.dp))
+        Spacer(Modifier.width(12.dp))
+        Text(label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+        androidx.compose.material3.Switch(checked = checked, onCheckedChange = onChange)
+    }
 }
 
 /** One tunable value: icon and label on the left, a pill with − value + on the right. */

@@ -240,7 +240,7 @@ internal fun LyricsCutsScene(
             var ringCenterX = canvasW * ringOriginX
             var ringCenterY = canvasH * ringOriginY
             // Fused with the Rings background: use its exact centre, spacing and clock (see RingsField).
-            val fused = RingsField.live && RingsField.width > 10f
+            val fused = cfg.cutsSyncRings && RingsField.live && RingsField.width > 10f
             val ringScale = prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsScale, 1.6f).coerceIn(0.4f, 6f)
             val bgDiag = kotlin.math.hypot(RingsField.width, RingsField.height)
             if (fused) {
@@ -426,10 +426,14 @@ internal fun LyricsCutsScene(
                 prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsReaction, 1f),
                 prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsSmoothing, 0f),
             )
-            shaderBuilder.uniform("uBass", com.music.vivi.compose.ui.player.background.RingsReaction.bass)
-            shaderBuilder.uniform("uMid", com.music.vivi.compose.ui.player.background.RingsReaction.mid)
-            shaderBuilder.uniform("uHigh", com.music.vivi.compose.ui.player.background.RingsReaction.high)
-            shaderBuilder.uniform("uKick", com.music.vivi.compose.ui.player.background.RingsReaction.kick)
+            // Synced: the Rings background's reactivity as is. Unsynced: this scene's own strength, as a ratio of it.
+            val reactK = if (cfg.cutsSyncRings) 1f else {
+                cfg.cutsReaction / prefs.getFloat(com.music.vivi.compose.prefs.PrefKeys.RingsReaction, 1f).coerceAtLeast(0.05f)
+            }
+            shaderBuilder.uniform("uBass", com.music.vivi.compose.ui.player.background.RingsReaction.bass * reactK)
+            shaderBuilder.uniform("uMid", com.music.vivi.compose.ui.player.background.RingsReaction.mid * reactK)
+            shaderBuilder.uniform("uHigh", com.music.vivi.compose.ui.player.background.RingsReaction.high * reactK)
+            shaderBuilder.uniform("uKick", com.music.vivi.compose.ui.player.background.RingsReaction.kick * reactK)
             shaderBuilder.uniform("uRingStep", ringStep)
             shaderBuilder.uniform("uLineWidth", lineWidth)
             shaderBuilder.uniform("uRippleFreq", rippleFreq)

@@ -337,6 +337,20 @@ fun LyricsSettingsScreen(navController: NavController) {
                     SwitchItem(Icons.Outlined.ContentCut, "Rings cut the lyrics", "The rings slice the lettering; off keeps the text whole", live.cutsSliceText) {
                         commit(live.copy(cutsSliceText = it))
                     }
+                    SettingsDivider()
+                    SwitchItem(Icons.Outlined.Sync, "Sync with rings background", "Same ring field, clock and reactivity as the Rings background; off gives the cuts their own", live.cutsSyncRings) {
+                        commit(live.copy(cutsSyncRings = it))
+                    }
+                    AnimatedVisibility(!live.cutsSyncRings, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {
+                        Column {
+                            SettingsDivider()
+                            LiveSlider(
+                                "Cut reactivity", live.cutsReaction, 0f..2f, 20, { if (it <= 0f) "Off" else "${(it * 100).toInt()}%" },
+                                { live = live.copy(cutsReaction = it) }, { commit(live.copy(cutsReaction = it)) },
+                                icon = Icons.Outlined.GraphicEq, subtitle = "How strongly the cuts react to the music", default = LyricsConfig().cutsReaction,
+                            )
+                        }
+                    }
                 }
             }
             AnimatedVisibility(live.scene != LyricsScene.NONE, enter = expandVertically() + fadeIn(), exit = shrinkVertically() + fadeOut()) {

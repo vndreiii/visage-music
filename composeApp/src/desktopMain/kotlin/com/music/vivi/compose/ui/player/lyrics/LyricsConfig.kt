@@ -188,6 +188,10 @@ data class LyricsConfig(
     val sceneLingerSec: Float = 3.0f,
     /** Cuts: the rings cut gaps into the lettering and slide the slices; off keeps the text whole. */
     val cutsSliceText: Boolean = true,
+    /** Cuts: follow the Rings background (same ring field, clock and reactivity); off gives the cuts their own clock and reactivity. */
+    val cutsSyncRings: Boolean = true,
+    /** Cuts: how strongly the cuts react to the music when not synced to the Rings background (0..2). */
+    val cutsReaction: Float = 1f,
     val bounceAmp: Float = 0.48f,
     val bounceFreq: Float = 1.0f,
     val bounceDecay: Float = 7.5f,
@@ -242,6 +246,8 @@ fun DesktopPrefs.lyricsConfig(): LyricsConfig {
         sceneDissolve = getFloat(PrefKeys.LyricsSceneDissolve, d.sceneDissolve).coerceIn(0.55f, 0.95f),
         sceneLingerSec = getFloat(PrefKeys.LyricsSceneLinger, d.sceneLingerSec).coerceIn(0.5f, 8f),
         cutsSliceText = getBoolean(PrefKeys.LyricsCutsSlice, d.cutsSliceText),
+        cutsSyncRings = getBoolean(PrefKeys.LyricsCutsSync, d.cutsSyncRings),
+        cutsReaction = getFloat(PrefKeys.LyricsCutsReaction, d.cutsReaction).coerceIn(0f, 2f),
         bounceAmp = getFloat(PrefKeys.LyricsBounceAmp, d.bounceAmp).coerceIn(0f, 3f),
         bounceFreq = getFloat(PrefKeys.LyricsBounceFreq, d.bounceFreq).coerceIn(0.5f, 5f),
         bounceDecay = getFloat(PrefKeys.LyricsBounceDecay, d.bounceDecay).coerceIn(1f, 10f),
@@ -279,6 +285,8 @@ fun DesktopPrefs.saveLyricsConfig(c: LyricsConfig) {
     setFloat(PrefKeys.LyricsSceneDissolve, c.sceneDissolve)
     setFloat(PrefKeys.LyricsSceneLinger, c.sceneLingerSec)
     setBoolean(PrefKeys.LyricsCutsSlice, c.cutsSliceText)
+    setBoolean(PrefKeys.LyricsCutsSync, c.cutsSyncRings)
+    setFloat(PrefKeys.LyricsCutsReaction, c.cutsReaction)
     setFloat(PrefKeys.LyricsBounceAmp, c.bounceAmp)
     setFloat(PrefKeys.LyricsBounceFreq, c.bounceFreq)
     setFloat(PrefKeys.LyricsBounceDecay, c.bounceDecay)

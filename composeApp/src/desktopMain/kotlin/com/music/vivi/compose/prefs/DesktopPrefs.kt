@@ -276,6 +276,8 @@ object PrefKeys {
     const val LyricsSceneDissolve = "lyricsSceneDissolve"
     const val LyricsSceneLinger = "lyricsSceneLinger"
     const val LyricsCutsSlice = "lyricsCutsSlice"
+    const val LyricsCutsSync = "lyricsCutsSync"
+    const val LyricsCutsReaction = "lyricsCutsReaction"
     const val LyricsBounceAmp = "lyricsBounceAmp"
     const val LyricsBounceFreq = "lyricsBounceFreq"
     const val LyricsBounceDecay = "lyricsBounceDecay"
