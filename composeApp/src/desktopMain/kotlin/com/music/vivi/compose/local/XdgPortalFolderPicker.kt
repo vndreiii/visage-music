@@ -7,7 +7,6 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.freedesktop.dbus.ObjectPath
 import org.freedesktop.dbus.annotations.DBusInterfaceName
 import org.freedesktop.dbus.connections.impl.DBusConnectionBuilder
 import org.freedesktop.dbus.exceptions.DBusException
@@ -161,13 +160,15 @@ object XdgPortalFolderPicker {
 
 @DBusInterfaceName("org.freedesktop.portal.FileChooser")
 interface PortalFileChooser : DBusInterface {
+    // Returns the request handle: dbus-java hands back a DBusPath for "o", so declaring ObjectPath threw a ClassCastException
+    // after the dialog had opened, and the zenity fallback then opened a second dialog.
     fun OpenFile(
         parentWindow: String,
         title: String,
         // Kotlin's `Map<K, out V>` becomes `? extends Variant<?>` in Java, which dbus-java turns into the broken signature
         // `a{s}` (the bus then drops the connection: "Underlying transport returned -1"). It must be exactly a{sv}.
         options: @JvmSuppressWildcards Map<String, Variant<*>>,
-    ): ObjectPath
+    ): org.freedesktop.dbus.DBusPath
 }
 
 /**

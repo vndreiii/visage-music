@@ -16,6 +16,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -520,11 +521,29 @@ fun FrameWindowScope.AppScaffold(
               onDismiss = { navMenuOpen = false },
           )
       }
-      // Tag Manager work (auto-tag / writing) goes on in the background; this takes you back to it.
-      if (current != Routes.TAG_MANAGER) {
-          com.music.vivi.compose.ui.tags.TagWorkFab(
-              onOpen = { navController.navigate(Routes.TAG_MANAGER) { launchSingleTop = true } },
-              modifier = Modifier.align(Alignment.BottomStart).padding(start = 32.dp, bottom = 32.dp + miniBarInset),
+      // Background work (tagging, library scanning, anything reported to BackgroundTasks): one draggable button that
+      // takes you back to where it runs.
+      run {
+          val scanner = koinInject<com.music.vivi.database.LocalMusicScanner>()
+          val scan by scanner.progress.collectAsState()
+          val tagTask = if (current != Routes.TAG_MANAGER) {
+              com.music.vivi.compose.ui.tags.tagWorkTask { navController.navigate(Routes.TAG_MANAGER) { launchSingleTop = true } }
+          } else null
+          val scanTask = if (scan.running && current != Routes.SETTINGS_LOCAL_OFFLINE) {
+              com.music.vivi.compose.ui.component.BackgroundTask(
+                  id = "scan",
+                  label = if (scan.totalHint > 0) "Scanning ${scan.scanned}/${scan.totalHint}" else "Scanning library",
+                  icon = androidx.compose.material.icons.Icons.Outlined.Sync,
+                  done = scan.scanned,
+                  total = scan.totalHint,
+                  onOpen = { navController.navigate(Routes.SETTINGS_LOCAL_OFFLINE) { launchSingleTop = true } },
+              )
+          } else null
+          com.music.vivi.compose.ui.component.BackgroundTaskFab(
+              tasks = listOfNotNull(tagTask, scanTask),
+              prefs = prefs,
+              startInset = 32.dp,
+              bottomInset = 32.dp + miniBarInset,
           )
       }
       // A queue row dragged out of the queue hangs from the pointer above everything, to be dropped on a playlist.
