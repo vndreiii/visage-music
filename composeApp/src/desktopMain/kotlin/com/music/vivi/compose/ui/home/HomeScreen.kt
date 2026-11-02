@@ -817,7 +817,6 @@ private fun HomeSectionBlock(
                     modifier = Modifier
                         .fillMaxWidth()
                         // Framed (Quick picks): 58.5dp row pitch; the 48dp row content sits centred in the 64dp item.
-                        .height(if (framed) 58.5.dp * rows else ListItemHeight * rows)
                         .then(
                             if (framed) {
                                 // Penpot Large: first row's 48dp content starts 68dp under the card top, the card is 315dp
@@ -829,6 +828,7 @@ private fun HomeSectionBlock(
                                 }
                             } else Modifier,
                         )
+                        .height(if (framed) 58.5.dp * rows else ListItemHeight * rows)
                         .horizontalWheelScroll(gridState),
                 ) {
                     itemsIndexed(
