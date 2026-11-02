@@ -4,7 +4,7 @@ import androidx.compose.ui.graphics.Color
 
 /** Where the walkthrough videos live. Blank skips the CDN step and goes straight to YouTube. */
 object WhatsNewConfig {
-    const val CDN_BASE = ""
+    const val CDN_BASE = "https://vndreiii.com/programs/visage/media"
 
     /** `<CDN_BASE>/whatsnew/<version>/<slug>.mp4` */
     fun cdnUrl(version: String, slug: String): String? =
@@ -47,48 +47,56 @@ object WhatsNewCatalog {
                     title = "3D lyric corridor",
                     summary = "Lyrics now fly toward you through a depth-blurred corridor. The line being sung is sharp, the rest fall away.",
                     howTo = "Open the lyrics panel, then Settings > Lyrics > Scene and pick \"3D row\". Close-up fade distance is adjustable there.",
+                    youtubeId = "XGrBMOOgrOA",
                 ),
                 WhatsNewFeature(
                     slug = "lyrics-cuts",
                     title = "Cuts scene",
                     summary = "A vinyl-groove poster look: concentric rings slice through the lyric and ripple outward with the music.",
                     howTo = "Settings > Lyrics > Scene > \"Cuts\". The rings react to singing, tempo and every lyric change.",
+                    youtubeId = "Wj2C7aD7zTo",
                 ),
                 WhatsNewFeature(
                     slug = "carry-tracks",
                     title = "Carry tracks anywhere",
                     summary = "Drag a track out of the queue, the now-playing card or a library list and drop it onto a playlist or folder.",
                     howTo = "Hold a row and pull it sideways. Targets that would refuse the track (a local file onto a YouTube playlist) glow red and a toast says why.",
+                    youtubeId = "8M89koPkj7w",
                 ),
                 WhatsNewFeature(
                     slug = "tag-manager",
                     title = "Tag Manager upgrades",
                     summary = "Batch-fix your local library tags with auto-tagging, a review screen where you can type your own values, and a right-click menu.",
                     howTo = "Library > Tag Manager. Drag to select rows, right-click for Play, Add to queue or Open folder. Work continues in the background while you browse.",
+                    youtubeId = "iiTa1FdeBGc",
                 ),
                 WhatsNewFeature(
                     slug = "local-library",
                     title = "Local library, your way",
                     summary = "Pick several music folders, see each one's scan status, and filter the current tab with the new search bar.",
                     howTo = "Settings > Local & offline > Add folder. In Library, type in the search bar to filter the tab you are on.",
+                    youtubeId = "x9T52JRWG24",
                 ),
                 WhatsNewFeature(
                     slug = "responsive-layouts",
                     title = "Fits any window",
                     summary = "VIsage now adapts from a phone-sized window to an ultrawide monitor. On small windows the tabs fold into a menu tray, the queue and lyrics open as trays and Now Playing stacks into one column.",
                     howTo = "Resize the window. Under 600 px wide tap the menu button in the top bar for Home, Search, Library and Settings. On big screens pages stay centred at a readable width.",
+                    youtubeId = "dM2CNzR_HOM",
                 ),
                 WhatsNewFeature(
                     slug = "settings-redesign",
                     title = "Settings redesign",
                     summary = "Every settings page was rebuilt. Long rows of chips became dropdowns, options that depend on another switch only show up when it is on, and pages like Interface, Lyrics, Fullscreen player and Sidebars show a live preview of what you are changing as you change it.",
                     howTo = "Open Settings and pick a page. Change a setting and watch the preview on the same page update at once. Use the search box at the top of Settings to jump straight to any option.",
+                    youtubeId = "SSrzzMXmT_Y",
                 ),
                 WhatsNewFeature(
                     slug = "popout-player",
                     title = "Pop-out mini player",
                     summary = "Pull Now Playing into its own small window. Make it wide enough and the lyrics show up next to the cover.",
                     howTo = "Press Ctrl+Shift+M or use the pop-out button in the Now Playing tool row (rebindable in Settings > Keyboard shortcuts). It can stay on top; on Hyprland and other Wayland compositors pin it with a window rule, see docs/popup-player.md.",
+                    youtubeId = "RqUxEAXzYR0",
                 ),
             ),
             changes = listOf(
