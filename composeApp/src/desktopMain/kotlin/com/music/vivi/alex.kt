@@ -118,6 +118,13 @@ fun main() {
             toolkit.javaClass.getDeclaredField("awtAppClassName").apply { isAccessible = true }.set(toolkit, "visage")
         }
     }
+    // Hyprland stops sending frame callbacks to a window it is not showing (other workspace, special workspace). With vsync on,
+    // the main window's buffer swap then blocks the one AWT event thread that the pop-out player shares, so the popup lags
+    // while the main window is hidden. Without vsync Skiko paces frames itself (its frame limiter) and never waits for the
+    // compositor. Only on Hyprland, where this happens; other compositors keep vsync.
+    if (System.getenv("HYPRLAND_INSTANCE_SIGNATURE") != null && System.getProperty("skiko.vsync.enabled") == null) {
+        System.setProperty("skiko.vsync.enabled", "false")
+    }
     com.music.vivi.compose.StartupSplash.showIfFirstStart()
     // Before any Jaudiotagger class loads (local scan is very chatty otherwise).
     System.setProperty("org.jaudiotagger.level", "OFF")
