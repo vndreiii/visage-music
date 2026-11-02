@@ -43,6 +43,8 @@ indicator = morph cycle illustration, `Recent ▾` icon).
 | NowPlayingScreen | synced lyrics / canvas at the other five sizes, music-video cover, queue tray / inline queue strip, light, blur-off, popup | missing |
 | Fullscreen player (`NowPlayingFullscreenScreen`) | all | missing: navfile route capture shows a half-loaded transitional state; capture it by clicking the fullscreen tool button in a playing Now Playing session (`live.sh`) |
 | History, Tag Manager, Charts ("Whole world"), New Releases at Desktop 1920x1080 (page `Screens · Library & browse`) | built from `q1920__*` captures; History/Tag Manager/Charts compared with the capture, covers are CC placeholder photos (the app shows generated pattern art for covers without artwork on New Releases/Moods) | **partial**: 1920 only, default state, first screenful; other breakpoints missing |
+| TagManagerScreen (new design: inline title, 40dp search + grouping, filter chips, actions, column header, 64dp rows, 65dp cover tile) at Mobile 390x844, Tablet 800x1280, Desktop 1366x768, Large 2560x1440, UltraWide 3440x1440 (default, queue + library docked where wide) | built with `H.tmScreen` (Legend patch 31) from the `tm*__tag_manager` captures; exports compared with the captures (columns, chips, tile, mini player, UltraWide content cap); covers are placeholders, row text is sample data | **partial**: default state only; 1920 frame left untouched (Alex's edits); rows are 64dp in the capture, not the 60dp in older notes |
+| HistoryScreen (Listening history: back, title, search 320 trailing on dock / under title on compact, mini player) at Mobile 390x844, Tablet 800x1280, Desktop 1366x768, Large 2560x1440, UltraWide 3440x1440 | built with `H.hsScreen` (Legend patch 32) from the `tm*__history` captures and `nw1920__history.png`; header and chrome compared; the list is empty in every capture, so no rows are built | **partial**: layout only, no list rows (captures are empty); light, loading and error states missing |
 | Library home, Search (idle/results), Moods & genres, Album, Artist, Playlist, Browse | all | missing (captures of Library / Moods / Search results exist in the scratchpad but are not built; Moods and New Releases use procedural pattern art that would need its own builder) |
 | Popup mini player, What's New, onboarding, login gate, update prompt, crash dialog, splash | all | missing |
 
@@ -57,3 +59,15 @@ Table Penpot element → Kotlin symbol → file → parameters: done (24 rows).
 
 ## Alex's Home Large 2560 edits (applied 2026-11-01)
 App: pill row + mood chips gutter 12dp (pane x+12, aligned to the cards), Quick picks grid gap 12dp, framed row pitch 58.5dp (48dp content centred in the 64dp item, no layout trim). Penpot: same shift/spacing propagated to the 390, 800, 1366, 1920 and 3440 Home frames (pills/chips x = card x, rows y 319 + 58.5n, columns pitch (card w - 40 + 12) / n). Not re-captured from the new AppImage yet.
+
+## Screens · Library, Search, Moods (page `Screens · Library, Search, Moods`), 2026-11-01
+Captured from the real AppImage (Xvfb `:80`, `tools/penpot/capture/sess.sh`, routes `library`, `search_input`, `mood_and_genres`). Only the Desktop 1920x1080 column was built this round.
+| Frame | Breakpoint / state | Status |
+|-------|--------------------|--------|
+| MoodAndGenresScreen | Desktop 1920x1080 default | **geometry matches capture** (hero 192-436 with 484/322/322 columns, rows 522/706/918, card edges exact by pixel scan). Covers are flat colour tiles named `~cover mood (procedural pattern)`; label plate widths are estimated from character count (about +-6px vs capture); plate colours sampled approximately. Not yet pixel-compared to 2px. |
+| SearchScreen | Desktop 1920x1080 idle | structure matches (top bar Search tab, search field 392..1536 y84 h52, queue, library, mini player). Background is the homeA wallpaper, not the blurred haze of the capture; not pixel-compared. |
+| LibraryScreen | Desktop 1920x1080 default | structure matches (tab chips, search, On this device card, Made for you / Recently added / Genres shelves clipped at the pane edge 1548, mini player). Covers are flat placeholders, all sample text. Not pixel-compared; New albums row below the fold is only a header. |
+| all three | Mobile 390, Tablet 800, Desktop 1366, Large 2560, UltraWide 3440 | **missing** (not captured, not built) |
+| all three | light, blur-off, loading, empty, queue-open variants | **missing** |
+Frame positions: x=2826 (Desktop 1920 column), y=0 Library, y=1400 Search, y=2800 Moods.
+Builder: `visagePatch31` (`H.moodCard(f,x,y,w,size,title,colours)`) on the Legend page.

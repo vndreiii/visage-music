@@ -109,6 +109,7 @@ import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.DetailPageHeader
 import com.music.vivi.compose.ui.component.PageEmptyState
 import com.music.vivi.compose.ui.component.PageLoadingState
+import com.music.vivi.compose.ui.component.PageSkeleton
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 import com.music.vivi.compose.ui.expressive.ConnectedButtonGroup
 import com.music.vivi.compose.ui.expressive.ExpressiveButton
@@ -159,7 +160,7 @@ fun TagManagerScreen(navController: NavController) {
                 Toolbar(state)
                 Box(Modifier.weight(1f).fillMaxWidth()) {
                     when {
-                        state.loading -> PageLoadingState("Reading your library")
+                        state.loading -> PageLoadingState("Reading your library", PageSkeleton.List, header = false)
                         state.tracks.isEmpty() -> PageEmptyState(
                             "No local tracks", "Add a music folder in Settings, then scan it. The Tag Manager works on those files.",
                             actionLabel = "Manage folders",

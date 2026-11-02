@@ -52,6 +52,7 @@ import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import com.music.vivi.compose.ui.component.PageLoadingState
+import com.music.vivi.compose.ui.component.PageSkeleton
 import com.music.vivi.compose.ui.component.VisageLoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -154,7 +155,7 @@ fun ArtistScreen(
     }
 
     when {
-        loading && page == null -> PageLoadingState("Loading artist", detail = true)
+        loading && page == null -> PageLoadingState("Loading artist", PageSkeleton.MediaRound)
         error != null && page == null -> Column(
             Modifier.fillMaxSize().padding(24.dp),
             verticalArrangement = Arrangement.Center,

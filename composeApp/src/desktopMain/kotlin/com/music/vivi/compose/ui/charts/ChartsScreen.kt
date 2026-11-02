@@ -96,6 +96,7 @@ import com.music.vivi.compose.ui.artist.ArtistLinks
 import com.music.vivi.compose.ui.component.CoverImage
 import com.music.vivi.compose.ui.component.PageErrorState
 import com.music.vivi.compose.ui.component.PageLoadingState
+import com.music.vivi.compose.ui.component.PageSkeleton
 import com.music.vivi.compose.ui.component.VisageBackButton
 import com.music.vivi.compose.ui.component.rememberNowPlayingIds
 import com.music.vivi.compose.ui.component.smoothWheelScroll
@@ -221,7 +222,7 @@ fun ChartsScreen(navController: NavHostController) {
         when (state) {
             1 -> PageLoadingState(
                 worldProgress?.let { "Building the world chart: ${it.done} of ${it.total} countries" } ?: "Loading charts",
-                detail = true,
+                PageSkeleton.Charts,
             )
             2 -> Column(Modifier.fillMaxSize()) {
                 VisageBackButton(onClick = { navController.navigateUp() }, modifier = Modifier.padding(start = PageInset, top = PageHeaderTopPadding, bottom = PageHeaderBottomPadding))
@@ -380,7 +381,7 @@ private fun ChartsContent(
                         ExpressiveButton("Retry", onClick = { failed.remove(key); loaded.remove(key); previous = selected; selected = selected }, modifier = Modifier.padding(top = 14.dp))
                     }
                 }
-                else -> PageLoadingState("Loading chart", detail = true)
+                else -> PageLoadingState("Loading chart", PageSkeleton.List, header = false)
             }
         }
     }

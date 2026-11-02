@@ -22,6 +22,7 @@ import com.music.vivi.database.DatabaseFactory
 import com.music.vivi.database.OpusCoverExtractor
 import com.music.vivi.database.LocalMusicScanner
 import com.music.vivi.compose.ui.component.PageLoadingState
+import com.music.vivi.compose.ui.component.PageSkeleton
 import com.music.vivi.compose.ui.component.PageEmptyState
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -571,7 +572,7 @@ fun LibraryScreen(navController: NavController) {
                     leadingIcon = Icons.Filled.Shuffle,
                 )
             }
-            if (collectionLoading) PageLoadingState("Loading tracks", detail = true)
+            if (collectionLoading) PageLoadingState("Loading tracks", PageSkeleton.List, header = false)
             else LocalTrackList(collectionTracks, playingId, isPlaying, playLocalTracks)
             return@Column
         }
@@ -591,7 +592,7 @@ fun LibraryScreen(navController: NavController) {
         val selectedTab = if (searching) LibraryTab.Local else shownTab
         tabStates.SaveableStateProvider(shownTab) {
         when {
-            loading -> PageLoadingState("Opening your library")
+            loading -> PageLoadingState("Opening your library", PageSkeleton.List, header = false)
             selectedTab == LibraryTab.Home -> LibraryHomeFeed(
                 yt = ytData,
                 local = local,

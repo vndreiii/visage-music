@@ -35,6 +35,7 @@ import com.music.innertube.models.SongItem
 import com.music.vivi.compose.LocalPlaybackController
 import com.music.vivi.compose.ui.component.NavigationTitle
 import com.music.vivi.compose.ui.component.PageLoadingState
+import com.music.vivi.compose.ui.component.PageSkeleton
 import com.music.vivi.compose.ui.component.YouTubeListItem
 import com.music.vivi.compose.ui.component.rememberNowPlayingIds
 import com.music.vivi.database.LibraryRepository
@@ -91,7 +92,7 @@ fun AutoPlaylistScreen(
 
     when {
         loading && songs == null -> {
-            PageLoadingState("Loading $type playlist", detail = true)
+            PageLoadingState("Loading $type playlist", PageSkeleton.List)
         }
         error != null && songs == null -> {
             Column(

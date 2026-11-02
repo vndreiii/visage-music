@@ -7,6 +7,7 @@ import androidx.compose.ui.ImageComposeScene
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.music.vivi.compose.ui.component.PageLoadingState
+import com.music.vivi.compose.ui.component.PageSkeleton
 import kotlinx.coroutines.*
 import kotlinx.coroutines.swing.Swing
 import java.io.File
@@ -18,7 +19,7 @@ class DesktopPreviewTest {
             MaterialTheme(colorScheme = darkColorScheme()) {
                 Surface(Modifier.fillMaxSize()) {
                     Row {
-                        Box(Modifier.weight(1f)) { PageLoadingState("Loading your library", detail = true) }
+                        Box(Modifier.weight(1f)) { PageLoadingState("Loading your library", PageSkeleton.List, header = false) }
                         Column(Modifier.width(500.dp).padding(16.dp)) {
                             Text("Make it yours", style = MaterialTheme.typography.headlineMedium)
                         }

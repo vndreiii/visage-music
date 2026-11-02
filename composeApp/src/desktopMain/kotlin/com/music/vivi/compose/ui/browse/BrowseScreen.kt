@@ -39,6 +39,7 @@ import com.music.vivi.compose.ui.component.NavigationTitle
 import com.music.vivi.compose.ui.component.PageEmptyState
 import com.music.vivi.compose.ui.component.PageErrorState
 import com.music.vivi.compose.ui.component.PageLoadingState
+import com.music.vivi.compose.ui.component.PageSkeleton
 import com.music.vivi.compose.ui.component.YouTubeGridItem
 import com.music.vivi.compose.ui.component.rememberNowPlayingIds
 import com.music.vivi.player.toQueueTrack
@@ -106,7 +107,7 @@ fun BrowseScreen(
         val loaded = sections
         val gridState = androidx.compose.foundation.lazy.grid.rememberLazyGridState()
         when {
-            loading && loaded == null -> PageLoadingState("Loading", detail = true)
+            loading && loaded == null -> PageLoadingState("Loading", PageSkeleton.Grid, header = false)
             error != null && loaded == null -> PageErrorState(error.orEmpty()) { load() }
             loaded.isNullOrEmpty() -> PageEmptyState("Nothing here", "This page has no items.")
             else -> LazyVerticalGrid(

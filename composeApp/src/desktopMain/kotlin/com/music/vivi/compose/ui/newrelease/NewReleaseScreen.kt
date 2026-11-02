@@ -37,6 +37,7 @@ import com.music.vivi.compose.LocalPlaybackController
 import com.music.vivi.compose.navigation.Routes
 import com.music.vivi.compose.ui.component.NavigationTitle
 import com.music.vivi.compose.ui.component.PageLoadingState
+import com.music.vivi.compose.ui.component.PageSkeleton
 import com.music.vivi.compose.ui.component.YouTubeGridItem
 import com.music.vivi.compose.ui.component.rememberNowPlayingIds
 import kotlinx.coroutines.Dispatchers
@@ -76,7 +77,7 @@ fun NewReleaseScreen(
 
     when {
         loading && albums == null -> {
-            PageLoadingState("Loading new releases", detail = true)
+            PageLoadingState("Loading new releases", PageSkeleton.Grid)
         }
         error != null && albums == null -> {
             Column(

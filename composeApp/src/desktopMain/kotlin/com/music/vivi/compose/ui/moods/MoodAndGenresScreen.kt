@@ -59,6 +59,7 @@ import com.music.vivi.compose.ui.component.MoodCard
 import com.music.vivi.compose.ui.component.MoodCardSize
 import com.music.vivi.compose.ui.component.PageErrorState
 import com.music.vivi.compose.ui.component.PageLoadingState
+import com.music.vivi.compose.ui.component.PageSkeleton
 import com.music.vivi.compose.ui.component.smoothWheelScroll
 import com.music.vivi.compose.ui.motion.VisageMotion
 import kotlinx.coroutines.Dispatchers
@@ -116,7 +117,7 @@ fun MoodAndGenresScreen(navController: NavHostController) {
         )
         val loaded = moods
         when {
-            loading && loaded == null -> PageLoadingState("Loading moods", detail = true)
+            loading && loaded == null -> PageLoadingState("Loading moods", PageSkeleton.Grid, header = false)
             error != null && loaded == null -> PageErrorState(error.orEmpty()) { load() }
             loaded != null -> {
                 val sections = remember(loaded) {

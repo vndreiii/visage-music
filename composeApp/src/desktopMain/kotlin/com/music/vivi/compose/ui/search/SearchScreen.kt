@@ -86,6 +86,7 @@ import com.music.vivi.compose.ui.component.ChipsRow
 import com.music.vivi.compose.ui.component.GridThumbnailHeight
 import com.music.vivi.compose.ui.component.NavigationTitle
 import com.music.vivi.compose.ui.component.PageLoadingState
+import com.music.vivi.compose.ui.component.PageSkeleton
 import com.music.vivi.compose.ui.component.VisageLoadingIndicator
 import com.music.vivi.compose.ui.component.YouTubeGridItem
 import com.music.vivi.compose.ui.component.YouTubeListItem
@@ -453,8 +454,8 @@ fun SearchScreen(navController: NavController) {
                         )
                     }
                 }
-                loading && summaryPage == null && !showingTypingHints -> PageLoadingState("Searching music")
-                loadingSongs && songsPage == null && filter == SearchFilterType.SONGS -> PageLoadingState("Finding songs", detail = true)
+                loading && summaryPage == null && !showingTypingHints -> PageLoadingState("Searching music", PageSkeleton.List, header = false)
+                loadingSongs && songsPage == null && filter == SearchFilterType.SONGS -> PageLoadingState("Finding songs", PageSkeleton.List, header = false)
                 error != null && summaryPage == null && songsPage == null && !showingTypingHints -> {
                     Column(
                         modifier = Modifier.fillMaxSize().padding(24.dp),

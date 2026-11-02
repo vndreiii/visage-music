@@ -42,6 +42,7 @@ import com.music.vivi.compose.LocalPlaybackController
 import com.music.vivi.compose.navigation.Routes
 import com.music.vivi.compose.ui.component.NavigationTitle
 import com.music.vivi.compose.ui.component.PageLoadingState
+import com.music.vivi.compose.ui.component.PageSkeleton
 import com.music.vivi.compose.ui.component.YouTubeGridItem
 import com.music.vivi.compose.ui.component.rememberNowPlayingIds
 import kotlinx.coroutines.Dispatchers
@@ -102,7 +103,7 @@ fun ArtistItemsScreen(
 
     when {
         loading && items == null -> {
-            PageLoadingState("Loading artist items", detail = true)
+            PageLoadingState("Loading artist items", PageSkeleton.Grid)
         }
         error != null && items == null -> {
             Column(

@@ -39,6 +39,7 @@ import androidx.compose.material.icons.outlined.Shuffle
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import com.music.vivi.compose.ui.component.PageLoadingState
+import com.music.vivi.compose.ui.component.PageSkeleton
 import com.music.vivi.compose.ui.component.VisageLoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -139,7 +140,7 @@ fun OnlinePlaylistScreen(
 
     when {
         vm.isLoading && vm.playlist == null -> {
-            PageLoadingState("Loading playlist", detail = true)
+            PageLoadingState("Loading playlist", PageSkeleton.MediaSquare)
         }
         vm.error != null && vm.playlist == null -> {
             Column(

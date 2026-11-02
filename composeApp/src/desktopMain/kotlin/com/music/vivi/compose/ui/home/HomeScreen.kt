@@ -44,6 +44,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import com.music.vivi.compose.ui.component.PageLoadingState
+import com.music.vivi.compose.ui.component.PageSkeleton
 import com.music.vivi.compose.ui.component.VisageLoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -374,7 +375,7 @@ private fun HomeScreenContent(navController: NavController, vm: HomeViewModel) {
             HomeErrorState(onRetry = { vm.refresh() })
         }
         vm.isLoading && vm.homePage == null -> {
-            PageLoadingState("Finding your next listen", detail = false)
+            PageLoadingState("Finding your next listen", PageSkeleton.Home)
         }
         else -> {
             // No PullToRefreshBox — its nested-scroll connection fights LazyColumn
