@@ -55,12 +55,6 @@ object WhatsNewCatalog {
                     howTo = "Settings > Lyrics > Scene > \"Cuts\". The rings react to singing, tempo and every lyric change.",
                 ),
                 WhatsNewFeature(
-                    slug = "lyrics-bounce",
-                    title = "Springy lyric changes",
-                    summary = "Each new line overshoots and settles like a real spring. Tune it to taste, or turn it down to nothing.",
-                    howTo = "Settings > Lyrics > Motion: overshoot amplitude, bounce frequency and damping. The same sliders are in the lyrics panel.",
-                ),
-                WhatsNewFeature(
                     slug = "carry-tracks",
                     title = "Carry tracks anywhere",
                     summary = "Drag a track out of the queue, the now-playing card or a library list and drop it onto a playlist or folder.",
@@ -93,6 +87,7 @@ object WhatsNewCatalog {
             ),
             changes = listOf(
                 ChangeEntry(ChangeKind.FEATURE, "3D row and Cuts lyric scenes, selectable in Lyrics settings."),
+                ChangeEntry(ChangeKind.FEATURE, "Springy lyric changes: each new line overshoots and settles like a real spring. Tune the overshoot amplitude, bounce frequency and damping in Settings > Lyrics > Motion (the same controls are in the lyrics panel), or turn it down to nothing."),
                 ChangeEntry(ChangeKind.FEATURE, "Drag tracks from the queue or the now-playing card onto playlists and folders."),
                 ChangeEntry(ChangeKind.FEATURE, "Tag Manager: right-click menu, drag-select, background work with a floating progress button."),
                 ChangeEntry(ChangeKind.FEATURE, "Library search bar; multi-folder local library with per-folder status."),
