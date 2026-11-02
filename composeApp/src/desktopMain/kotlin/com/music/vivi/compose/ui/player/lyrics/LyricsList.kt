@@ -77,11 +77,15 @@ internal fun LyricsList(
     onSeek: ((Long) -> Unit)?,
     modifier: Modifier = Modifier,
     sizeScale: Float = 1f,
+    /** Popup: keep the configured size, but shrink it when the window is too narrow for the longest line to fit on one row. */
+    fitLongestLine: Boolean = false,
     /** Extra space under the Resume button, for controls floating at the bottom of the lyrics (the delay pill). */
     bottomInset: androidx.compose.ui.unit.Dp = 0.dp,
 ) {
     val listState = rememberLazyListState()
     val density = LocalDensity.current
+    val requestedScale = sizeScale
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
     var following by remember { mutableStateOf(true) }
     var lastUserNanos by remember { mutableLongStateOf(0L) }
     var snapNext by remember(timeline) { mutableStateOf(true) }
@@ -111,6 +115,21 @@ internal fun LyricsList(
                 }
             },
     ) {
+        val sizeScale = if (!fitLongestLine) requestedScale else {
+            val fitScale = remember(timeline, cfg.fontSizeSp, cfg.font, cfg.weight, cfg.textCase, requestedScale, maxWidth) {
+                val avail = with(density) { (maxWidth - (28 * requestedScale).dp * 2).toPx() }
+                val style = androidx.compose.ui.text.TextStyle(
+                    fontSize = (cfg.fontSizeSp * requestedScale).sp,
+                    fontWeight = cfg.weight.weight,
+                    fontFamily = cfg.font.family(),
+                )
+                // Measure only the longest few lines by character count; measuring every line is wasteful.
+                val widest = timeline.lines.map { cfg.textCase.apply(it.text) }.sortedByDescending { it.length }.take(6)
+                    .maxOfOrNull { measurer.measure(it, style, softWrap = false, maxLines = 1).size.width } ?: 0
+                if (widest > 0 && avail > 0f && widest > avail) (avail / widest).coerceAtLeast(0.3f) else 1f
+            }
+            requestedScale * fitScale
+        }
         val heightPx = with(density) { maxHeight.toPx() }
         val anchorPx = heightPx * cfg.anchor
         val topPad = with(density) { anchorPx.toDp() }
