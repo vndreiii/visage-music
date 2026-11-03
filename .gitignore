@@ -91,3 +91,9 @@ docs/*
 !docs/design-system.md
 !docs/ui-kit.md
 !docs/dev-ui-states.md
+
+# Session summaries stay local, never published
+SUMMARY.md
+summary.md
+**/SUMMARY.md
+**/summary.md
